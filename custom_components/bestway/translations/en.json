@@ -1,0 +1,19 @@
+{
+    "config": {
+        "step": {
+            "user": {
+                "title": "Bestway Login",
+                "data": {
+                    "username": "Username (e-mail address)",
+                    "password": "Password"
+                }
+            }
+        },
+        "error": {
+            "cannot_connect": "Could not connect to the Bestway API",
+            "user_does_not_exist": "User account does not exist",
+            "incorrect_password": "Incorrect password",
+            "unknown_connection_error": "Unexpected connector error - check logs for details"
+        }
+    }
+}

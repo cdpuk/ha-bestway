@@ -1,0 +1,18 @@
+{
+  "domain": "bestway",
+  "name": "Bestway",
+  "version": "0.0.1",
+  "config_flow": true,
+  "documentation": "https://github.com/cdpuk/ha-bestway",
+  "issue_tracker": "https://github.com/cdpuk/ha-bestway/issues",
+  "requirements": [],
+  "ssdp": [],
+  "zeroconf": [],
+  "dhcp": [],
+  "homekit": {},
+  "dependencies": [],
+  "codeowners": [
+    "@cdpuk"
+  ],
+  "iot_class": "cloud_polling"
+}
