@@ -30,7 +30,11 @@ Ensure you can control your device using the Bestway mobile app. At time of writ
 
 ## Improvement ideas
 
-* Capture more traffic from the mobile app to work out how it receives updates so quickly. The integration currently has to poll, but the app is able to reflect changes based on physical button presses on the Spa within a fraction of a second. A brief recent attempt suggested that the Android app may have certificate pinning enabled, making this slightly harder than expected.
+Achieve faster (or even local) updates.
+* Capture more traffic from the mobile app to work out how it receives updates so quickly.
+* The integration currently has to poll, but the mobile app is able to reflect changes based on physical button presses on the Spa within a fraction of a second.
+* A brief recent attempt suggested that the Android app may have certificate pinning enabled, making this slightly harder than expected. Perpahs decompilation is an easier route.
+* We know the spa talks directly to the cloud using MQTT. Traffic captures against the Android app appeared to show only HTTPS traffic.
 
 ## Acknowledgements
 
