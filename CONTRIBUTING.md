@@ -13,7 +13,7 @@ Github is used to host code, to track issues and feature requests, as well as ac
 
 Pull requests are the best way to propose changes to the codebase.
 
-1. Fork the repo and create your branch from `master`.
+1. Fork the repo and create your branch from `main`.
 2. Ensure `pre-commit` is set up before making any changes. Run `pre-commit install` to do this.
 3. If you've changed something, update the documentation.
 4. Test you contribution, and ensure any relevant tests have been updated.

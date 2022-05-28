@@ -41,7 +41,7 @@ Ensure you can control your device using the Bestway mobile app. At time of writ
 If you want to contribute to this please read the [Contribution Guidelines](CONTRIBUTING.md).
 
 [commits-shield]: https://img.shields.io/github/commit-activity/y/cdpuk/ha-bestway.svg?style=for-the-badge
-[commits]: https://github.com/cdpuk/ha-bestway/commits/master
+[commits]: https://github.com/cdpuk/ha-bestway/commits/main
 [hacs]: https://github.com/custom-components/hacs
 [hacsbadge]: https://img.shields.io/badge/HACS-Custom-orange.svg?style=for-the-badge
 [license-shield]: https://img.shields.io/github/license/cdpuk/ha-bestway.svg?style=for-the-badge
