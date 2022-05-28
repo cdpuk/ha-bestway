@@ -7,9 +7,15 @@
 
 This custom component integrates with the Bestway cloud API, providing control of devices such as Lay-Z-Spa hot tubs.
 
+<p float="left">
+  <img src="images/demo-thermostat.png" width="200" />
+  <img src="images/demo-controls.png" width="200" />
+  <img src="images/demo-diagnostic.png" width="200" />
+</p>
+
 ## Device Support
 
-A Wi-Fi enabled model is required.
+A Wi-Fi enabled model is required. No custom hardware is required.
 
 The integration has been developed and tested against a Lay-Z-Spa Milan Airjet Plus. It will probably also work for other AirJet models, with decreasing chances of success with other Bestway products.
 
