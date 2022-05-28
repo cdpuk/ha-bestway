@@ -1,9 +1,6 @@
 {
     "name": "Bestway",
     "hacs": "1.6.0",
-    "domains": [
-        "sensor"
-    ],
     "homeassistant": "2022.5.0",
     "render_readme": true
 }
