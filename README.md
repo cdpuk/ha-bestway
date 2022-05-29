@@ -7,6 +7,8 @@
 
 This custom component integrates with the Bestway cloud API, providing control of devices such as Lay-Z-Spa hot tubs.
 
+You must have an account with the Bestway mobile app ([Android][bestway-android]/[iOS][bestway-ios]). Lay-Z-Spa app credentials will not work. Both apps appear to have identical feature sets.
+
 <p float="left">
   <img src="images/demo-thermostat.png" width="200" />
   <img src="images/demo-controls.png" width="200" />
@@ -59,3 +61,5 @@ If you want to contribute to this please read the [Contribution Guidelines](CONT
 [releases]: https://github.com/cdpuk/ha-bestway/releases
 [hacs-download]: https://hacs.xyz/docs/setup/download
 [hacs-custom]: https://hacs.xyz/docs/faq/custom_repositories
+[bestway-android]: https://play.google.com/store/apps/details?id=com.layzspa.smartHome
+[bestway-ios]: https://apps.apple.com/us/app/bestway-smart-hub/id1456731336
