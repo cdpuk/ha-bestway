@@ -44,6 +44,9 @@ Ensure you can control your device using the Bestway mobile app. At time of writ
 * Go to **Configuration** > **Devices & Services** > **Add Integration**, then find **Bestway** in the list.
 * Enter your Bestway username and password when prompted.
 
+## Update speed
+
+Any changes made to the spa settings via the Bestway app or physical controls can take a short amount of time to be reflected in Home Assistant. This delay is typically under 30 seconds, but can sometimes extend to a few minutes.
 
 ## Improvement ideas
 
