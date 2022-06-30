@@ -54,7 +54,7 @@ Any changes made to the spa settings via the Bestway app or physical controls ca
 Achieve faster (or even local) updates.
 * Capture more traffic from the mobile app to work out how it receives updates so quickly.
 * The integration currently has to poll, but the mobile app is able to reflect changes based on physical button presses on the Spa within a fraction of a second.
-* A brief recent attempt suggested that the Android app may have certificate pinning enabled, making this slightly harder than expected. Perpahs decompilation is an easier route.
+* A brief recent attempt suggested that the Android app may have certificate pinning enabled, making this slightly harder than expected. Perhaps decompilation is an easier route.
 * We know the spa talks directly to the cloud using MQTT. Traffic captures against the Android app appeared to show only HTTPS traffic.
 
 ## Acknowledgements
