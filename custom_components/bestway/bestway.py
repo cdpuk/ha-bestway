@@ -124,10 +124,11 @@ async def raise_for_status(response: ClientResponse) -> None:
 class BestwayApi:
     """Bestway API."""
 
-    def __init__(self, session: ClientSession, user_token: str) -> None:
+    def __init__(self, session: ClientSession, user_token: str, api_root: str) -> None:
         """Initialize the API with a user token."""
         self._session = session
         self._user_token = user_token
+        self._api_root = api_root
 
         # Maps device IDs to device info
         self._bindings: dict[str, BestwayDevice] | None = None
@@ -143,7 +144,7 @@ class BestwayApi:
 
     @staticmethod
     async def get_user_token(
-        session: ClientSession, username: str, password: str
+        session: ClientSession, username: str, password: str, api_root: str
     ) -> BestwayUserToken:
         """
         Login and obtain a user token.
@@ -154,7 +155,7 @@ class BestwayApi:
 
         async with async_timeout.timeout(_TIMEOUT):
             response = await session.post(
-                "https://euapi.gizwits.com/app/login", headers=_HEADERS, json=body
+                f"{api_root}/app/login", headers=_HEADERS, json=body
             )
             await raise_for_status(response)
             api_data = await response.json()
@@ -173,7 +174,7 @@ class BestwayApi:
         """Get the list of devices available in the account."""
         headers = dict(_HEADERS)
         headers["X-Gizwits-User-token"] = self._user_token
-        api_data = await self._do_get("https://euapi.gizwits.com/app/bindings", headers)
+        api_data = await self._do_get(f"{self._api_root}/app/bindings", headers)
         return list(
             map(
                 lambda raw: BestwayDevice(
@@ -193,7 +194,7 @@ class BestwayApi:
 
         for did, device_info in self._bindings.items():
             latest_data = await self._do_get(
-                f"https://euapi.gizwits.com/app/devdata/{did}/latest", _HEADERS
+                f"{self._api_root}/app/devdata/{did}/latest", _HEADERS
             )
 
             # Work out whether the received API update is more recent than the
@@ -255,7 +256,7 @@ class BestwayApi:
         headers = dict(_HEADERS)
         headers["X-Gizwits-User-token"] = self._user_token
         await self._do_post(
-            f"https://euapi.gizwits.com/app/control/{device_id}",
+            f"{self._api_root}/app/control/{device_id}",
             headers,
             {"attrs": {"heat_power": 1 if heat else 0}},
         )
@@ -270,7 +271,7 @@ class BestwayApi:
         headers = dict(_HEADERS)
         headers["X-Gizwits-User-token"] = self._user_token
         await self._do_post(
-            f"https://euapi.gizwits.com/app/control/{device_id}",
+            f"{self._api_root}/app/control/{device_id}",
             headers,
             {"attrs": {"filter_power": 1 if filtering else 0}},
         )
@@ -286,7 +287,7 @@ class BestwayApi:
         headers = dict(_HEADERS)
         headers["X-Gizwits-User-token"] = self._user_token
         await self._do_post(
-            f"https://euapi.gizwits.com/app/control/{device_id}",
+            f"{self._api_root}/app/control/{device_id}",
             headers,
             {"attrs": {"locked": 1 if locked else 0}},
         )
@@ -299,7 +300,7 @@ class BestwayApi:
         headers = dict(_HEADERS)
         headers["X-Gizwits-User-token"] = self._user_token
         await self._do_post(
-            f"https://euapi.gizwits.com/app/control/{device_id}",
+            f"{self._api_root}/app/control/{device_id}",
             headers,
             {"attrs": {"wave_power": 1 if bubbles else 0}},
         )
@@ -314,7 +315,7 @@ class BestwayApi:
         headers = dict(_HEADERS)
         headers["X-Gizwits-User-token"] = self._user_token
         await self._do_post(
-            f"https://euapi.gizwits.com/app/control/{device_id}",
+            f"{self._api_root}/app/control/{device_id}",
             headers,
             {"attrs": {"temp_set": target_temp}},
         )

@@ -17,12 +17,13 @@ This custom component integrates with the Bestway cloud API, providing control o
 
 You must have an account with the Bestway mobile app ([Android][bestway-android]/[iOS][bestway-ios]). Lay-Z-Spa app credentials will not work. Both apps appear to have identical feature sets.
 
-Furthermore, it has been found that accounts must be created in certain countries for them to work using this integration. Supported countries include:
+Bestway uses different API endpoints for EU and US. If you get an error stating account could not be found, try using the other api. If this does not help, then create a new account under a supported country.
 
-* Germany
-* United Kingdom
+Confirmed working countries:
 
-If you get an error stating that your account could not be found, remove the device from your account, then create a new account under a supported country.
+* Germany (euapi)
+* United Kingdom (euapi)
+
 
 ## Device Support
 

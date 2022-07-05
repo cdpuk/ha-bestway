@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.selector import selector
 import voluptuous as vol
 
 from custom_components.bestway.bestway import (
@@ -20,6 +21,9 @@ from custom_components.bestway.bestway import (
 
 from .bestway import BestwayApi
 from .const import (
+    CONF_API_ROOT,
+    CONF_API_ROOT_EU,
+    CONF_API_ROOT_US,
     CONF_PASSWORD,
     CONF_USER_TOKEN,
     CONF_USER_TOKEN_EXPIRY,
@@ -28,9 +32,14 @@ from .const import (
 )
 
 _LOGGER = getLogger(__name__)
-_STEP_USER_DATA_SCHEMA = vol.Schema(
-    {vol.Required(CONF_USERNAME): str, vol.Required(CONF_PASSWORD): str}
-)
+
+
+def _get_user_data_schema():
+    data_schema = {vol.Required(CONF_USERNAME): str, vol.Required(CONF_PASSWORD): str}
+    data_schema[CONF_API_ROOT] = selector(
+        {"select": {"options": [CONF_API_ROOT_EU, CONF_API_ROOT_US]}}
+    )
+    return vol.Schema(data_schema)
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
@@ -39,12 +48,16 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
     Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
     """
     username = data[CONF_USERNAME]
+    api_root = data[CONF_API_ROOT]
     session = async_get_clientsession(hass)
     async with async_timeout.timeout(10):
-        token = await BestwayApi.get_user_token(session, username, data[CONF_PASSWORD])
+        token = await BestwayApi.get_user_token(
+            session, username, data[CONF_PASSWORD], api_root
+        )
 
     return {
         "title": username,
+        CONF_API_ROOT: api_root,
         CONF_USER_TOKEN: token.user_token,
         CONF_USER_TOKEN_EXPIRY: token.expiry,
     }
@@ -61,7 +74,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
         """Handle the initial step."""
         if user_input is None:
             return self.async_show_form(
-                step_id="user", data_schema=_STEP_USER_DATA_SCHEMA
+                step_id="user", data_schema=_get_user_data_schema()
             )
 
         errors = {}
@@ -81,7 +94,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
             return self.async_create_entry(title=info["title"], data=user_input)
 
         return self.async_show_form(
-            step_id="user", data_schema=_STEP_USER_DATA_SCHEMA, errors=errors
+            step_id="user", data_schema=_get_user_data_schema(), errors=errors
         )
 
 
