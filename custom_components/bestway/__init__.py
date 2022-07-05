@@ -14,6 +14,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .bestway import BestwayApi, BestwayDeviceReport
 from .const import (
+    CONF_API_ROOT,
     CONF_PASSWORD,
     CONF_USER_TOKEN,
     CONF_USER_TOKEN_EXPIRY,
@@ -33,6 +34,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up bestway from a config entry."""
     username = entry.data.get(CONF_USERNAME)
     password = entry.data.get(CONF_PASSWORD)
+    api_root = entry.data.get(CONF_API_ROOT)
     user_token = entry.data.get(CONF_USER_TOKEN)
     user_token_expiry = entry.data.get(CONF_USER_TOKEN_EXPIRY)
 
@@ -43,7 +45,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     else:
         _LOGGER.info("No saved token found - requesting a new one")
         try:
-            token = await BestwayApi.get_user_token(session, username, password)
+            token = await BestwayApi.get_user_token(
+                session, username, password, api_root
+            )
         except Exception as ex:  # pylint: disable=broad-except
             raise ConfigEntryNotReady from ex
         user_token = token.user_token
@@ -58,7 +62,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             entry, data={**entry.data, **new_config_data}
         )
 
-    api = BestwayApi(session, user_token)
+    api = BestwayApi(session, user_token, api_root)
     coordinator = BestwayUpdateCoordinator(hass, api)
     await coordinator.async_config_entry_first_refresh()
 
