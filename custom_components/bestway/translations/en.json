@@ -5,7 +5,8 @@
                 "title": "Bestway Login",
                 "data": {
                     "username": "Username (e-mail address)",
-                    "password": "Password"
+                    "password": "Password",
+                    "apiroot": "API location"
                 }
             }
         },

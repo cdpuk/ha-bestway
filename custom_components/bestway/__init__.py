@@ -15,6 +15,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from .bestway import BestwayApi, BestwayDeviceReport
 from .const import (
     CONF_API_ROOT,
+    CONF_API_ROOT_EU,
     CONF_PASSWORD,
     CONF_USER_TOKEN,
     CONF_USER_TOKEN_EXPIRY,
@@ -88,6 +89,26 @@ async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
     """Reload config entry."""
     await async_unload_entry(hass, entry)
     await async_setup_entry(hass, entry)
+
+
+async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Migrates old config versions to the latest."""
+
+    _LOGGER.debug("Migrating from version %s", entry.version)
+
+    if entry.version == 1:
+        # API root needs to be set
+        # In version 1, this was hard coded to the EU endpoint
+        new = {**entry.data}
+        new[CONF_API_ROOT] = CONF_API_ROOT_EU
+        entry.version = 2
+        hass.config_entries.async_update_entry(entry, data=new)
+
+        _LOGGER.info("Migration to version %s successful", entry.version)
+        return True
+
+    _LOGGER.error("Existing schema version %s is not supported", entry.version)
+    return False
 
 
 class BestwayUpdateCoordinator(DataUpdateCoordinator[dict[str, BestwayDeviceReport]]):

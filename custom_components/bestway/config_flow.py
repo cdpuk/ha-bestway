@@ -10,8 +10,8 @@ from homeassistant.config_entries import ConfigFlow
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.selector import selector
 import voluptuous as vol
 
 from custom_components.bestway.bestway import (
@@ -32,14 +32,20 @@ from .const import (
 )
 
 _LOGGER = getLogger(__name__)
-
-
-def _get_user_data_schema():
-    data_schema = {vol.Required(CONF_USERNAME): str, vol.Required(CONF_PASSWORD): str}
-    data_schema[CONF_API_ROOT] = selector(
-        {"select": {"options": [CONF_API_ROOT_EU, CONF_API_ROOT_US]}}
-    )
-    return vol.Schema(data_schema)
+_STEP_USER_DATA_SCHEMA = vol.Schema(
+    {
+        vol.Required(CONF_USERNAME): str,
+        vol.Required(CONF_PASSWORD): str,
+        vol.Required(CONF_API_ROOT): selector.SelectSelector(
+            selector.SelectSelectorConfig(
+                options=[
+                    selector.SelectOptionDict(value=CONF_API_ROOT_EU, label="EU"),
+                    selector.SelectOptionDict(value=CONF_API_ROOT_US, label="US"),
+                ]
+            )
+        ),
+    }
+)
 
 
 async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
@@ -66,7 +72,7 @@ async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str,
 class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
     """Handle a config flow for bestway."""
 
-    VERSION = 1
+    VERSION = 2
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -74,7 +80,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
         """Handle the initial step."""
         if user_input is None:
             return self.async_show_form(
-                step_id="user", data_schema=_get_user_data_schema()
+                step_id="user", data_schema=_STEP_USER_DATA_SCHEMA
             )
 
         errors = {}
@@ -94,7 +100,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
             return self.async_create_entry(title=info["title"], data=user_input)
 
         return self.async_show_form(
-            step_id="user", data_schema=_get_user_data_schema(), errors=errors
+            step_id="user", data_schema=_STEP_USER_DATA_SCHEMA, errors=errors
         )
 
 
