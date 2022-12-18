@@ -71,7 +71,7 @@ class BestwayDeviceReport:
     """A device report, which combines device metadata with a current status snapshot."""
 
     device: BestwayDevice
-    status: BestwayDeviceStatus
+    status: BestwayDeviceStatus | None
 
 
 class BestwayException(Exception):
@@ -88,6 +88,10 @@ class BestwayOfflineException(BestwayException):
 
 class BestwayAuthException(BestwayException):
     """An authentication error."""
+
+
+class BestwayTokenInvalidException(BestwayAuthException):
+    """Auth token is invalid or expired."""
 
 
 class BestwayUserDoesNotExistException(BestwayAuthException):
@@ -110,6 +114,8 @@ async def raise_for_status(response: ClientResponse) -> None:
         response.raise_for_status()
 
     error_code = api_error.get("error_code", 0)
+    if error_code == 9004:
+        raise BestwayTokenInvalidException()
     if error_code == 9005:
         raise BestwayUserDoesNotExistException()
     if error_code == 9042:
@@ -175,14 +181,10 @@ class BestwayApi:
         headers = dict(_HEADERS)
         headers["X-Gizwits-User-token"] = self._user_token
         api_data = await self._do_get(f"{self._api_root}/app/bindings", headers)
-        return list(
-            map(
-                lambda raw: BestwayDevice(
-                    raw["did"], raw["dev_alias"], raw["product_name"]
-                ),
-                api_data["devices"],
-            )
-        )
+        return [
+            BestwayDevice(raw["did"], raw["dev_alias"], raw["product_name"])
+            for raw in api_data["devices"]
+        ]
 
     async def fetch_data(self) -> dict[str, BestwayDeviceReport]:
         """Fetch the latest data for all devices."""
@@ -197,9 +199,19 @@ class BestwayApi:
                 f"{self._api_root}/app/devdata/{did}/latest", _HEADERS
             )
 
+            # Get the age of the data according to the API
+            api_update_timestamp = latest_data["updated_at"]
+
+            # Zero indicates the device is offline
+            # This has been observed after a device was offline for a few months
+            if api_update_timestamp == 0:
+                # In testing, the 'attrs' dictionary has been observed to be empty
+                _LOGGER.debug("No data available for device %s", did)
+                results[did] = BestwayDeviceReport(device_info, None)
+                continue
+
             # Work out whether the received API update is more recent than the
             # locally cached state
-            api_update_timestamp = latest_data["updated_at"]
             local_update_timestamp = 0
             if cached_state := self._local_state_cache.get(did):
                 local_update_timestamp = cached_state.timestamp

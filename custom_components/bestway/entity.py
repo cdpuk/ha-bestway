@@ -6,7 +6,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import BestwayUpdateCoordinator
-from .bestway import BestwayDevice, BestwayDeviceReport, BestwayDeviceStatus
+from .bestway import BestwayDeviceStatus
 from .const import DOMAIN
 
 
@@ -28,7 +28,7 @@ class BestwayEntity(CoordinatorEntity[BestwayUpdateCoordinator]):
     def device_info(self) -> DeviceInfo:
         """Device information for the spa providing this entity."""
 
-        device_info: BestwayDevice = self.coordinator.data[self.device_id].device
+        device_info = self.coordinator.data[self.device_id].device
 
         return DeviceInfo(
             identifiers={(DOMAIN, self.device_id)},
@@ -40,8 +40,7 @@ class BestwayEntity(CoordinatorEntity[BestwayUpdateCoordinator]):
     @property
     def device_status(self) -> BestwayDeviceStatus | None:
         """Get status data for the spa providing this entity."""
-        device_report: BestwayDeviceReport = self.coordinator.data.get(self.device_id)
-        if device_report:
+        if (device_report := self.coordinator.data.get(self.device_id)) is not None:
             return device_report.status
         return None
 
