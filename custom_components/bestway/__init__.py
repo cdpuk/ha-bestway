@@ -1,7 +1,7 @@
 """The bestway integration."""
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta
 from logging import getLogger
 
 import async_timeout
@@ -37,14 +37,18 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     password = entry.data.get(CONF_PASSWORD)
     api_root = entry.data.get(CONF_API_ROOT)
     user_token = entry.data.get(CONF_USER_TOKEN)
-    user_token_expiry = entry.data.get(CONF_USER_TOKEN_EXPIRY)
+    user_token_expiry = int(entry.data.get(CONF_USER_TOKEN_EXPIRY))
 
     session = async_get_clientsession(hass)
 
-    if user_token:
+    # Check for an auth token
+    # If we have one that expires within 30 days, refresh it
+    expiry_cutoff = (datetime.now() + timedelta(days=30)).timestamp()
+
+    if user_token and expiry_cutoff < user_token_expiry:
         _LOGGER.info("Reusing existing access token")
     else:
-        _LOGGER.info("No saved token found - requesting a new one")
+        _LOGGER.info("Requesting a new auth token")
         try:
             token = await BestwayApi.get_user_token(
                 session, username, password, api_root
