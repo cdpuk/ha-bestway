@@ -48,25 +48,25 @@ _STEP_USER_DATA_SCHEMA = vol.Schema(
 )
 
 
-async def validate_input(hass: HomeAssistant, data: dict[str, Any]) -> dict[str, Any]:
+async def validate_input(
+    hass: HomeAssistant, user_input: dict[str, Any]
+) -> dict[str, Any]:
     """Validate the user input allows us to connect.
 
-    Data has the keys from STEP_USER_DATA_SCHEMA with values provided by the user.
+    Returns data to be stored in the config entry.
     """
-    username = data[CONF_USERNAME]
-    api_root = data[CONF_API_ROOT]
+    username = user_input[CONF_USERNAME]
+    api_root = user_input[CONF_API_ROOT]
     session = async_get_clientsession(hass)
     async with async_timeout.timeout(10):
         token = await BestwayApi.get_user_token(
-            session, username, data[CONF_PASSWORD], api_root
+            session, username, user_input[CONF_PASSWORD], api_root
         )
 
-    return {
-        "title": username,
-        CONF_API_ROOT: api_root,
-        CONF_USER_TOKEN: token.user_token,
-        CONF_USER_TOKEN_EXPIRY: token.expiry,
-    }
+    config_entry_data = dict(user_input)
+    config_entry_data[CONF_USER_TOKEN] = token.user_token
+    config_entry_data[CONF_USER_TOKEN_EXPIRY] = token.expiry
+    return config_entry_data
 
 
 class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
@@ -86,7 +86,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
         errors = {}
 
         try:
-            info = await validate_input(self.hass, user_input)
+            config_entry_data = await validate_input(self.hass, user_input)
         except BestwayUserDoesNotExistException:
             errors["base"] = "user_does_not_exist"
         except BestwayIncorrectPasswordException:
@@ -97,7 +97,9 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
             _LOGGER.exception("Unexpected exception")
             errors["base"] = "unknown_connection_error"
         else:
-            return self.async_create_entry(title=info["title"], data=user_input)
+            return self.async_create_entry(
+                title=user_input[CONF_USERNAME], data=config_entry_data
+            )
 
         return self.async_show_form(
             step_id="user", data_schema=_STEP_USER_DATA_SCHEMA, errors=errors
