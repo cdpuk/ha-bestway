@@ -41,7 +41,8 @@ class BestwayEntity(CoordinatorEntity[BestwayUpdateCoordinator]):
     def device_status(self) -> BestwayDeviceStatus | None:
         """Get status data for the spa providing this entity."""
         if (device_report := self.coordinator.data.get(self.device_id)) is not None:
-            return device_report.status
+            status: BestwayDeviceStatus | None = device_report.status
+            return status
         return None
 
     @property
