@@ -4,7 +4,7 @@ from __future__ import annotations
 from typing import Any
 
 from homeassistant.components.climate import ClimateEntity, ClimateEntityFeature
-from homeassistant.components.climate.const import HVACAction, HVACMode
+from homeassistant.components.climate.const import ATTR_HVAC_MODE, HVACAction, HVACMode
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import (
     ATTR_TEMPERATURE,
@@ -127,6 +127,10 @@ class BestwayThermostat(BestwayEntity, ClimateEntity):
         target_temperature = kwargs.get(ATTR_TEMPERATURE)
         if target_temperature is None:
             return
+
+        if hvac_mode := kwargs.get(ATTR_HVAC_MODE):
+            should_heat = hvac_mode == HVACMode.HEAT
+            await self.coordinator.api.set_heat(self.device_id, should_heat)
 
         await self.coordinator.api.set_target_temp(self.device_id, target_temperature)
         await self.coordinator.async_refresh()
