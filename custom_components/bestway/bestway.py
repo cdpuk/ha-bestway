@@ -1,8 +1,10 @@
 """Bestway API."""
 from dataclasses import dataclass
 from enum import Enum, auto
+import json
 from logging import getLogger
 from time import time
+
 from typing import Any
 
 from aiohttp import ClientResponse, ClientSession
@@ -221,31 +223,37 @@ class BestwayApi:
                 _LOGGER.debug("New data received for device %s", did)
                 device_attrs = latest_data["attr"]
 
-                errors = []
-                for err_num in range(1, 10):
-                    if device_attrs[f"system_err{err_num}"] == 1:
-                        errors.append(err_num)
+                try:
+                    errors = []
+                    for err_num in range(1, 10):
+                        if device_attrs[f"system_err{err_num}"] == 1:
+                            errors.append(err_num)
 
-                device_status = BestwayDeviceStatus(
-                    latest_data["updated_at"],
-                    device_attrs["temp_now"],
-                    device_attrs["temp_set"],
-                    (
-                        TemperatureUnit.CELSIUS
-                        if device_attrs["temp_set_unit"] == "摄氏"
-                        else TemperatureUnit.FAHRENHEIT
-                    ),
-                    device_attrs["heat_power"] == 1,
-                    device_attrs["heat_temp_reach"] == 1,
-                    device_attrs["filter_power"] == 1,
-                    device_attrs["wave_power"] == 1,
-                    device_attrs["locked"] == 1,
-                    errors,
-                    device_attrs["earth"] == 1,
-                )
+                    device_status = BestwayDeviceStatus(
+                        latest_data["updated_at"],
+                        device_attrs["temp_now"],
+                        device_attrs["temp_set"],
+                        (
+                            TemperatureUnit.CELSIUS
+                            if device_attrs["temp_set_unit"] == "摄氏"
+                            else TemperatureUnit.FAHRENHEIT
+                        ),
+                        device_attrs["heat_power"] == 1,
+                        device_attrs["heat_temp_reach"] == 1,
+                        device_attrs["filter_power"] == 1,
+                        device_attrs["wave_power"] == 1,
+                        device_attrs["locked"] == 1,
+                        errors,
+                        device_attrs["earth"] == 1,
+                    )
 
-                self._local_state_cache[did] = device_status
-
+                    self._local_state_cache[did] = device_status
+                except KeyError as err:
+                    _LOGGER.error(
+                        "Unexpected missing key '%s' while decoding device attributes %s",
+                        err,
+                        json.dumps(device_attrs),
+                    )
             else:
                 _LOGGER.debug(
                     "Ignoring update for device %s as local data is newer", did
@@ -253,7 +261,7 @@ class BestwayApi:
 
             results[did] = BestwayDeviceReport(
                 device_info,
-                self._local_state_cache[did],
+                self._local_state_cache.get(did),
             )
 
         return results
