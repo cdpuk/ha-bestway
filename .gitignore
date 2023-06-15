@@ -4,3 +4,5 @@ venv
 .venv
 .coverage
 .idea
+env
+custom_components/bestway/test.py
