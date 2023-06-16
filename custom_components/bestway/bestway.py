@@ -32,9 +32,14 @@ class TemperatureUnit(Enum):
 class BestwayDevice:
     """A device under a user's account."""
 
+    protocol_version: int
     device_id: str
-    alias: str
     product_name: str
+    alias: str
+    mcu_soft_version: str
+    mcu_hard_version: str
+    wifi_soft_version: str
+    is_online: bool
 
 
 @dataclass
@@ -184,7 +189,16 @@ class BestwayApi:
         headers["X-Gizwits-User-token"] = self._user_token
         api_data = await self._do_get(f"{self._api_root}/app/bindings", headers)
         return [
-            BestwayDevice(raw["did"], raw["dev_alias"], raw["product_name"])
+            BestwayDevice(
+                raw["protoc"],
+                raw["did"],
+                raw["product_name"],
+                raw["dev_alias"],
+                raw["mcu_soft_version"],
+                raw["mcu_hard_version"],
+                raw["wifi_soft_version"],
+                raw["is_online"],
+            )
             for raw in api_data["devices"]
         ]
 
