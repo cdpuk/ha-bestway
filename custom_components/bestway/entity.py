@@ -6,7 +6,11 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import BestwayUpdateCoordinator
-from .bestway import BestwayDevice, BestwayDeviceStatus
+from .bestway.model import (
+    BestwayDevice,
+    BestwayPoolFilterDeviceStatus,
+    BestwaySpaDeviceStatus,
+)
 from .const import DOMAIN
 
 
@@ -28,31 +32,58 @@ class BestwayEntity(CoordinatorEntity[BestwayUpdateCoordinator]):
     def device_info(self) -> DeviceInfo:
         """Device information for the spa providing this entity."""
 
-        device_info = self.coordinator.data[self.device_id].device
+        device_info = self.coordinator.api.devices[self.device_id]
 
         return DeviceInfo(
             identifiers={(DOMAIN, self.device_id)},
             name=device_info.alias,
-            model=device_info.product_name,
+            model=str(device_info.device_type),
             manufacturer="Bestway",
         )
 
     @property
     def bestway_device(self) -> BestwayDevice | None:
         """Get status data for the spa providing this entity."""
-        if (device_report := self.coordinator.data.get(self.device_id)) is not None:
-            return device_report.device  # type: ignore
-        return None
+        device: BestwayDevice | None = self.coordinator.api.devices.get(self.device_id)
+        return device
 
     @property
-    def device_status(self) -> BestwayDeviceStatus | None:
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return self.bestway_device is not None and self.bestway_device.is_online
+
+
+class BestwaySpaEntity(BestwayEntity):
+    """Bestway spa entity type."""
+
+    @property
+    def status(self) -> BestwaySpaDeviceStatus | None:
         """Get status data for the spa providing this entity."""
-        if (device_report := self.coordinator.data.get(self.device_id)) is not None:
-            status: BestwayDeviceStatus | None = device_report.status
+        if device_report := self.coordinator.data.spa_devices.get(self.device_id):
+            status: BestwaySpaDeviceStatus | None = device_report.status
             return status
         return None
 
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        return self.device_status is not None and self.device_status.online
+        return self.status is not None and self.status.online
+
+
+class BestwayPoolFilterEntity(BestwayEntity):
+    """Bestway pool filter entity type."""
+
+    @property
+    def status(self) -> BestwayPoolFilterDeviceStatus | None:
+        """Get status data for the spa providing this entity."""
+        if device_report := self.coordinator.data.pool_filter_devices.get(
+            self.device_id
+        ):
+            status: BestwayPoolFilterDeviceStatus | None = device_report.status
+            return status
+        return None
+
+    @property
+    def available(self) -> bool:
+        """Return True if entity is available."""
+        return self.status is not None and self.status.online

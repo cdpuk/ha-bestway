@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+
 from typing import Any
 
 from homeassistant.components.binary_sensor import (
     DEVICE_CLASS_CONNECTIVITY,
     DEVICE_CLASS_PROBLEM,
-    BinarySensorEntity,
     BinarySensorEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
@@ -17,7 +17,20 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import BestwayUpdateCoordinator
 from .const import DOMAIN
-from .entity import BestwayEntity
+from .entity import BestwayEntity, BestwaySpaEntity
+
+_CONNECTIVITY_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
+    key="connected",
+    device_class=DEVICE_CLASS_CONNECTIVITY,
+    entity_category=EntityCategory.DIAGNOSTIC,
+    name="Spa Connected",
+)
+
+_ERRORS_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
+    key="has_error",
+    name="Spa Errors",
+    device_class=DEVICE_CLASS_PROBLEM,
+)
 
 
 async def async_setup_entry(
@@ -28,10 +41,11 @@ async def async_setup_entry(
     """Set up binary sensor entities."""
     coordinator: BestwayUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id]
     entities: list[BestwayEntity] = []
-    for device_id in coordinator.data.keys():
+
+    for device_id in coordinator.data.spa_devices.keys():
         entities.extend(
             [
-                BestwayConnectivitySensor(coordinator, config_entry, device_id),
+                SpaConnectivitySensor(coordinator, config_entry, device_id),
                 BestwayErrorSensor(coordinator, config_entry, device_id),
             ]
         )
@@ -39,26 +53,7 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class BestwayBinarySensor(BestwayEntity, BinarySensorEntity):
-    """Bestway binary sensor."""
-
-    entity_description: BinarySensorEntityDescription
-
-    def __init__(
-        self,
-        coordinator: BestwayUpdateCoordinator,
-        config_entry: ConfigEntry,
-        device_id: str,
-        description: BinarySensorEntityDescription,
-    ) -> None:
-        """Initialize sensor."""
-        super().__init__(coordinator, config_entry, device_id)
-        self.entity_description = description
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
-        self._attr_unique_id = f"{device_id}_{description.key}"
-
-
-class BestwayConnectivitySensor(BestwayBinarySensor):
+class SpaConnectivitySensor(BestwaySpaEntity):
     """Sensor to indicate whether a spa is currently online."""
 
     def __init__(
@@ -68,22 +63,19 @@ class BestwayConnectivitySensor(BestwayBinarySensor):
         device_id: str,
     ) -> None:
         """Initialize sensor."""
+        self.entity_description = _CONNECTIVITY_SENSOR_DESCRIPTION
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_unique_id = f"{device_id}_{self.entity_description.key}"
         super().__init__(
             coordinator,
             config_entry,
             device_id,
-            BinarySensorEntityDescription(
-                key="connected",
-                device_class=DEVICE_CLASS_CONNECTIVITY,
-                entity_category=EntityCategory.DIAGNOSTIC,
-                name="Spa Connected",
-            ),
         )
 
     @property
     def is_on(self) -> bool | None:
         """Return true if the spa is online."""
-        return self.device_status is not None and self.device_status.online
+        return self.status is not None and self.status.online
 
     @property
     def available(self) -> bool:
@@ -91,7 +83,7 @@ class BestwayConnectivitySensor(BestwayBinarySensor):
         return True
 
 
-class BestwayErrorSensor(BestwayBinarySensor):
+class BestwayErrorSensor(BestwaySpaEntity):
     """Sensor to indicate an error state for a spa."""
 
     def __init__(
@@ -101,32 +93,30 @@ class BestwayErrorSensor(BestwayBinarySensor):
         device_id: str,
     ) -> None:
         """Initialize sensor."""
+        self.entity_description = _ERRORS_SENSOR_DESCRIPTION
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_unique_id = f"{device_id}_{self.entity_description.key}"
         super().__init__(
             coordinator,
             config_entry,
             device_id,
-            BinarySensorEntityDescription(
-                key="has_error",
-                name="Spa Errors",
-                device_class=DEVICE_CLASS_PROBLEM,
-            ),
         )
 
     @property
     def is_on(self) -> bool | None:
         """Return true if the spa is reporting an error."""
-        if not self.device_status:
+        if not self.status:
             return None
 
-        return len(self.device_status.errors) > 0 or self.device_status.earth_fault
+        return len(self.status.errors) > 0 or self.status.earth_fault
 
     @property
     def extra_state_attributes(self) -> Mapping[str, Any] | None:
         """Return more detailed error information."""
-        if not self.device_status:
+        if not self.status:
             return None
 
-        errors = self.device_status.errors
+        errors = self.status.errors
         return {
             "e01": 1 in errors,
             "e02": 2 in errors,
@@ -137,5 +127,5 @@ class BestwayErrorSensor(BestwayBinarySensor):
             "e07": 7 in errors,
             "e08": 8 in errors,
             "e09": 9 in errors,
-            "gcf": self.device_status.earth_fault,
+            "gcf": self.status.earth_fault,
         }

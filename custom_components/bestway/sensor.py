@@ -11,9 +11,8 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
-from custom_components.bestway.bestway import BestwayDevice
-
 from . import BestwayUpdateCoordinator
+from .bestway.model import BestwayDevice, BestwayDeviceType
 from .const import DOMAIN, Icon
 from .entity import BestwayEntity
 
@@ -26,47 +25,6 @@ class DeviceSensorDescription:
     value_fn: Callable[[BestwayDevice], StateType]
 
 
-_PROTOCOL_VERSION_SENSOR = DeviceSensorDescription(
-    SensorEntityDescription(
-        key="protocol_version",
-        name="Protocol Version",
-        icon=Icon.PROTOCOL,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    lambda device: device.protocol_version,
-)
-
-_MCU_SOFTWARE_VERSION_SENSOR = DeviceSensorDescription(
-    SensorEntityDescription(
-        key="mcu_soft_version",
-        name="MCU Software Version",
-        icon=Icon.SOFTWARE,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    lambda device: device.mcu_soft_version,
-)
-
-_MCU_HARDWARE_VERSION_SENSOR = DeviceSensorDescription(
-    SensorEntityDescription(
-        key="mcu_hard_version",
-        name="MCU Hardware Version",
-        icon=Icon.HARDWARE,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    lambda device: device.mcu_hard_version,
-)
-
-_WIFI_HARDWARE_VERSION_SENSOR = DeviceSensorDescription(
-    SensorEntityDescription(
-        key="wifi_soft_version",
-        name="Wi-Fi Hardware Version",
-        icon=Icon.HARDWARE,
-        entity_category=EntityCategory.DIAGNOSTIC,
-    ),
-    lambda device: device.wifi_soft_version,
-)
-
-
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -75,32 +33,71 @@ async def async_setup_entry(
     """Add sensors for passed config_entry in HA."""
     coordinator: BestwayUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id]
     entities: list[BestwayEntity] = []
-    for device_id in coordinator.data.keys():
+
+    for device_id, device_info in coordinator.api.devices.items():
+        name_prefix = "Bestway"
+        if device_info.device_type == BestwayDeviceType.AIRJET_SPA:
+            name_prefix = "Spa"
+        elif device_info.device_type == BestwayDeviceType.POOL_FILTER:
+            name_prefix = "Pool Filter"
+
         entities.extend(
             [
                 DeviceSensor(
                     coordinator,
                     config_entry,
                     device_id,
-                    sensor_description=_PROTOCOL_VERSION_SENSOR,
+                    sensor_description=DeviceSensorDescription(
+                        SensorEntityDescription(
+                            key="protocol_version",
+                            name=f"{name_prefix} Protocol Version",
+                            icon=Icon.PROTOCOL,
+                            entity_category=EntityCategory.DIAGNOSTIC,
+                        ),
+                        lambda device: device.protocol_version,
+                    ),
                 ),
                 DeviceSensor(
                     coordinator,
                     config_entry,
                     device_id,
-                    sensor_description=_MCU_SOFTWARE_VERSION_SENSOR,
+                    sensor_description=DeviceSensorDescription(
+                        SensorEntityDescription(
+                            key="mcu_soft_version",
+                            name=f"{name_prefix} MCU Software Version",
+                            icon=Icon.SOFTWARE,
+                            entity_category=EntityCategory.DIAGNOSTIC,
+                        ),
+                        lambda device: device.mcu_soft_version,
+                    ),
                 ),
                 DeviceSensor(
                     coordinator,
                     config_entry,
                     device_id,
-                    sensor_description=_MCU_HARDWARE_VERSION_SENSOR,
+                    sensor_description=DeviceSensorDescription(
+                        SensorEntityDescription(
+                            key="mcu_hard_version",
+                            name=f"{name_prefix} MCU Hardware Version",
+                            icon=Icon.HARDWARE,
+                            entity_category=EntityCategory.DIAGNOSTIC,
+                        ),
+                        lambda device: device.mcu_hard_version,
+                    ),
                 ),
                 DeviceSensor(
                     coordinator,
                     config_entry,
                     device_id,
-                    sensor_description=_WIFI_HARDWARE_VERSION_SENSOR,
+                    sensor_description=DeviceSensorDescription(
+                        SensorEntityDescription(
+                            key="wifi_soft_version",
+                            name=f"{name_prefix} Wi-Fi Software Version",
+                            icon=Icon.SOFTWARE,
+                            entity_category=EntityCategory.DIAGNOSTIC,
+                        ),
+                        lambda device: device.wifi_soft_version,
+                    ),
                 ),
             ]
         )
@@ -131,3 +128,4 @@ class DeviceSensor(BestwayEntity, SensorEntity):
         """Return the relevant property."""
         if (device := self.bestway_device) is not None:
             return self.sensor_description.value_fn(device)
+        return None

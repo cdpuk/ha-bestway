@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+
 from typing import Any
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
@@ -10,51 +11,78 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from custom_components.bestway.bestway import BestwayApi, BestwayDeviceStatus
-
 from . import BestwayUpdateCoordinator
+from .bestway.api import BestwayApi
+from .bestway.model import BestwayPoolFilterDeviceStatus, BestwaySpaDeviceStatus
 from .const import DOMAIN
 from .entity import BestwayEntity
 
 
 @dataclass
-class RequiredKeysMixin:
-    """Mixin for required keys."""
+class SpaSwitchFunctionsMixin:
+    """Functions for spa devices."""
 
-    value_fn: Callable[[BestwayDeviceStatus], bool]
+    value_fn: Callable[[BestwaySpaDeviceStatus], bool]
     turn_on_fn: Callable[[BestwayApi, str], Awaitable[None]]
     turn_off_fn: Callable[[BestwayApi, str], Awaitable[None]]
 
 
 @dataclass
-class BestwaySwitchEntityDescription(SwitchEntityDescription, RequiredKeysMixin):
-    """Entity description for bestway switches."""
+class PoolFilterSwitchFunctionsMixin:
+    """Functions for pool filter devices."""
+
+    value_fn: Callable[[BestwayPoolFilterDeviceStatus], bool]
+    turn_on_fn: Callable[[BestwayApi, str], Awaitable[None]]
+    turn_off_fn: Callable[[BestwayApi, str], Awaitable[None]]
 
 
-_SENSOR_TYPES = [
-    BestwaySwitchEntityDescription(
+@dataclass
+class SpaSwitchEntityDescription(SwitchEntityDescription, SpaSwitchFunctionsMixin):
+    """Entity description for bestway spa switches."""
+
+
+@dataclass
+class PoolFilterSwitchEntityDescription(
+    SwitchEntityDescription, PoolFilterSwitchFunctionsMixin
+):
+    """Entity description for bestway pool filter switches."""
+
+
+_SPA_SWITCH_TYPES = [
+    SpaSwitchEntityDescription(
         key="filter_power",
         name="Spa Filter",
         icon="mdi:image-filter-tilt-shift",
         value_fn=lambda s: s.filter_power,
-        turn_on_fn=lambda api, device_id: api.set_filter(device_id, True),
-        turn_off_fn=lambda api, device_id: api.set_filter(device_id, False),
+        turn_on_fn=lambda api, device_id: api.spa_set_filter(device_id, True),
+        turn_off_fn=lambda api, device_id: api.spa_set_filter(device_id, False),
     ),
-    BestwaySwitchEntityDescription(
+    SpaSwitchEntityDescription(
         key="wave_power",
         name="Spa Bubbles",
         icon="mdi:chart-bubble",
         value_fn=lambda s: s.wave_power,
-        turn_on_fn=lambda api, device_id: api.set_bubbles(device_id, True),
-        turn_off_fn=lambda api, device_id: api.set_bubbles(device_id, False),
+        turn_on_fn=lambda api, device_id: api.spa_set_bubbles(device_id, True),
+        turn_off_fn=lambda api, device_id: api.spa_set_bubbles(device_id, False),
     ),
-    BestwaySwitchEntityDescription(
-        key="wave_locked",
+    SpaSwitchEntityDescription(
+        key="spa_locked",
         name="Spa Locked",
         icon="mdi:lock",
         value_fn=lambda s: s.locked,
-        turn_on_fn=lambda api, device_id: api.set_locked(device_id, True),
-        turn_off_fn=lambda api, device_id: api.set_locked(device_id, False),
+        turn_on_fn=lambda api, device_id: api.spa_set_locked(device_id, True),
+        turn_off_fn=lambda api, device_id: api.spa_set_locked(device_id, False),
+    ),
+]
+
+_POOL_FILTER_SWITCH_TYPES = [
+    PoolFilterSwitchEntityDescription(
+        key="pool_filter_power",
+        name="Pool Filter Power",
+        icon="mdi:image-filter-tilt-shift",
+        value_fn=lambda s: s.power,
+        turn_on_fn=lambda api, device_id: api.pool_filter_set_power(device_id, True),
+        turn_off_fn=lambda api, device_id: api.pool_filter_set_power(device_id, False),
     ),
 ]
 
@@ -67,25 +95,31 @@ async def async_setup_entry(
     """Set up switch entities."""
     coordinator: BestwayUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id]
 
-    entities = [
+    entities: list[BestwayEntity] = []
+    entities.extend(
         BestwaySwitch(coordinator, config_entry, device_id, description)
-        for device_id in coordinator.data.keys()
-        for description in _SENSOR_TYPES
-    ]
+        for device_id in coordinator.data.spa_devices.keys()
+        for description in _SPA_SWITCH_TYPES
+    )
+    entities.extend(
+        BestwaySwitch(coordinator, config_entry, device_id, description)
+        for device_id in coordinator.data.pool_filter_devices.keys()
+        for description in _POOL_FILTER_SWITCH_TYPES
+    )
     async_add_entities(entities)
 
 
 class BestwaySwitch(BestwayEntity, SwitchEntity):
     """Bestway switch entity."""
 
-    entity_description: BestwaySwitchEntityDescription
+    entity_description: SpaSwitchEntityDescription | PoolFilterSwitchEntityDescription
 
     def __init__(
         self,
         coordinator: BestwayUpdateCoordinator,
         config_entry: ConfigEntry,
         device_id: str,
-        description: BestwaySwitchEntityDescription,
+        description: SpaSwitchEntityDescription | PoolFilterSwitchEntityDescription,
     ) -> None:
         """Initialize switch."""
         super().__init__(coordinator, config_entry, device_id)
@@ -95,10 +129,19 @@ class BestwaySwitch(BestwayEntity, SwitchEntity):
     @property
     def is_on(self) -> bool | None:
         """Return true if the switch is on."""
-        if not self.device_status:
-            return None
+        if isinstance(self.entity_description, SpaSwitchEntityDescription):
+            if spa := self.coordinator.data.spa_devices.get(self.device_id):
+                if status := spa.status:
+                    return self.entity_description.value_fn(status)
 
-        return self.entity_description.value_fn(self.device_status)
+        elif isinstance(self.entity_description, PoolFilterSwitchEntityDescription):
+            if pool_filter := self.coordinator.data.pool_filter_devices.get(
+                self.device_id
+            ):
+                if status := pool_filter.status:
+                    return self.entity_description.value_fn(status)
+
+        return None
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on."""

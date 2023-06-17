@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from logging import getLogger
+
 from typing import Any
 
 from aiohttp import ClientConnectionError
@@ -14,12 +15,11 @@ from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import voluptuous as vol
 
-from custom_components.bestway.bestway import (
+from .bestway.api import (
+    BestwayApi,
     BestwayIncorrectPasswordException,
     BestwayUserDoesNotExistException,
 )
-
-from .bestway import BestwayApi
 from .const import (
     CONF_API_ROOT,
     CONF_API_ROOT_EU,
