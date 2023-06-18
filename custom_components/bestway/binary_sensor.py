@@ -8,6 +8,7 @@ from typing import Any
 from homeassistant.components.binary_sensor import (
     DEVICE_CLASS_CONNECTIVITY,
     DEVICE_CLASS_PROBLEM,
+    BinarySensorEntity,
     BinarySensorEntityDescription,
 )
 from homeassistant.config_entries import ConfigEntry
@@ -20,14 +21,14 @@ from .const import DOMAIN
 from .entity import BestwayEntity, BestwaySpaEntity
 
 _CONNECTIVITY_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
-    key="connected",
+    key="spa_connected",
     device_class=DEVICE_CLASS_CONNECTIVITY,
     entity_category=EntityCategory.DIAGNOSTIC,
     name="Spa Connected",
 )
 
 _ERRORS_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
-    key="has_error",
+    key="spa_has_error",
     name="Spa Errors",
     device_class=DEVICE_CLASS_PROBLEM,
 )
@@ -53,7 +54,7 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class SpaConnectivitySensor(BestwaySpaEntity):
+class SpaConnectivitySensor(BestwaySpaEntity, BinarySensorEntity):
     """Sensor to indicate whether a spa is currently online."""
 
     def __init__(
@@ -83,7 +84,7 @@ class SpaConnectivitySensor(BestwaySpaEntity):
         return True
 
 
-class BestwayErrorSensor(BestwaySpaEntity):
+class BestwayErrorSensor(BestwaySpaEntity, BinarySensorEntity):
     """Sensor to indicate an error state for a spa."""
 
     def __init__(

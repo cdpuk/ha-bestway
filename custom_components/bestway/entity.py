@@ -59,10 +59,10 @@ class BestwaySpaEntity(BestwayEntity):
     @property
     def status(self) -> BestwaySpaDeviceStatus | None:
         """Get status data for the spa providing this entity."""
-        if device_report := self.coordinator.data.spa_devices.get(self.device_id):
-            status: BestwaySpaDeviceStatus | None = device_report.status
-            return status
-        return None
+        status: BestwaySpaDeviceStatus | None = self.coordinator.data.spa_devices.get(
+            self.device_id
+        )
+        return status
 
     @property
     def available(self) -> bool:
@@ -76,12 +76,10 @@ class BestwayPoolFilterEntity(BestwayEntity):
     @property
     def status(self) -> BestwayPoolFilterDeviceStatus | None:
         """Get status data for the spa providing this entity."""
-        if device_report := self.coordinator.data.pool_filter_devices.get(
-            self.device_id
-        ):
-            status: BestwayPoolFilterDeviceStatus | None = device_report.status
-            return status
-        return None
+        status: BestwayPoolFilterDeviceStatus | None = (
+            self.coordinator.data.pool_filter_devices.get(self.device_id)
+        )
+        return status
 
     @property
     def available(self) -> bool:

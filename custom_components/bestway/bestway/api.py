@@ -1,5 +1,4 @@
 """Bestway API."""
-from dataclasses import dataclass
 import json
 from logging import getLogger
 from time import time
@@ -27,45 +26,12 @@ _HEADERS = {
 _TIMEOUT = 10
 
 
-@dataclass
-class BestwayDeviceReport:
-    """A device report, which combines device metadata with a current status snapshot."""
-
-    device: BestwayDevice
-    status: BestwayDeviceStatus | None
-
-
-@dataclass
-class BestwaySpaDeviceReport:
-    """A spa device report, which combines device metadata with a current status snapshot."""
-
-    device: BestwayDevice
-    status: BestwaySpaDeviceStatus | None
-
-
-@dataclass
-class BestwayPoolFilterDeviceReport:
-    """A pump device report, which combines device metadata with a current status snapshot."""
-
-    device: BestwayDevice
-    status: BestwayPoolFilterDeviceStatus | None
-
-
-@dataclass
-class BestwayUnknownDeviceReport:
-    """An unknown device report, which combines device metadata with raw status JSON."""
-
-    device: BestwayDevice
-    status: str | None
-
-
 class BestwayApiResults:
     """A snapshot of device status reports returned from the API."""
 
-    devices: dict[str, BestwayDevice] = {}
-    spa_devices: dict[str, BestwaySpaDeviceReport] = {}
-    pool_filter_devices: dict[str, BestwayPoolFilterDeviceReport] = {}
-    unknown_devices: dict[str, BestwayUnknownDeviceReport] = {}
+    spa_devices: dict[str, BestwaySpaDeviceStatus] = {}
+    pool_filter_devices: dict[str, BestwayPoolFilterDeviceStatus] = {}
+    unknown_devices: dict[str, str] = {}
 
 
 class BestwayException(Exception):
@@ -210,17 +176,6 @@ class BestwayApi:
             if api_update_timestamp == 0:
                 # In testing, the 'attrs' dictionary has been observed to be empty
                 _LOGGER.debug("No data available for device %s", did)
-
-                if device_info.device_type == BestwayDeviceType.AIRJET_SPA:
-                    results.spa_devices[did] = BestwaySpaDeviceReport(device_info, None)
-                elif device_info.device_type == BestwayDeviceType.POOL_FILTER:
-                    results.pool_filter_devices[did] = BestwayPoolFilterDeviceReport(
-                        device_info, None
-                    )
-                elif device_info.device_type == BestwayDeviceType.UNKNOWN:
-                    results.unknown_devices[did] = BestwayUnknownDeviceReport(
-                        device_info, None
-                    )
                 continue
 
             # Work out whether the received API update is more recent than the
@@ -266,10 +221,7 @@ class BestwayApi:
                     )
 
                     self._local_state_cache[did] = spa_status
-                    results.spa_devices[did] = BestwaySpaDeviceReport(
-                        device_info,
-                        spa_status,
-                    )
+                    results.spa_devices[did] = spa_status
 
                 elif device_info.device_type == BestwayDeviceType.POOL_FILTER:
                     filter_status = BestwayPoolFilterDeviceStatus(
@@ -282,10 +234,7 @@ class BestwayApi:
                     )
 
                     self._local_state_cache[did] = filter_status
-                    results.pool_filter_devices[did] = BestwayPoolFilterDeviceReport(
-                        device_info,
-                        filter_status,
-                    )
+                    results.pool_filter_devices[did] = filter_status
 
                 elif device_info.device_type == BestwayDeviceType.UNKNOWN:
                     attr_dump = json.dumps(device_attrs)
@@ -294,10 +243,7 @@ class BestwayApi:
                         device_info.product_name,
                         attr_dump,
                     )
-                    results.unknown_devices[did] = BestwayUnknownDeviceReport(
-                        device_info,
-                        attr_dump,
-                    )
+                    results.unknown_devices[did] = attr_dump
 
             except KeyError as err:
                 _LOGGER.error(

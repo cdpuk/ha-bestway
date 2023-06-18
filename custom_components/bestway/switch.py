@@ -50,7 +50,7 @@ class PoolFilterSwitchEntityDescription(
 
 _SPA_SWITCH_TYPES = [
     SpaSwitchEntityDescription(
-        key="filter_power",
+        key="spa_filter_power",
         name="Spa Filter",
         icon="mdi:image-filter-tilt-shift",
         value_fn=lambda s: s.filter_power,
@@ -58,7 +58,7 @@ _SPA_SWITCH_TYPES = [
         turn_off_fn=lambda api, device_id: api.spa_set_filter(device_id, False),
     ),
     SpaSwitchEntityDescription(
-        key="wave_power",
+        key="spa_wave_power",
         name="Spa Bubbles",
         icon="mdi:chart-bubble",
         value_fn=lambda s: s.wave_power,
@@ -130,16 +130,12 @@ class BestwaySwitch(BestwayEntity, SwitchEntity):
     def is_on(self) -> bool | None:
         """Return true if the switch is on."""
         if isinstance(self.entity_description, SpaSwitchEntityDescription):
-            if spa := self.coordinator.data.spa_devices.get(self.device_id):
-                if status := spa.status:
-                    return self.entity_description.value_fn(status)
+            if status := self.coordinator.data.spa_devices.get(self.device_id):
+                return self.entity_description.value_fn(status)
 
         elif isinstance(self.entity_description, PoolFilterSwitchEntityDescription):
-            if pool_filter := self.coordinator.data.pool_filter_devices.get(
-                self.device_id
-            ):
-                if status := pool_filter.status:
-                    return self.entity_description.value_fn(status)
+            if status := self.coordinator.data.pool_filter_devices.get(self.device_id):
+                return self.entity_description.value_fn(status)
 
         return None
 
