@@ -5,7 +5,7 @@
 [![License][license-shield]](LICENSE)
 [![hacs][hacsbadge]][hacs]
 
-This custom component integrates with the Bestway cloud API, providing control of devices such as Lay-Z-Spa hot tubs.
+This custom component integrates with the Bestway cloud API, providing control of devices such as Lay-Z-Spa hot tubs and Flowclear pool filters.
 
 <p float="left">
   <img src="images/demo-thermostat.png" width="200" />
@@ -24,7 +24,16 @@ Bestway uses different API endpoints for EU and US. If you get an error stating 
 
 A Wi-Fi enabled model is required. No custom hardware is required.
 
-The integration has been developed and tested against a Lay-Z-Spa Milan Airjet Plus. It will probably also work for other AirJet models, with decreasing chances of success with other Bestway products.
+The following devices are supported:
+
+* Lay-Z-Spa Airjet
+* Flowclear Smart Touch
+
+The following devices require further development effort from willing and able volunteers:
+
+* Lay-Z-Spa HydroJet Pro
+
+The integration attempts to detect unknown devices and will provide some entities and debug logs in these cases. Please report these values and logs in any reports.
 
 ## Installation
 
@@ -48,7 +57,7 @@ Any changes made to the spa settings via the Bestway app or physical controls ca
 
 Achieve faster (or even local) updates.
 * Capture more traffic from the mobile app to work out how it receives updates so quickly.
-* The integration currently has to poll, but the mobile app is able to reflect changes based on physical button presses on the Spa within a fraction of a second.
+* The integration currently has to poll, but the mobile app is able to reflect changes based on physical button presses within a fraction of a second.
 * A brief recent attempt suggested that the Android app may have certificate pinning enabled, making this slightly harder than expected. Perhaps decompilation is an easier route.
 * We know the spa talks directly to the cloud using MQTT. Traffic captures against the Android app appeared to show only HTTPS traffic.
 

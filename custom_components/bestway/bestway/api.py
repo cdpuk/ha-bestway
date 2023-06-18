@@ -1,4 +1,5 @@
 """Bestway API."""
+from dataclasses import dataclass
 import json
 from logging import getLogger
 from time import time
@@ -26,12 +27,13 @@ _HEADERS = {
 _TIMEOUT = 10
 
 
+@dataclass
 class BestwayApiResults:
     """A snapshot of device status reports returned from the API."""
 
-    spa_devices: dict[str, BestwaySpaDeviceStatus] = {}
-    pool_filter_devices: dict[str, BestwayPoolFilterDeviceStatus] = {}
-    unknown_devices: dict[str, str] = {}
+    spa_devices: dict[str, BestwaySpaDeviceStatus]
+    pool_filter_devices: dict[str, BestwayPoolFilterDeviceStatus]
+    unknown_devices: dict[str, str]
 
 
 class BestwayException(Exception):
@@ -62,7 +64,7 @@ class BestwayIncorrectPasswordException(BestwayAuthException):
     """Password is incorrect."""
 
 
-async def raise_for_status(response: ClientResponse) -> None:
+async def _raise_for_status(response: ClientResponse) -> None:
     """Raise an exception based on the response."""
     if response.ok:
         return
@@ -106,7 +108,9 @@ class BestwayApi:
         # When updating state via HA, we update the cache and return this value
         # until the API can provide us with a response containing a timestamp
         # more recent than the local update.
-        self._local_state_cache: dict[str, BestwayDeviceStatus] = {}
+        self._spa_state_cache: dict[str, BestwaySpaDeviceStatus] = {}
+        self._pool_filter_state_cache: dict[str, BestwayPoolFilterDeviceStatus] = {}
+        self._unknown_states: dict[str, str] = {}
 
     @staticmethod
     async def get_user_token(
@@ -123,7 +127,7 @@ class BestwayApi:
             response = await session.post(
                 f"{api_root}/app/login", headers=_HEADERS, json=body
             )
-            await raise_for_status(response)
+            await _raise_for_status(response)
             api_data = await response.json()
 
         return BestwayUserToken(
@@ -157,12 +161,6 @@ class BestwayApi:
 
     async def fetch_data(self) -> BestwayApiResults:
         """Fetch the latest data for all devices."""
-
-        results = BestwayApiResults()
-
-        if not self.devices:
-            return results
-
         for did, device_info in self.devices.items():
             latest_data = await self._do_get(
                 f"{self._api_root}/app/devdata/{did}/latest", _HEADERS
@@ -181,7 +179,10 @@ class BestwayApi:
             # Work out whether the received API update is more recent than the
             # locally cached state
             local_update_timestamp = 0
-            if cached_state := self._local_state_cache.get(did):
+            cached_state: BestwayDeviceStatus | None
+            if cached_state := self._spa_state_cache.get(did):
+                local_update_timestamp = cached_state.timestamp
+            elif cached_state := self._pool_filter_state_cache.get(did):
                 local_update_timestamp = cached_state.timestamp
 
             # If the API timestamp is more recent, update the cache
@@ -220,8 +221,7 @@ class BestwayApi:
                         device_attrs["earth"] == 1,
                     )
 
-                    self._local_state_cache[did] = spa_status
-                    results.spa_devices[did] = spa_status
+                    self._spa_state_cache[did] = spa_status
 
                 elif device_info.device_type == BestwayDeviceType.POOL_FILTER:
                     filter_status = BestwayPoolFilterDeviceStatus(
@@ -233,8 +233,7 @@ class BestwayApi:
                         errors,
                     )
 
-                    self._local_state_cache[did] = filter_status
-                    results.pool_filter_devices[did] = filter_status
+                    self._pool_filter_state_cache[did] = filter_status
 
                 elif device_info.device_type == BestwayDeviceType.UNKNOWN:
                     attr_dump = json.dumps(device_attrs)
@@ -243,7 +242,7 @@ class BestwayApi:
                         device_info.product_name,
                         attr_dump,
                     )
-                    results.unknown_devices[did] = attr_dump
+                    self._unknown_states[did] = attr_dump
 
             except KeyError as err:
                 _LOGGER.error(
@@ -252,7 +251,9 @@ class BestwayApi:
                     json.dumps(device_attrs),
                 )
 
-        return results
+        return BestwayApiResults(
+            self._spa_state_cache, self._pool_filter_state_cache, self._unknown_states
+        )
 
     async def spa_set_heat(self, device_id: str, heat: bool) -> None:
         """
@@ -260,7 +261,7 @@ class BestwayApi:
 
         Turning the heater on will also turn on the filter pump.
         """
-        if (cached_state := self._local_state_cache[device_id]) is None:
+        if (cached_state := self._spa_state_cache[device_id]) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         if not isinstance(cached_state, BestwaySpaDeviceStatus):
@@ -281,7 +282,7 @@ class BestwayApi:
 
     async def spa_set_filter(self, device_id: str, filtering: bool) -> None:
         """Turn the filter pump on/off on a spa device."""
-        if (cached_state := self._local_state_cache[device_id]) is None:
+        if (cached_state := self._spa_state_cache[device_id]) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         if not isinstance(cached_state, BestwaySpaDeviceStatus):
@@ -303,7 +304,7 @@ class BestwayApi:
 
     async def spa_set_locked(self, device_id: str, locked: bool) -> None:
         """Lock or unlock the physical control panel on a spa device."""
-        if (cached_state := self._local_state_cache[device_id]) is None:
+        if (cached_state := self._spa_state_cache[device_id]) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         if not isinstance(cached_state, BestwaySpaDeviceStatus):
@@ -322,7 +323,7 @@ class BestwayApi:
 
     async def spa_set_bubbles(self, device_id: str, bubbles: bool) -> None:
         """Turn the bubbles on/off on a spa device."""
-        if (cached_state := self._local_state_cache[device_id]) is None:
+        if (cached_state := self._spa_state_cache[device_id]) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         if not isinstance(cached_state, BestwaySpaDeviceStatus):
@@ -343,7 +344,7 @@ class BestwayApi:
 
     async def spa_set_target_temp(self, device_id: str, target_temp: int) -> None:
         """Set the target temperature on a spa device."""
-        if (cached_state := self._local_state_cache[device_id]) is None:
+        if (cached_state := self._spa_state_cache[device_id]) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         if not isinstance(cached_state, BestwaySpaDeviceStatus):
@@ -362,7 +363,7 @@ class BestwayApi:
 
     async def pool_filter_set_power(self, device_id: str, power: bool) -> None:
         """Control power to a pump device."""
-        if (cached_state := self._local_state_cache[device_id]) is None:
+        if (cached_state := self._spa_state_cache[device_id]) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         if not isinstance(cached_state, BestwayPoolFilterDeviceStatus):
@@ -381,7 +382,7 @@ class BestwayApi:
 
     async def pool_filter_set_time(self, device_id: str, hours: int) -> None:
         """Set filter timeout for for pool devices."""
-        if (cached_state := self._local_state_cache[device_id]) is None:
+        if (cached_state := self._spa_state_cache[device_id]) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         if not isinstance(cached_state, BestwayPoolFilterDeviceStatus):
@@ -416,7 +417,7 @@ class BestwayApi:
         """Make an API call to the specified URL, returning the response as a JSON object."""
         async with async_timeout.timeout(_TIMEOUT):
             response = await self._session.post(url, headers=headers, json=body)
-            await raise_for_status(response)
+            await _raise_for_status(response)
 
             # All API responses are encoded using JSON, however the headers often incorrectly
             # state 'text/html' as the content type.
