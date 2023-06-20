@@ -99,6 +99,20 @@ async def async_setup_entry(
                         lambda device: device.wifi_soft_version,
                     ),
                 ),
+                DeviceSensor(
+                    coordinator,
+                    config_entry,
+                    device_id,
+                    sensor_description=DeviceSensorDescription(
+                        SensorEntityDescription(
+                            key="wifi_hard_version",
+                            name=f"{name_prefix} Wi-Fi Hardware Version",
+                            icon=Icon.HARDWARE,
+                            entity_category=EntityCategory.DIAGNOSTIC,
+                        ),
+                        lambda device: device.wifi_hard_version,
+                    ),
+                ),
             ]
         )
 

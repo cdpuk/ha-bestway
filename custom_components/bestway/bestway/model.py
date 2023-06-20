@@ -46,6 +46,7 @@ class BestwayDevice:
     mcu_soft_version: str
     mcu_hard_version: str
     wifi_soft_version: str
+    wifi_hard_version: str
     is_online: bool
 
     @property

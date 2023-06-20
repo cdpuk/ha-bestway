@@ -154,6 +154,7 @@ class BestwayApi:
                 raw["mcu_soft_version"],
                 raw["mcu_hard_version"],
                 raw["wifi_soft_version"],
+                raw["wifi_hard_version"],
                 raw["is_online"],
             )
             for raw in api_data["devices"]
