@@ -14,8 +14,8 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import BestwayUpdateCoordinator
 from .bestway.api import BestwayApi
 from .bestway.model import BestwayPoolFilterDeviceStatus, BestwaySpaDeviceStatus
-from .const import DOMAIN
-from .entity import BestwayEntity
+from .const import DOMAIN, Icon
+from .entity import BestwayEntity, BestwayPoolFilterEntity, BestwaySpaEntity
 
 
 @dataclass
@@ -52,7 +52,7 @@ _SPA_SWITCH_TYPES = [
     SpaSwitchEntityDescription(
         key="spa_filter_power",
         name="Spa Filter",
-        icon="mdi:image-filter-tilt-shift",
+        icon=Icon.FILTER,
         value_fn=lambda s: s.filter_power,
         turn_on_fn=lambda api, device_id: api.spa_set_filter(device_id, True),
         turn_off_fn=lambda api, device_id: api.spa_set_filter(device_id, False),
@@ -60,7 +60,7 @@ _SPA_SWITCH_TYPES = [
     SpaSwitchEntityDescription(
         key="spa_wave_power",
         name="Spa Bubbles",
-        icon="mdi:chart-bubble",
+        icon=Icon.BUBBLES,
         value_fn=lambda s: s.wave_power,
         turn_on_fn=lambda api, device_id: api.spa_set_bubbles(device_id, True),
         turn_off_fn=lambda api, device_id: api.spa_set_bubbles(device_id, False),
@@ -68,7 +68,7 @@ _SPA_SWITCH_TYPES = [
     SpaSwitchEntityDescription(
         key="spa_locked",
         name="Spa Locked",
-        icon="mdi:lock",
+        icon=Icon.LOCK,
         value_fn=lambda s: s.locked,
         turn_on_fn=lambda api, device_id: api.spa_set_locked(device_id, True),
         turn_off_fn=lambda api, device_id: api.spa_set_locked(device_id, False),
@@ -79,7 +79,7 @@ _POOL_FILTER_SWITCH_TYPES = [
     PoolFilterSwitchEntityDescription(
         key="pool_filter_power",
         name="Pool Filter Power",
-        icon="mdi:image-filter-tilt-shift",
+        icon=Icon.FILTER,
         value_fn=lambda s: s.power,
         turn_on_fn=lambda api, device_id: api.pool_filter_set_power(device_id, True),
         turn_off_fn=lambda api, device_id: api.pool_filter_set_power(device_id, False),
@@ -97,29 +97,29 @@ async def async_setup_entry(
 
     entities: list[BestwayEntity] = []
     entities.extend(
-        BestwaySwitch(coordinator, config_entry, device_id, description)
+        SpaSwitch(coordinator, config_entry, device_id, description)
         for device_id in coordinator.data.spa_devices.keys()
         for description in _SPA_SWITCH_TYPES
     )
     entities.extend(
-        BestwaySwitch(coordinator, config_entry, device_id, description)
+        PoolFilterSwitch(coordinator, config_entry, device_id, description)
         for device_id in coordinator.data.pool_filter_devices.keys()
         for description in _POOL_FILTER_SWITCH_TYPES
     )
     async_add_entities(entities)
 
 
-class BestwaySwitch(BestwayEntity, SwitchEntity):
-    """Bestway switch entity."""
+class SpaSwitch(BestwaySpaEntity, SwitchEntity):
+    """Bestway switch entity for spa devices."""
 
-    entity_description: SpaSwitchEntityDescription | PoolFilterSwitchEntityDescription
+    entity_description: SpaSwitchEntityDescription
 
     def __init__(
         self,
         coordinator: BestwayUpdateCoordinator,
         config_entry: ConfigEntry,
         device_id: str,
-        description: SpaSwitchEntityDescription | PoolFilterSwitchEntityDescription,
+        description: SpaSwitchEntityDescription,
     ) -> None:
         """Initialize switch."""
         super().__init__(coordinator, config_entry, device_id)
@@ -129,13 +129,44 @@ class BestwaySwitch(BestwayEntity, SwitchEntity):
     @property
     def is_on(self) -> bool | None:
         """Return true if the switch is on."""
-        if isinstance(self.entity_description, SpaSwitchEntityDescription):
-            if status := self.coordinator.data.spa_devices.get(self.device_id):
-                return self.entity_description.value_fn(status)
+        if status := self.status:
+            return self.entity_description.value_fn(status)
 
-        elif isinstance(self.entity_description, PoolFilterSwitchEntityDescription):
-            if status := self.coordinator.data.pool_filter_devices.get(self.device_id):
-                return self.entity_description.value_fn(status)
+        return None
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        """Turn the switch on."""
+        await self.entity_description.turn_on_fn(self.coordinator.api, self.device_id)
+        await self.coordinator.async_refresh()
+
+    async def async_turn_off(self, **kwargs: Any) -> None:
+        """Turn the switch off."""
+        await self.entity_description.turn_off_fn(self.coordinator.api, self.device_id)
+        await self.coordinator.async_refresh()
+
+
+class PoolFilterSwitch(BestwayPoolFilterEntity, SwitchEntity):
+    """Bestway switch entity for pool filter devices."""
+
+    entity_description: PoolFilterSwitchEntityDescription
+
+    def __init__(
+        self,
+        coordinator: BestwayUpdateCoordinator,
+        config_entry: ConfigEntry,
+        device_id: str,
+        description: PoolFilterSwitchEntityDescription,
+    ) -> None:
+        """Initialize switch."""
+        super().__init__(coordinator, config_entry, device_id)
+        self.entity_description = description
+        self._attr_unique_id = f"{device_id}_{description.key}"
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if the switch is on."""
+        if status := self.status:
+            return self.entity_description.value_fn(status)
 
         return None
 

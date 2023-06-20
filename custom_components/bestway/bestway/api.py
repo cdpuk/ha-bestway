@@ -137,10 +137,10 @@ class BestwayApi:
     async def refresh_bindings(self) -> None:
         """Refresh and store the list of devices available in the account."""
         self.devices = {
-            device.device_id: device for device in await self._get_bindings()
+            device.device_id: device for device in await self._get_devices()
         }
 
-    async def _get_bindings(self) -> list[BestwayDevice]:
+    async def _get_devices(self) -> list[BestwayDevice]:
         """Get the list of devices available in the account."""
         headers = dict(_HEADERS)
         headers["X-Gizwits-User-token"] = self._user_token
@@ -229,7 +229,7 @@ class BestwayApi:
                         device_attrs["filter"] == 1,
                         device_attrs["power"] == 1,
                         device_attrs["time"],
-                        device_attrs["status"] == "\u8fd0\u884c\u4e2d",
+                        device_attrs["status"] == "运行中",  # Translation: "running"
                         errors,
                     )
 

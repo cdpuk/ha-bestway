@@ -15,6 +15,9 @@ CONF_USER_TOKEN_EXPIRY = "user_token_expiry"
 class Icon(str, Enum):
     """Icon styles."""
 
+    BUBBLES = "mdi:chart-bubble"
+    FILTER = "mdi:image-filter-tilt-shift"
     HARDWARE = "mdi:chip"
-    SOFTWARE = "mdi:application-braces"
+    LOCK = "mdi:lock"
     PROTOCOL = "mdi:protocol"
+    SOFTWARE = "mdi:application-braces"

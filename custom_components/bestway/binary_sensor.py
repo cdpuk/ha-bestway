@@ -17,8 +17,8 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import BestwayUpdateCoordinator
-from .const import DOMAIN
-from .entity import BestwayEntity, BestwaySpaEntity
+from .const import DOMAIN, Icon
+from .entity import BestwayEntity, BestwayPoolFilterEntity, BestwaySpaEntity
 
 _CONNECTIVITY_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
     key="spa_connected",
@@ -31,6 +31,10 @@ _ERRORS_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
     key="spa_has_error",
     name="Spa Errors",
     device_class=DEVICE_CLASS_PROBLEM,
+)
+
+_POOL_FILTER_CHANGE_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
+    key="spa_has_error", name="Spa Errors", icon=Icon.FILTER
 )
 
 
@@ -49,6 +53,10 @@ async def async_setup_entry(
                 SpaConnectivitySensor(coordinator, config_entry, device_id),
                 BestwayErrorSensor(coordinator, config_entry, device_id),
             ]
+        )
+    for device_id in coordinator.data.pool_filter_devices.keys():
+        entities.extend(
+            [PoolFilterChangeRequiredSensor(coordinator, config_entry, device_id)]
         )
 
     async_add_entities(entities)
@@ -130,3 +138,28 @@ class BestwayErrorSensor(BestwaySpaEntity, BinarySensorEntity):
             "e09": 9 in errors,
             "gcf": self.status.earth_fault,
         }
+
+
+class PoolFilterChangeRequiredSensor(BestwayPoolFilterEntity, BinarySensorEntity):
+    """Sensor to indicate whether a pool filter requires a change."""
+
+    def __init__(
+        self,
+        coordinator: BestwayUpdateCoordinator,
+        config_entry: ConfigEntry,
+        device_id: str,
+    ) -> None:
+        """Initialize sensor."""
+        self.entity_description = _POOL_FILTER_CHANGE_SENSOR_DESCRIPTION
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_unique_id = f"{device_id}_{self.entity_description.key}"
+        super().__init__(
+            coordinator,
+            config_entry,
+            device_id,
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if the spa is online."""
+        return self.status is not None and self.status.filter_change_required
