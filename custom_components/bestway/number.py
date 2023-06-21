@@ -40,6 +40,9 @@ async def async_setup_entry(
 class PoolFilterTimeNumber(BestwayPoolFilterEntity, NumberEntity):
     """Pool filter entity representing the number of hours to stay on for."""
 
+    native_unit_of_measurement = "h"
+    native_max_value = 24
+
     def __init__(
         self,
         coordinator: BestwayUpdateCoordinator,

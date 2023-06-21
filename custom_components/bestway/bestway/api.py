@@ -225,6 +225,10 @@ class BestwayApi:
                     self._spa_state_cache[did] = spa_status
 
                 elif device_info.device_type == BestwayDeviceType.POOL_FILTER:
+                    err = device_attrs.get("error", None)
+                    if err is not None:
+                        errors.append(err)
+
                     filter_status = BestwayPoolFilterDeviceStatus(
                         latest_data["updated_at"],
                         device_attrs["filter"] == 1,
