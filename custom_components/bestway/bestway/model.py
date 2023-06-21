@@ -92,7 +92,7 @@ class BestwayPoolFilterDeviceStatus(BestwayDeviceStatus):
     power: bool
     time: int
     running: bool
-    errors: list[int]
+    error: bool
 
 
 @dataclass

@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from homeassistant.components.number import NumberEntity, NumberEntityDescription
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
@@ -15,6 +16,8 @@ _POOL_FILTER_TIME = NumberEntityDescription(
     key="pool_filter_time",
     name="Pool Filter Timer",
     icon="mdi:image-filter-tilt-shift",
+    native_unit_of_measurement=UnitOfTime.HOURS,
+    native_max_value=24,
 )
 
 

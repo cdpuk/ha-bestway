@@ -197,12 +197,12 @@ class BestwayApi:
             device_attrs = latest_data["attr"]
 
             try:
-                errors = []
-                for err_num in range(1, 10):
-                    if device_attrs[f"system_err{err_num}"] == 1:
-                        errors.append(err_num)
-
                 if device_info.device_type == BestwayDeviceType.AIRJET_SPA:
+                    errors = []
+                    for err_num in range(1, 10):
+                        if device_attrs[f"system_err{err_num}"] == 1:
+                            errors.append(err_num)
+
                     spa_status = BestwaySpaDeviceStatus(
                         latest_data["updated_at"],
                         device_attrs["temp_now"],
@@ -231,7 +231,7 @@ class BestwayApi:
                         device_attrs["power"] == 1,
                         device_attrs["time"],
                         device_attrs["status"] == "运行中",  # Translation: "running"
-                        errors,
+                        bool(device_attrs.get("error", None)),
                     )
 
                     self._pool_filter_state_cache[did] = filter_status
@@ -262,11 +262,8 @@ class BestwayApi:
 
         Turning the heater on will also turn on the filter pump.
         """
-        if (cached_state := self._spa_state_cache[device_id]) is None:
+        if (cached_state := self._spa_state_cache.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
-
-        if not isinstance(cached_state, BestwaySpaDeviceStatus):
-            raise BestwayException("Method expects a spa device type")
 
         _LOGGER.debug("Setting heater mode to %s", "ON" if heat else "OFF")
         headers = dict(_HEADERS)
@@ -283,11 +280,8 @@ class BestwayApi:
 
     async def spa_set_filter(self, device_id: str, filtering: bool) -> None:
         """Turn the filter pump on/off on a spa device."""
-        if (cached_state := self._spa_state_cache[device_id]) is None:
+        if (cached_state := self._spa_state_cache.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
-
-        if not isinstance(cached_state, BestwaySpaDeviceStatus):
-            raise BestwayException("Method expects a spa device type")
 
         _LOGGER.debug("Setting filter mode to %s", "ON" if filtering else "OFF")
         headers = dict(_HEADERS)
@@ -305,11 +299,8 @@ class BestwayApi:
 
     async def spa_set_locked(self, device_id: str, locked: bool) -> None:
         """Lock or unlock the physical control panel on a spa device."""
-        if (cached_state := self._spa_state_cache[device_id]) is None:
+        if (cached_state := self._spa_state_cache.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
-
-        if not isinstance(cached_state, BestwaySpaDeviceStatus):
-            raise BestwayException("Method expects a spa device type")
 
         _LOGGER.debug("Setting lock state to %s", "ON" if locked else "OFF")
         headers = dict(_HEADERS)
@@ -324,11 +315,8 @@ class BestwayApi:
 
     async def spa_set_bubbles(self, device_id: str, bubbles: bool) -> None:
         """Turn the bubbles on/off on a spa device."""
-        if (cached_state := self._spa_state_cache[device_id]) is None:
+        if (cached_state := self._spa_state_cache.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
-
-        if not isinstance(cached_state, BestwaySpaDeviceStatus):
-            raise BestwayException("Method expects a spa device type")
 
         _LOGGER.debug("Setting bubbles mode to %s", "ON" if bubbles else "OFF")
         headers = dict(_HEADERS)
@@ -345,11 +333,8 @@ class BestwayApi:
 
     async def spa_set_target_temp(self, device_id: str, target_temp: int) -> None:
         """Set the target temperature on a spa device."""
-        if (cached_state := self._spa_state_cache[device_id]) is None:
+        if (cached_state := self._spa_state_cache.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
-
-        if not isinstance(cached_state, BestwaySpaDeviceStatus):
-            raise BestwayException("Method expects a spa device type")
 
         _LOGGER.debug("Setting target temperature to %d", target_temp)
         headers = dict(_HEADERS)
@@ -364,11 +349,8 @@ class BestwayApi:
 
     async def pool_filter_set_power(self, device_id: str, power: bool) -> None:
         """Control power to a pump device."""
-        if (cached_state := self._spa_state_cache[device_id]) is None:
+        if (cached_state := self._pool_filter_state_cache.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
-
-        if not isinstance(cached_state, BestwayPoolFilterDeviceStatus):
-            raise BestwayException("Method expects a spa device type")
 
         _LOGGER.debug("Setting power to %s", "ON" if power else "OFF")
         headers = dict(_HEADERS)
@@ -383,11 +365,8 @@ class BestwayApi:
 
     async def pool_filter_set_time(self, device_id: str, hours: int) -> None:
         """Set filter timeout for for pool devices."""
-        if (cached_state := self._spa_state_cache[device_id]) is None:
+        if (cached_state := self._pool_filter_state_cache.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
-
-        if not isinstance(cached_state, BestwayPoolFilterDeviceStatus):
-            raise BestwayException("Method expects a spa device type")
 
         _LOGGER.debug("Setting filter timeout to %d hours", hours)
         headers = dict(_HEADERS)

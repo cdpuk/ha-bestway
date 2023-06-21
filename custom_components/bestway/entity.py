@@ -37,7 +37,7 @@ class BestwayEntity(CoordinatorEntity[BestwayUpdateCoordinator]):
         return DeviceInfo(
             identifiers={(DOMAIN, self.device_id)},
             name=device_info.alias,
-            model=str(device_info.device_type),
+            model=device_info.device_type.value,
             manufacturer="Bestway",
         )
 
