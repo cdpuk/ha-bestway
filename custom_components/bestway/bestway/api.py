@@ -85,6 +85,8 @@ async def _raise_for_status(response: ClientResponse) -> None:
     if error_code == 9020:
         raise BestwayIncorrectPasswordException()
 
+    _LOGGER.error(await response.json())
+
     # If we don't understand the error code, provide more detail for debugging
     response.raise_for_status()
 
@@ -197,10 +199,10 @@ class BestwayApi:
             device_attrs = latest_data["attr"]
 
             try:
+                errors = []
                 if device_info.device_type == BestwayDeviceType.AIRJET_SPA:
-                    errors = []
                     for err_num in range(1, 10):
-                        if device_attrs[f"system_err{err_num}"] == 1:
+                        if device_attrs.get(f"system_err{err_num}", None) == 1:
                             errors.append(err_num)
 
                     spa_status = BestwaySpaDeviceStatus(
@@ -235,7 +237,7 @@ class BestwayApi:
                         device_attrs["power"] == 1,
                         device_attrs["time"],
                         device_attrs["status"] == "运行中",  # Translation: "running"
-                        bool(device_attrs.get("error", None)),
+                        errors,
                     )
 
                     self._pool_filter_state_cache[did] = filter_status
@@ -269,6 +271,9 @@ class BestwayApi:
         if (cached_state := self._spa_state_cache.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
+        if not isinstance(cached_state, BestwaySpaDeviceStatus):
+            raise BestwayException("Method expects a spa device type")
+
         _LOGGER.debug("Setting heater mode to %s", "ON" if heat else "OFF")
         headers = dict(_HEADERS)
         headers["X-Gizwits-User-token"] = self._user_token
@@ -286,6 +291,9 @@ class BestwayApi:
         """Turn the filter pump on/off on a spa device."""
         if (cached_state := self._spa_state_cache.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
+
+        if not isinstance(cached_state, BestwaySpaDeviceStatus):
+            raise BestwayException("Method expects a spa device type")
 
         _LOGGER.debug("Setting filter mode to %s", "ON" if filtering else "OFF")
         headers = dict(_HEADERS)
@@ -306,6 +314,9 @@ class BestwayApi:
         if (cached_state := self._spa_state_cache.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
+        if not isinstance(cached_state, BestwaySpaDeviceStatus):
+            raise BestwayException("Method expects a spa device type")
+
         _LOGGER.debug("Setting lock state to %s", "ON" if locked else "OFF")
         headers = dict(_HEADERS)
         headers["X-Gizwits-User-token"] = self._user_token
@@ -321,6 +332,9 @@ class BestwayApi:
         """Turn the bubbles on/off on a spa device."""
         if (cached_state := self._spa_state_cache.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
+
+        if not isinstance(cached_state, BestwaySpaDeviceStatus):
+            raise BestwayException("Method expects a spa device type")
 
         _LOGGER.debug("Setting bubbles mode to %s", "ON" if bubbles else "OFF")
         headers = dict(_HEADERS)
@@ -340,6 +354,9 @@ class BestwayApi:
         if (cached_state := self._spa_state_cache.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
+        if not isinstance(cached_state, BestwaySpaDeviceStatus):
+            raise BestwayException("Method expects a spa device type")
+
         _LOGGER.debug("Setting target temperature to %d", target_temp)
         headers = dict(_HEADERS)
         headers["X-Gizwits-User-token"] = self._user_token
@@ -355,6 +372,9 @@ class BestwayApi:
         """Control power to a pump device."""
         if (cached_state := self._pool_filter_state_cache.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
+
+        if not isinstance(cached_state, BestwayPoolFilterDeviceStatus):
+            raise BestwayException("Method expects a pool filter device type")
 
         _LOGGER.debug("Setting power to %s", "ON" if power else "OFF")
         headers = dict(_HEADERS)
@@ -372,19 +392,29 @@ class BestwayApi:
         if (cached_state := self._pool_filter_state_cache.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
+        if not isinstance(cached_state, BestwayPoolFilterDeviceStatus):
+            raise BestwayException("Method expects a pool filter device type")
+
+        hours = int(hours)
+
         _LOGGER.debug("Setting filter timeout to %d hours", hours)
+
         headers = dict(_HEADERS)
         headers["X-Gizwits-User-token"] = self._user_token
+
         await self._do_post(
             f"{self._api_root}/app/control/{device_id}",
             headers,
             {"attrs": {"time": hours}},
         )
+
         cached_state.timestamp = int(time())
         cached_state.time = hours
 
     async def _do_get(self, url: str, headers: dict[str, str]) -> dict[str, Any]:
         """Make an API call to the specified URL, returning the response as a JSON object."""
+        _LOGGER.debug(f"GET: {dict(url=url, headers=headers)}")
+
         async with async_timeout.timeout(_TIMEOUT):
             response = await self._session.get(url, headers=headers)
             response.raise_for_status()
@@ -393,12 +423,18 @@ class BestwayApi:
             # state 'text/html' as the content type.
             # We have to disable the check to avoid an exception.
             response_json: dict[str, Any] = await response.json(content_type=None)
+
+            _LOGGER.debug(f"GET response: {response_json}")
+
             return response_json
 
     async def _do_post(
         self, url: str, headers: dict[str, str], body: dict[str, Any]
     ) -> dict[str, Any]:
         """Make an API call to the specified URL, returning the response as a JSON object."""
+
+        _LOGGER.debug(f"POST: {dict(url=url, headers=headers, json=body)}")
+
         async with async_timeout.timeout(_TIMEOUT):
             response = await self._session.post(url, headers=headers, json=body)
             await _raise_for_status(response)
@@ -407,4 +443,7 @@ class BestwayApi:
             # state 'text/html' as the content type.
             # We have to disable the check to avoid an exception.
             response_json: dict[str, Any] = await response.json(content_type=None)
+
+            _LOGGER.debug(f"POST response: {response_json}")
+
             return response_json
