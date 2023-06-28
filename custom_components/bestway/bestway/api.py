@@ -225,13 +225,20 @@ class BestwayApi:
                     self._spa_state_cache[did] = spa_status
 
                 elif device_info.device_type == BestwayDeviceType.POOL_FILTER:
+                    # The status attribute has been observed with the following values
+                    # and translations:
+                    # 运行中 - running
+                    # 已停止 - stopped
+                    #
+                    # The error attribute has only been observed as '0'. This is forced
+                    # to a boolean until we know more.
                     filter_status = BestwayPoolFilterDeviceStatus(
                         latest_data["updated_at"],
                         device_attrs["filter"] == 1,
                         device_attrs["power"] == 1,
                         device_attrs["time"],
-                        device_attrs["status"] == "运行中",  # Translation: "running"
-                        bool(device_attrs.get("error", None)),
+                        device_attrs["status"] == "运行中",
+                        device_attrs["error"] != 0,
                     )
 
                     self._pool_filter_state_cache[did] = filter_status

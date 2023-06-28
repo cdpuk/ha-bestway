@@ -19,7 +19,7 @@ from . import BestwayUpdateCoordinator
 from .const import DOMAIN, Icon
 from .entity import BestwayEntity, BestwayPoolFilterEntity, BestwaySpaEntity
 
-_CONNECTIVITY_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
+_SPA_CONNECTIVITY_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
     key="spa_connected",
     device_class=BinarySensorDeviceClass.CONNECTIVITY,
     entity_category=EntityCategory.DIAGNOSTIC,
@@ -30,6 +30,13 @@ _SPA_ERRORS_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
     key="spa_has_error",
     name="Spa Errors",
     device_class=BinarySensorDeviceClass.PROBLEM,
+)
+
+_POOL_FILTER_CONNECTIVITY_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
+    key="pool_filter_connected",
+    device_class=BinarySensorDeviceClass.CONNECTIVITY,
+    entity_category=EntityCategory.DIAGNOSTIC,
+    name="Pool Filter Connected",
 )
 
 _POOL_FILTER_CHANGE_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
@@ -64,6 +71,7 @@ async def async_setup_entry(
     for device_id in coordinator.data.pool_filter_devices.keys():
         entities.extend(
             [
+                PoolFilterConnectivitySensor(coordinator, config_entry, device_id),
                 PoolFilterChangeRequiredSensor(coordinator, config_entry, device_id),
                 PoolFilterErrorSensor(coordinator, config_entry, device_id),
             ]
@@ -82,7 +90,7 @@ class SpaConnectivitySensor(BestwaySpaEntity, BinarySensorEntity):
         device_id: str,
     ) -> None:
         """Initialize sensor."""
-        self.entity_description = _CONNECTIVITY_SENSOR_DESCRIPTION
+        self.entity_description = _SPA_CONNECTIVITY_SENSOR_DESCRIPTION
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_unique_id = f"{device_id}_{self.entity_description.key}"
         super().__init__(
@@ -93,7 +101,7 @@ class SpaConnectivitySensor(BestwaySpaEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool | None:
-        """Return true if the spa is online."""
+        """Return True if the spa is online."""
         return self.status is not None and self.status.online
 
     @property
@@ -148,6 +156,36 @@ class SpaErrorsSensor(BestwaySpaEntity, BinarySensorEntity):
             "e09": 9 in errors,
             "gcf": self.status.earth_fault,
         }
+
+
+class PoolFilterConnectivitySensor(BestwayPoolFilterEntity, BinarySensorEntity):
+    """Sensor to indicate whether a pool filter is currently online."""
+
+    def __init__(
+        self,
+        coordinator: BestwayUpdateCoordinator,
+        config_entry: ConfigEntry,
+        device_id: str,
+    ) -> None:
+        """Initialize sensor."""
+        self.entity_description = _POOL_FILTER_CONNECTIVITY_SENSOR_DESCRIPTION
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_unique_id = f"{device_id}_{self.entity_description.key}"
+        super().__init__(
+            coordinator,
+            config_entry,
+            device_id,
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return True if the pool filter is online."""
+        return self.status is not None and self.status.online
+
+    @property
+    def available(self) -> bool:
+        """Return True, as the connectivity sensor is always available."""
+        return True
 
 
 class PoolFilterChangeRequiredSensor(BestwayPoolFilterEntity, BinarySensorEntity):
