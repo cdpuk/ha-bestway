@@ -4,7 +4,7 @@ from unittest.mock import patch
 from homeassistant import config_entries, data_entry_flow
 import pytest
 
-from custom_components.bestway.bestway import BestwayUserToken
+from custom_components.bestway.bestway.model import BestwayUserToken
 from custom_components.bestway.const import (
     CONF_API_ROOT,
     CONF_API_ROOT_EU,
@@ -51,7 +51,7 @@ async def test_successful_config_flow(hass, bypass_get_data):
     # Mock an authentication call that provides a token to keep hold of
     token = BestwayUserToken("foo", "t0k3n", 123)
     with patch(
-        "custom_components.bestway.bestway.BestwayApi.get_user_token",
+        "custom_components.bestway.bestway.api.BestwayApi.get_user_token",
         return_value=token,
     ):
         result = await hass.config_entries.flow.async_configure(
