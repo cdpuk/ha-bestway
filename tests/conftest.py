@@ -30,7 +30,7 @@ def skip_notifications_fixture():
 @pytest.fixture(name="bypass_auth")
 def bypass_auth():
     """Skip authentication."""
-    with patch("custom_components.bestway.bestway.BestwayApi.get_user_token"):
+    with patch("custom_components.bestway.bestway.api.BestwayApi.get_user_token"):
         yield
 
 
@@ -39,7 +39,7 @@ def bypass_auth():
 def error_auth():
     """Simulate error when retrieving data from API."""
     with patch(
-        "custom_components.bestway.bestway.BestwayApi.get_user_token",
+        "custom_components.bestway.bestway.api.BestwayApi.get_user_token",
         side_effect=Exception,
     ):
         yield
@@ -49,8 +49,8 @@ def error_auth():
 @pytest.fixture(name="bypass_get_data")
 def bypass_get_data_fixture():
     """Skip calls to get data from API."""
-    with patch("custom_components.bestway.bestway.BestwayApi.fetch_data"), patch(
-        "custom_components.bestway.bestway.BestwayApi.refresh_bindings"
+    with patch("custom_components.bestway.bestway.api.BestwayApi.fetch_data"), patch(
+        "custom_components.bestway.bestway.api.BestwayApi.refresh_bindings"
     ):
         yield
 
@@ -60,7 +60,7 @@ def bypass_get_data_fixture():
 def error_get_data_fixture():
     """Simulate error when retrieving data from API."""
     with patch(
-        "custom_components.bestway.bestway.BestwayApi.fetch_data",
+        "custom_components.bestway.bestway.api.BestwayApi.fetch_data",
         side_effect=Exception,
     ):
         yield

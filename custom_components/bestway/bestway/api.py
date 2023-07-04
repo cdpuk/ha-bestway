@@ -1,6 +1,5 @@
 """Bestway API."""
 from dataclasses import dataclass
-from enum import Enum, auto
 import json
 from logging import getLogger
 from time import time
@@ -10,6 +9,16 @@ from typing import Any
 from aiohttp import ClientResponse, ClientSession
 import async_timeout
 
+from .model import (
+    BestwayDevice,
+    BestwayDeviceStatus,
+    BestwayDeviceType,
+    BestwayPoolFilterDeviceStatus,
+    BestwaySpaDeviceStatus,
+    BestwayUserToken,
+    TemperatureUnit,
+)
+
 _LOGGER = getLogger(__name__)
 _HEADERS = {
     "Content-type": "application/json; charset=UTF-8",
@@ -17,72 +26,18 @@ _HEADERS = {
 }
 _TIMEOUT = 10
 
-# How old the latest update can be before a spa is considered offline
-_CONNECTIVITY_TIMEOUT = 1000
-
-
-class TemperatureUnit(Enum):
-    """Temperature units supported by the spa."""
-
-    CELSIUS = auto()
-    FAHRENHEIT = auto()
-
 
 @dataclass
-class BestwayDevice:
-    """A device under a user's account."""
+class BestwayApiResults:
+    """A snapshot of device status reports returned from the API."""
 
-    protocol_version: int
-    device_id: str
-    product_name: str
-    alias: str
-    mcu_soft_version: str
-    mcu_hard_version: str
-    wifi_soft_version: str
-    is_online: bool
-
-
-@dataclass
-class BestwayDeviceStatus:
-    """A snapshot of the status of a device."""
-
-    timestamp: int
-    temp_now: float
-    temp_set: float
-    temp_set_unit: TemperatureUnit
-    heat_power: bool
-    heat_temp_reach: bool
-    filter_power: bool
-    wave_power: bool
-    locked: bool
-    errors: list[int]
-    earth_fault: bool
-
-    @property
-    def online(self) -> bool:
-        """Determine whether the device is online based on the age of the latest update."""
-        return self.timestamp > (time() - _CONNECTIVITY_TIMEOUT)
-
-
-@dataclass
-class BestwayUserToken:
-    """User authentication token, obtained (and ideally stored) following a successful login."""
-
-    user_id: str
-    user_token: str
-    expiry: int
-
-
-@dataclass
-class BestwayDeviceReport:
-    """A device report, which combines device metadata with a current status snapshot."""
-
-    device: BestwayDevice
-    status: BestwayDeviceStatus | None
+    spa_devices: dict[str, BestwaySpaDeviceStatus]
+    pool_filter_devices: dict[str, BestwayPoolFilterDeviceStatus]
+    unknown_devices: dict[str, str]
 
 
 class BestwayException(Exception):
-    """An exception returned via the API."""
+    """An exception while using the API."""
 
 
 class BestwayOfflineException(BestwayException):
@@ -109,7 +64,7 @@ class BestwayIncorrectPasswordException(BestwayAuthException):
     """Password is incorrect."""
 
 
-async def raise_for_status(response: ClientResponse) -> None:
+async def _raise_for_status(response: ClientResponse) -> None:
     """Raise an exception based on the response."""
     if response.ok:
         return
@@ -144,7 +99,7 @@ class BestwayApi:
         self._api_root = api_root
 
         # Maps device IDs to device info
-        self._bindings: dict[str, BestwayDevice] | None = None
+        self.devices: dict[str, BestwayDevice] = {}
 
         # Cache containing state information for each device received from the API
         # This is used to work around an annoyance where changes to settings via
@@ -153,7 +108,9 @@ class BestwayApi:
         # When updating state via HA, we update the cache and return this value
         # until the API can provide us with a response containing a timestamp
         # more recent than the local update.
-        self._local_state_cache: dict[str, BestwayDeviceStatus] = {}
+        self._spa_state_cache: dict[str, BestwaySpaDeviceStatus] = {}
+        self._pool_filter_state_cache: dict[str, BestwayPoolFilterDeviceStatus] = {}
+        self._unknown_states: dict[str, str] = {}
 
     @staticmethod
     async def get_user_token(
@@ -170,7 +127,7 @@ class BestwayApi:
             response = await session.post(
                 f"{api_root}/app/login", headers=_HEADERS, json=body
             )
-            await raise_for_status(response)
+            await _raise_for_status(response)
             api_data = await response.json()
 
         return BestwayUserToken(
@@ -179,11 +136,11 @@ class BestwayApi:
 
     async def refresh_bindings(self) -> None:
         """Refresh and store the list of devices available in the account."""
-        self._bindings = {
-            device.device_id: device for device in await self._get_bindings()
+        self.devices = {
+            device.device_id: device for device in await self._get_devices()
         }
 
-    async def _get_bindings(self) -> list[BestwayDevice]:
+    async def _get_devices(self) -> list[BestwayDevice]:
         """Get the list of devices available in the account."""
         headers = dict(_HEADERS)
         headers["X-Gizwits-User-token"] = self._user_token
@@ -197,20 +154,15 @@ class BestwayApi:
                 raw["mcu_soft_version"],
                 raw["mcu_hard_version"],
                 raw["wifi_soft_version"],
+                raw["wifi_hard_version"],
                 raw["is_online"],
             )
             for raw in api_data["devices"]
         ]
 
-    async def fetch_data(self) -> dict[str, BestwayDeviceReport]:
+    async def fetch_data(self) -> BestwayApiResults:
         """Fetch the latest data for all devices."""
-
-        results: dict[str, BestwayDeviceReport] = {}
-
-        if not self._bindings:
-            return results
-
-        for did, device_info in self._bindings.items():
+        for did, device_info in self.devices.items():
             latest_data = await self._do_get(
                 f"{self._api_root}/app/devdata/{did}/latest", _HEADERS
             )
@@ -223,33 +175,42 @@ class BestwayApi:
             if api_update_timestamp == 0:
                 # In testing, the 'attrs' dictionary has been observed to be empty
                 _LOGGER.debug("No data available for device %s", did)
-                results[did] = BestwayDeviceReport(device_info, None)
                 continue
 
             # Work out whether the received API update is more recent than the
             # locally cached state
             local_update_timestamp = 0
-            if cached_state := self._local_state_cache.get(did):
+            cached_state: BestwayDeviceStatus | None
+            if cached_state := self._spa_state_cache.get(did):
+                local_update_timestamp = cached_state.timestamp
+            elif cached_state := self._pool_filter_state_cache.get(did):
                 local_update_timestamp = cached_state.timestamp
 
             # If the API timestamp is more recent, update the cache
-            if api_update_timestamp >= local_update_timestamp:
-                _LOGGER.debug("New data received for device %s", did)
-                device_attrs = latest_data["attr"]
+            if api_update_timestamp < local_update_timestamp:
+                _LOGGER.debug(
+                    "Ignoring update for device %s as local data is newer", did
+                )
+                continue
 
-                try:
+            _LOGGER.debug("New data received for device %s", did)
+            device_attrs = latest_data["attr"]
+
+            try:
+                if device_info.device_type == BestwayDeviceType.AIRJET_SPA:
                     errors = []
                     for err_num in range(1, 10):
                         if device_attrs[f"system_err{err_num}"] == 1:
                             errors.append(err_num)
 
-                    device_status = BestwayDeviceStatus(
+                    spa_status = BestwaySpaDeviceStatus(
                         latest_data["updated_at"],
                         device_attrs["temp_now"],
                         device_attrs["temp_set"],
                         (
                             TemperatureUnit.CELSIUS
-                            if device_attrs["temp_set_unit"] == "摄氏"
+                            if device_attrs["temp_set_unit"]
+                            == "摄氏"  # Chinese translates to "Celsius"
                             else TemperatureUnit.FAHRENHEIT
                         ),
                         device_attrs["heat_power"] == 1,
@@ -261,31 +222,56 @@ class BestwayApi:
                         device_attrs["earth"] == 1,
                     )
 
-                    self._local_state_cache[did] = device_status
-                except KeyError as err:
-                    _LOGGER.error(
-                        "Unexpected missing key '%s' while decoding device attributes %s",
-                        err,
-                        json.dumps(device_attrs),
+                    self._spa_state_cache[did] = spa_status
+
+                elif device_info.device_type == BestwayDeviceType.POOL_FILTER:
+                    # The status attribute has been observed with the following values
+                    # and translations:
+                    # 运行中 - running
+                    # 已停止 - stopped
+                    #
+                    # The error attribute has only been observed as '0'. This is forced
+                    # to a boolean until we know more.
+                    filter_status = BestwayPoolFilterDeviceStatus(
+                        latest_data["updated_at"],
+                        device_attrs["filter"] == 1,
+                        device_attrs["power"] == 1,
+                        device_attrs["time"],
+                        device_attrs["status"] == "运行中",
+                        device_attrs["error"] != 0,
                     )
-            else:
-                _LOGGER.debug(
-                    "Ignoring update for device %s as local data is newer", did
+
+                    self._pool_filter_state_cache[did] = filter_status
+
+                elif device_info.device_type == BestwayDeviceType.UNKNOWN:
+                    attr_dump = json.dumps(device_attrs)
+                    _LOGGER.warning(
+                        "Status for unknown device type '%s' returned: %s",
+                        device_info.product_name,
+                        attr_dump,
+                    )
+                    self._unknown_states[did] = attr_dump
+
+            except KeyError as err:
+                _LOGGER.error(
+                    "Unexpected missing key '%s' while decoding device attributes %s",
+                    err,
+                    json.dumps(device_attrs),
                 )
 
-            results[did] = BestwayDeviceReport(
-                device_info,
-                self._local_state_cache.get(did),
-            )
+        return BestwayApiResults(
+            self._spa_state_cache, self._pool_filter_state_cache, self._unknown_states
+        )
 
-        return results
-
-    async def set_heat(self, device_id: str, heat: bool) -> None:
+    async def spa_set_heat(self, device_id: str, heat: bool) -> None:
         """
-        Turn the heater on/off.
+        Turn the heater on/off on a spa device.
 
         Turning the heater on will also turn on the filter pump.
         """
+        if (cached_state := self._spa_state_cache.get(device_id)) is None:
+            raise BestwayException(f"Device '{device_id}' is not recognised")
+
         _LOGGER.debug("Setting heater mode to %s", "ON" if heat else "OFF")
         headers = dict(_HEADERS)
         headers["X-Gizwits-User-token"] = self._user_token
@@ -294,13 +280,16 @@ class BestwayApi:
             headers,
             {"attrs": {"heat_power": 1 if heat else 0}},
         )
-        self._local_state_cache[device_id].timestamp = int(time())
-        self._local_state_cache[device_id].heat_power = heat
+        cached_state.timestamp = int(time())
+        cached_state.heat_power = heat
         if heat:
-            self._local_state_cache[device_id].filter_power = True
+            cached_state.filter_power = True
 
-    async def set_filter(self, device_id: str, filtering: bool) -> None:
-        """Turn the filter pump on/off."""
+    async def spa_set_filter(self, device_id: str, filtering: bool) -> None:
+        """Turn the filter pump on/off on a spa device."""
+        if (cached_state := self._spa_state_cache.get(device_id)) is None:
+            raise BestwayException(f"Device '{device_id}' is not recognised")
+
         _LOGGER.debug("Setting filter mode to %s", "ON" if filtering else "OFF")
         headers = dict(_HEADERS)
         headers["X-Gizwits-User-token"] = self._user_token
@@ -309,14 +298,17 @@ class BestwayApi:
             headers,
             {"attrs": {"filter_power": 1 if filtering else 0}},
         )
-        self._local_state_cache[device_id].timestamp = int(time())
-        self._local_state_cache[device_id].filter_power = filtering
+        cached_state.timestamp = int(time())
+        cached_state.filter_power = filtering
         if not filtering:
-            self._local_state_cache[device_id].wave_power = False
-            self._local_state_cache[device_id].heat_power = False
+            cached_state.wave_power = False
+            cached_state.heat_power = False
 
-    async def set_locked(self, device_id: str, locked: bool) -> None:
-        """Lock or unlock the physical control panel."""
+    async def spa_set_locked(self, device_id: str, locked: bool) -> None:
+        """Lock or unlock the physical control panel on a spa device."""
+        if (cached_state := self._spa_state_cache.get(device_id)) is None:
+            raise BestwayException(f"Device '{device_id}' is not recognised")
+
         _LOGGER.debug("Setting lock state to %s", "ON" if locked else "OFF")
         headers = dict(_HEADERS)
         headers["X-Gizwits-User-token"] = self._user_token
@@ -325,11 +317,14 @@ class BestwayApi:
             headers,
             {"attrs": {"locked": 1 if locked else 0}},
         )
-        self._local_state_cache[device_id].timestamp = int(time())
-        self._local_state_cache[device_id].locked = locked
+        cached_state.timestamp = int(time())
+        cached_state.locked = locked
 
-    async def set_bubbles(self, device_id: str, bubbles: bool) -> None:
-        """Turn the bubbles on/off."""
+    async def spa_set_bubbles(self, device_id: str, bubbles: bool) -> None:
+        """Turn the bubbles on/off on a spa device."""
+        if (cached_state := self._spa_state_cache.get(device_id)) is None:
+            raise BestwayException(f"Device '{device_id}' is not recognised")
+
         _LOGGER.debug("Setting bubbles mode to %s", "ON" if bubbles else "OFF")
         headers = dict(_HEADERS)
         headers["X-Gizwits-User-token"] = self._user_token
@@ -338,13 +333,16 @@ class BestwayApi:
             headers,
             {"attrs": {"wave_power": 1 if bubbles else 0}},
         )
-        self._local_state_cache[device_id].timestamp = int(time())
-        self._local_state_cache[device_id].filter_power = bubbles
+        cached_state.timestamp = int(time())
+        cached_state.filter_power = bubbles
         if bubbles:
-            self._local_state_cache[device_id].filter_power = True
+            cached_state.filter_power = True
 
-    async def set_target_temp(self, device_id: str, target_temp: int) -> None:
-        """Set the target temperature."""
+    async def spa_set_target_temp(self, device_id: str, target_temp: int) -> None:
+        """Set the target temperature on a spa device."""
+        if (cached_state := self._spa_state_cache.get(device_id)) is None:
+            raise BestwayException(f"Device '{device_id}' is not recognised")
+
         _LOGGER.debug("Setting target temperature to %d", target_temp)
         headers = dict(_HEADERS)
         headers["X-Gizwits-User-token"] = self._user_token
@@ -353,8 +351,40 @@ class BestwayApi:
             headers,
             {"attrs": {"temp_set": target_temp}},
         )
-        self._local_state_cache[device_id].timestamp = int(time())
-        self._local_state_cache[device_id].temp_set = target_temp
+        cached_state.timestamp = int(time())
+        cached_state.temp_set = target_temp
+
+    async def pool_filter_set_power(self, device_id: str, power: bool) -> None:
+        """Control power to a pump device."""
+        if (cached_state := self._pool_filter_state_cache.get(device_id)) is None:
+            raise BestwayException(f"Device '{device_id}' is not recognised")
+
+        _LOGGER.debug("Setting power to %s", "ON" if power else "OFF")
+        headers = dict(_HEADERS)
+        headers["X-Gizwits-User-token"] = self._user_token
+        await self._do_post(
+            f"{self._api_root}/app/control/{device_id}",
+            headers,
+            {"attrs": {"power": 1 if power else 0}},
+        )
+        cached_state.timestamp = int(time())
+        cached_state.power = power
+
+    async def pool_filter_set_time(self, device_id: str, hours: int) -> None:
+        """Set filter timeout for for pool devices."""
+        if (cached_state := self._pool_filter_state_cache.get(device_id)) is None:
+            raise BestwayException(f"Device '{device_id}' is not recognised")
+
+        _LOGGER.debug("Setting filter timeout to %d hours", hours)
+        headers = dict(_HEADERS)
+        headers["X-Gizwits-User-token"] = self._user_token
+        await self._do_post(
+            f"{self._api_root}/app/control/{device_id}",
+            headers,
+            {"attrs": {"time": hours}},
+        )
+        cached_state.timestamp = int(time())
+        cached_state.time = hours
 
     async def _do_get(self, url: str, headers: dict[str, str]) -> dict[str, Any]:
         """Make an API call to the specified URL, returning the response as a JSON object."""
@@ -374,7 +404,7 @@ class BestwayApi:
         """Make an API call to the specified URL, returning the response as a JSON object."""
         async with async_timeout.timeout(_TIMEOUT):
             response = await self._session.post(url, headers=headers, json=body)
-            await raise_for_status(response)
+            await _raise_for_status(response)
 
             # All API responses are encoded using JSON, however the headers often incorrectly
             # state 'text/html' as the content type.

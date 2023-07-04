@@ -16,9 +16,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import BestwayUpdateCoordinator
-from .bestway import TemperatureUnit
+from .bestway.model import TemperatureUnit
 from .const import DOMAIN
-from .entity import BestwayEntity
+from .entity import BestwayEntity, BestwaySpaEntity
 
 
 async def async_setup_entry(
@@ -29,14 +29,15 @@ async def async_setup_entry(
     """Set up climate entities."""
     coordinator: BestwayUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id]
 
-    entities = [
-        BestwayThermostat(coordinator, config_entry, device_id)
-        for device_id in coordinator.data.keys()
-    ]
+    entities: list[BestwayEntity] = []
+    entities.extend(
+        SpaThermostat(coordinator, config_entry, device_id)
+        for device_id in coordinator.data.spa_devices.keys()
+    )
     async_add_entities(entities)
 
 
-class BestwayThermostat(BestwayEntity, ClimateEntity):
+class SpaThermostat(BestwaySpaEntity, ClimateEntity):
     """The main thermostat entity for a spa."""
 
     _attr_name = "Spa Thermostat"
@@ -58,17 +59,17 @@ class BestwayThermostat(BestwayEntity, ClimateEntity):
     @property
     def hvac_mode(self) -> HVACMode | str | None:
         """Return the current mode (HEAT or OFF)."""
-        if not self.device_status:
+        if not self.status:
             return None
-        return HVACMode.HEAT if self.device_status.heat_power else HVACMode.OFF
+        return HVACMode.HEAT if self.status.heat_power else HVACMode.OFF
 
     @property
     def hvac_action(self) -> HVACAction | str | None:
         """Return the current running action (HEATING or IDLE)."""
-        if not self.device_status:
+        if not self.status:
             return None
-        heat_on = self.device_status.heat_power
-        target_reached = self.device_status.heat_temp_reach
+        heat_on = self.status.heat_power
+        target_reached = self.status.heat_temp_reach
         return (
             HVACAction.HEATING if (heat_on and not target_reached) else HVACAction.IDLE
         )
@@ -76,24 +77,21 @@ class BestwayThermostat(BestwayEntity, ClimateEntity):
     @property
     def current_temperature(self) -> float | None:
         """Return the current temperature."""
-        if not self.device_status:
+        if not self.status:
             return None
-        return self.device_status.temp_now
+        return self.status.temp_now
 
     @property
     def target_temperature(self) -> float | None:
         """Return the temperature we try to reach."""
-        if not self.device_status:
+        if not self.status:
             return None
-        return self.device_status.temp_set
+        return self.status.temp_set
 
     @property
     def temperature_unit(self) -> str:
         """Return the unit of measurement used by the platform."""
-        if (
-            not self.device_status
-            or self.device_status.temp_set_unit == TemperatureUnit.CELSIUS
-        ):
+        if not self.status or self.status.temp_set_unit == TemperatureUnit.CELSIUS:
             return str(TEMP_CELSIUS)
         else:
             return str(TEMP_FAHRENHEIT)
@@ -119,7 +117,7 @@ class BestwayThermostat(BestwayEntity, ClimateEntity):
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new target hvac mode."""
         should_heat = hvac_mode == HVACMode.HEAT
-        await self.coordinator.api.set_heat(self.device_id, should_heat)
+        await self.coordinator.api.spa_set_heat(self.device_id, should_heat)
         await self.coordinator.async_refresh()
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
@@ -130,7 +128,9 @@ class BestwayThermostat(BestwayEntity, ClimateEntity):
 
         if hvac_mode := kwargs.get(ATTR_HVAC_MODE):
             should_heat = hvac_mode == HVACMode.HEAT
-            await self.coordinator.api.set_heat(self.device_id, should_heat)
+            await self.coordinator.api.spa_set_heat(self.device_id, should_heat)
 
-        await self.coordinator.api.set_target_temp(self.device_id, target_temperature)
+        await self.coordinator.api.spa_set_target_temp(
+            self.device_id, target_temperature
+        )
         await self.coordinator.async_refresh()

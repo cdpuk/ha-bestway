@@ -45,7 +45,7 @@ async def test_setup_unload_and_reload_entry(hass, bypass_get_data):
     # them to be. Because we have patched the BestwayUpdateCoordinator.async_get_data
     # call, no code from custom_components/bestway/api.py actually runs.
     with patch(
-        "custom_components.bestway.bestway.BestwayApi.get_user_token"
+        "custom_components.bestway.bestway.api.BestwayApi.get_user_token"
     ) as get_user_token_fn:
         assert await async_setup_entry(hass, config_entry)
 
@@ -87,7 +87,7 @@ async def test_setup_entry_expired_token(hass, bypass_get_data):
         entry_id="test",
     )
 
-    with patch("custom_components.bestway.bestway.BestwayApi.get_user_token") as p:
+    with patch("custom_components.bestway.bestway.api.BestwayApi.get_user_token") as p:
         await async_setup_entry(hass, config_entry)
         p.assert_called_once()
 

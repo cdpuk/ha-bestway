@@ -4,15 +4,13 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from logging import getLogger
 
-import async_timeout
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .bestway import BestwayApi, BestwayDeviceReport
+from .bestway.api import BestwayApi
 from .const import (
     CONF_API_ROOT,
     CONF_API_ROOT_EU,
@@ -22,11 +20,13 @@ from .const import (
     CONF_USERNAME,
     DOMAIN,
 )
+from .coordinator import BestwayUpdateCoordinator
 
 _LOGGER = getLogger(__name__)
 _PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
     Platform.CLIMATE,
+    Platform.NUMBER,
     Platform.SENSOR,
     Platform.SWITCH,
 ]
@@ -114,31 +114,3 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     _LOGGER.error("Existing schema version %s is not supported", entry.version)
     return False
-
-
-class BestwayUpdateCoordinator(DataUpdateCoordinator[dict[str, BestwayDeviceReport]]):
-    """Update coordinator that polls the device status for all devices in an account."""
-
-    def __init__(self, hass: HomeAssistant, api: BestwayApi) -> None:
-        """Initialize my coordinator."""
-        super().__init__(
-            hass,
-            _LOGGER,
-            name="Bestway API",
-            update_interval=timedelta(seconds=30),
-        )
-        self.api = api
-
-    async def _async_update_data(self) -> dict[str, BestwayDeviceReport]:
-        """Fetch data from API endpoint.
-
-        This is the place to pre-process the data to lookup tables
-        so entities can quickly look up their data.
-        """
-        try:
-            async with async_timeout.timeout(10):
-                await self.api.refresh_bindings()
-                return await self.api.fetch_data()
-        except Exception as err:
-            _LOGGER.exception("Data update failed")
-            raise UpdateFailed(f"Error communicating with API: {err}") from err
