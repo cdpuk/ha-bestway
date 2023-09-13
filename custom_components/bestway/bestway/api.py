@@ -359,10 +359,9 @@ class BestwayApi:
             {"attrs": {"wave_power": 1 if bubbles else 0}},
         )
         cached_state.timestamp = int(time())
-        cached_state.filter_power = bubbles
+        cached_state.wave_power = bubbles
         if bubbles:
             cached_state.spa_power = True
-            cached_state.filter_power = True
 
     async def spa_set_target_temp(self, device_id: str, target_temp: int) -> None:
         """Set the target temperature on a spa device."""
