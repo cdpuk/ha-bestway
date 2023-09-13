@@ -205,6 +205,7 @@ class BestwayApi:
 
                     spa_status = BestwaySpaDeviceStatus(
                         latest_data["updated_at"],
+                        device_attrs["power"],
                         device_attrs["temp_now"],
                         device_attrs["temp_set"],
                         (
@@ -263,6 +264,27 @@ class BestwayApi:
             self._spa_state_cache, self._pool_filter_state_cache, self._unknown_states
         )
 
+    async def spa_set_power(self, device_id: str, power: bool) -> None:
+        """Turn the spa on/off."""
+        if (cached_state := self._spa_state_cache.get(device_id)) is None:
+            raise BestwayException(f"Device '{device_id}' is not recognised")
+
+        _LOGGER.debug("Setting power to %s", "ON" if power else "OFF")
+        headers = dict(_HEADERS)
+        headers["X-Gizwits-User-token"] = self._user_token
+        await self._do_post(
+            f"{self._api_root}/app/control/{device_id}",
+            headers,
+            {"attrs": {"power": 1 if power else 0}},
+        )
+        cached_state.timestamp = int(time())
+        cached_state.spa_power = power
+        if not power:
+            # When powering off, all other functions also turn off
+            cached_state.filter_power = False
+            cached_state.heat_power = False
+            cached_state.wave_power = False
+
     async def spa_set_heat(self, device_id: str, heat: bool) -> None:
         """
         Turn the heater on/off on a spa device.
@@ -283,6 +305,7 @@ class BestwayApi:
         cached_state.timestamp = int(time())
         cached_state.heat_power = heat
         if heat:
+            cached_state.spa_power = True
             cached_state.filter_power = True
 
     async def spa_set_filter(self, device_id: str, filtering: bool) -> None:
@@ -300,7 +323,9 @@ class BestwayApi:
         )
         cached_state.timestamp = int(time())
         cached_state.filter_power = filtering
-        if not filtering:
+        if filtering:
+            cached_state.spa_power = True
+        else:
             cached_state.wave_power = False
             cached_state.heat_power = False
 
@@ -336,6 +361,7 @@ class BestwayApi:
         cached_state.timestamp = int(time())
         cached_state.filter_power = bubbles
         if bubbles:
+            cached_state.spa_power = True
             cached_state.filter_power = True
 
     async def spa_set_target_temp(self, device_id: str, target_temp: int) -> None:
