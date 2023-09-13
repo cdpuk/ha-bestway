@@ -19,5 +19,6 @@ class Icon(str, Enum):
     FILTER = "mdi:image-filter-tilt-shift"
     HARDWARE = "mdi:chip"
     LOCK = "mdi:lock"
+    POWER = "mdi:power"
     PROTOCOL = "mdi:protocol"
     SOFTWARE = "mdi:application-braces"

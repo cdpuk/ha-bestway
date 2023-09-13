@@ -50,6 +50,14 @@ class PoolFilterSwitchEntityDescription(
 
 _SPA_SWITCH_TYPES = [
     SpaSwitchEntityDescription(
+        key="spa_power",
+        name="Spa Power",
+        icon=Icon.POWER,
+        value_fn=lambda s: s.spa_power,
+        turn_on_fn=lambda api, device_id: api.spa_set_power(device_id, True),
+        turn_off_fn=lambda api, device_id: api.spa_set_power(device_id, False),
+    ),
+    SpaSwitchEntityDescription(
         key="spa_filter_power",
         name="Spa Filter",
         icon=Icon.FILTER,

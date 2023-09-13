@@ -71,6 +71,7 @@ class BestwayDeviceStatus:
 class BestwaySpaDeviceStatus(BestwayDeviceStatus):
     """A snapshot of the status of a spa (i.e. Lay-Z-Spa) device."""
 
+    spa_power: bool
     temp_now: float
     temp_set: float
     temp_set_unit: TemperatureUnit
