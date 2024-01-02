@@ -16,8 +16,9 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import BestwayUpdateCoordinator
+from .bestway.model import BestwayDeviceType
 from .const import DOMAIN, Icon
-from .entity import BestwayEntity, BestwayPoolFilterEntity, BestwaySpaEntity
+from .entity import BestwayEntity
 
 _SPA_CONNECTIVITY_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
     key="spa_connected",
@@ -61,26 +62,30 @@ async def async_setup_entry(
     coordinator: BestwayUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id]
     entities: list[BestwayEntity] = []
 
-    for device_id in coordinator.data.spa_devices.keys():
-        entities.extend(
-            [
-                SpaConnectivitySensor(coordinator, config_entry, device_id),
-                SpaErrorsSensor(coordinator, config_entry, device_id),
-            ]
-        )
-    for device_id in coordinator.data.pool_filter_devices.keys():
-        entities.extend(
-            [
-                PoolFilterConnectivitySensor(coordinator, config_entry, device_id),
-                PoolFilterChangeRequiredSensor(coordinator, config_entry, device_id),
-                PoolFilterErrorSensor(coordinator, config_entry, device_id),
-            ]
-        )
+    for device_id, device in coordinator.api.devices.items():
+        if device.device_type == BestwayDeviceType.AIRJET_SPA:
+            entities.extend(
+                [
+                    SpaConnectivitySensor(coordinator, config_entry, device_id),
+                    AirjetSpaErrorsSensor(coordinator, config_entry, device_id),
+                ]
+            )
+
+        if device.device_type == BestwayDeviceType.POOL_FILTER:
+            entities.extend(
+                [
+                    PoolFilterConnectivitySensor(coordinator, config_entry, device_id),
+                    PoolFilterChangeRequiredSensor(
+                        coordinator, config_entry, device_id
+                    ),
+                    PoolFilterErrorSensor(coordinator, config_entry, device_id),
+                ]
+            )
 
     async_add_entities(entities)
 
 
-class SpaConnectivitySensor(BestwaySpaEntity, BinarySensorEntity):
+class SpaConnectivitySensor(BestwayEntity, BinarySensorEntity):
     """Sensor to indicate whether a spa is currently online."""
 
     def __init__(
@@ -110,7 +115,7 @@ class SpaConnectivitySensor(BestwaySpaEntity, BinarySensorEntity):
         return True
 
 
-class SpaErrorsSensor(BestwaySpaEntity, BinarySensorEntity):
+class AirjetSpaErrorsSensor(BestwayEntity, BinarySensorEntity):
     """Sensor to indicate an error state for a spa."""
 
     def __init__(
@@ -135,7 +140,12 @@ class SpaErrorsSensor(BestwaySpaEntity, BinarySensorEntity):
         if not self.status:
             return None
 
-        return len(self.status.errors) > 0 or self.status.earth_fault
+        errors = []
+        for err_num in range(1, 10):
+            if self.status.attrs[f"system_err{err_num}"] == 1:
+                errors.append(err_num)
+
+        return len(errors) > 0 or self.status.attrs["earth"]
 
     @property
     def extra_state_attributes(self) -> Mapping[str, Any] | None:
@@ -143,22 +153,21 @@ class SpaErrorsSensor(BestwaySpaEntity, BinarySensorEntity):
         if not self.status:
             return None
 
-        errors = self.status.errors
         return {
-            "e01": 1 in errors,
-            "e02": 2 in errors,
-            "e03": 3 in errors,
-            "e04": 4 in errors,
-            "e05": 5 in errors,
-            "e06": 6 in errors,
-            "e07": 7 in errors,
-            "e08": 8 in errors,
-            "e09": 9 in errors,
-            "gcf": self.status.earth_fault,
+            "e01": self.status.attrs["system_err1"],
+            "e02": self.status.attrs["system_err2"],
+            "e03": self.status.attrs["system_err3"],
+            "e04": self.status.attrs["system_err4"],
+            "e05": self.status.attrs["system_err5"],
+            "e06": self.status.attrs["system_err6"],
+            "e07": self.status.attrs["system_err7"],
+            "e08": self.status.attrs["system_err8"],
+            "e09": self.status.attrs["system_err9"],
+            "gcf": self.status.attrs["earth"],
         }
 
 
-class PoolFilterConnectivitySensor(BestwayPoolFilterEntity, BinarySensorEntity):
+class PoolFilterConnectivitySensor(BestwayEntity, BinarySensorEntity):
     """Sensor to indicate whether a pool filter is currently online."""
 
     def __init__(
@@ -188,7 +197,7 @@ class PoolFilterConnectivitySensor(BestwayPoolFilterEntity, BinarySensorEntity):
         return True
 
 
-class PoolFilterChangeRequiredSensor(BestwayPoolFilterEntity, BinarySensorEntity):
+class PoolFilterChangeRequiredSensor(BestwayEntity, BinarySensorEntity):
     """Sensor to indicate whether a pool filter requires a change."""
 
     def __init__(
@@ -210,10 +219,10 @@ class PoolFilterChangeRequiredSensor(BestwayPoolFilterEntity, BinarySensorEntity
     @property
     def is_on(self) -> bool | None:
         """Return true if the spa is online."""
-        return self.status is not None and self.status.filter_change_required
+        return self.status is not None and self.status.attrs["filter"]
 
 
-class PoolFilterErrorSensor(BestwayPoolFilterEntity, BinarySensorEntity):
+class PoolFilterErrorSensor(BestwayEntity, BinarySensorEntity):
     """Sensor to indicate an error state for a pool filter."""
 
     def __init__(
@@ -235,4 +244,4 @@ class PoolFilterErrorSensor(BestwayPoolFilterEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool | None:
         """Return true if the pool filter is reporting an error."""
-        return self.status is not None and self.status.error
+        return self.status is not None and self.status.attrs["error"]

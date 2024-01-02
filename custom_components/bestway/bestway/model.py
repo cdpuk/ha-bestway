@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum, auto
+from enum import Enum, IntEnum, auto
 from time import time
+
+from typing import Any
 
 # How old the latest update can be before a spa is considered offline
 _CONNECTIVITY_TIMEOUT = 1000
@@ -13,6 +15,8 @@ class BestwayDeviceType(Enum):
     """Bestway device types."""
 
     AIRJET_SPA = "Airjet"
+    AIRJET_V01_SPA = "Airjet V01"
+    HYDROJET_PRO_SPA = "Hydrojet Pro"
     POOL_FILTER = "Pool Filter"
     UNKNOWN = "Unknown"
 
@@ -22,6 +26,10 @@ class BestwayDeviceType(Enum):
 
         if product_name == "Airjet":
             return BestwayDeviceType.AIRJET_SPA
+        if product_name == "Airjet_V01":
+            return BestwayDeviceType.AIRJET_V01_SPA
+        if product_name == "Hydrojet":
+            return BestwayDeviceType.HYDROJET_PRO_SPA
         if product_name == "泳池过滤器":
             # Chinese translates to "pool filter"
             return BestwayDeviceType.POOL_FILTER
@@ -33,6 +41,31 @@ class TemperatureUnit(Enum):
 
     CELSIUS = auto()
     FAHRENHEIT = auto()
+
+
+class HydrojetHeat(IntEnum):
+    """Hydrojet heater values."""
+
+    OFF = 0
+    ON = 3
+
+
+class HydrojetBubbles(IntEnum):
+    """Different bubble levels supported by the spa."""
+
+    MAX = 100
+    MEDIUM = 40
+    OFF = 0
+
+    @staticmethod
+    def from_api_value(value: int) -> HydrojetBubbles:
+        """Get the enum value based on the 'wave' field in the API response."""
+
+        if value == 100:
+            return HydrojetBubbles.MAX
+        if value == 40:
+            return HydrojetBubbles.MEDIUM
+        return HydrojetBubbles.OFF
 
 
 @dataclass
@@ -60,40 +93,12 @@ class BestwayDeviceStatus:
     """A snapshot of the status of a spa (i.e. Lay-Z-Spa) device."""
 
     timestamp: int
+    attrs: dict[str, Any]
 
     @property
     def online(self) -> bool:
         """Determine whether the device is online based on the age of the latest update."""
         return self.timestamp > (time() - _CONNECTIVITY_TIMEOUT)
-
-
-@dataclass
-class BestwaySpaDeviceStatus(BestwayDeviceStatus):
-    """A snapshot of the status of a spa (i.e. Lay-Z-Spa) device."""
-
-    spa_power: bool
-    temp_now: float
-    temp_set: float
-    temp_set_unit: TemperatureUnit
-    heat_power: bool
-    heat_temp_reach: bool
-    filter_power: bool
-    wave_power: bool
-    locked: bool
-    errors: list[int]
-    earth_fault: bool
-
-
-@dataclass
-class BestwayPoolFilterDeviceStatus(BestwayDeviceStatus):
-    """A snapshot of the status of a filter device."""
-
-    timestamp: int
-    filter_change_required: bool
-    power: bool
-    time: int
-    running: bool
-    error: bool
 
 
 @dataclass

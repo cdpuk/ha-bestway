@@ -36,7 +36,10 @@ async def async_setup_entry(
 
     for device_id, device_info in coordinator.api.devices.items():
         name_prefix = "Bestway"
-        if device_info.device_type == BestwayDeviceType.AIRJET_SPA:
+        if device_info.device_type in [
+            BestwayDeviceType.AIRJET_SPA,
+            BestwayDeviceType.HYDROJET_PRO_SPA,
+        ]:
             name_prefix = "Spa"
         elif device_info.device_type == BestwayDeviceType.POOL_FILTER:
             name_prefix = "Pool Filter"

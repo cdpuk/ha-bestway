@@ -6,11 +6,7 @@ from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from . import BestwayUpdateCoordinator
-from .bestway.model import (
-    BestwayDevice,
-    BestwayPoolFilterDeviceStatus,
-    BestwaySpaDeviceStatus,
-)
+from .bestway.model import BestwayDevice, BestwayDeviceStatus
 from .const import DOMAIN
 
 
@@ -48,18 +44,9 @@ class BestwayEntity(CoordinatorEntity[BestwayUpdateCoordinator]):
         return device
 
     @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return self.bestway_device is not None and self.bestway_device.is_online
-
-
-class BestwaySpaEntity(BestwayEntity):
-    """Bestway spa entity type."""
-
-    @property
-    def status(self) -> BestwaySpaDeviceStatus | None:
+    def status(self) -> BestwayDeviceStatus | None:
         """Get status data for the spa providing this entity."""
-        status: BestwaySpaDeviceStatus | None = self.coordinator.data.spa_devices.get(
+        status: BestwayDeviceStatus | None = self.coordinator.data.devices.get(
             self.device_id
         )
         return status
@@ -67,21 +54,4 @@ class BestwaySpaEntity(BestwayEntity):
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        return self.status is not None and self.status.online
-
-
-class BestwayPoolFilterEntity(BestwayEntity):
-    """Bestway pool filter entity type."""
-
-    @property
-    def status(self) -> BestwayPoolFilterDeviceStatus | None:
-        """Get status data for the spa providing this entity."""
-        status: BestwayPoolFilterDeviceStatus | None = (
-            self.coordinator.data.pool_filter_devices.get(self.device_id)
-        )
-        return status
-
-    @property
-    def available(self) -> bool:
-        """Return True if entity is available."""
-        return self.status is not None and self.status.online
+        return self.bestway_device is not None and self.bestway_device.is_online

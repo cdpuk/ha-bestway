@@ -1,4 +1,6 @@
 __pycache__
+config/*
+!config/configuration.yaml
 pythonenv*
 venv
 .venv
