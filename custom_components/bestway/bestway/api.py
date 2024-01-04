@@ -142,9 +142,7 @@ class BestwayApi:
 
     async def _get_devices(self) -> list[BestwayDevice]:
         """Get the list of devices available in the account."""
-        headers = dict(_HEADERS)
-        headers["X-Gizwits-User-token"] = self._user_token
-        api_data = await self._do_get(f"{self._api_root}/app/bindings", headers)
+        api_data = await self._do_get(f"{self._api_root}/app/bindings")
         return [
             BestwayDevice(
                 raw["protoc"],
@@ -164,7 +162,7 @@ class BestwayApi:
         """Fetch the latest data for all devices."""
         for did, device_info in self.devices.items():
             latest_data = await self._do_get(
-                f"{self._api_root}/app/devdata/{did}/latest", _HEADERS
+                f"{self._api_root}/app/devdata/{did}/latest"
             )
 
             # Get the age of the data according to the API
@@ -274,7 +272,6 @@ class BestwayApi:
         headers["X-Gizwits-User-token"] = self._user_token
         await self._do_post(
             f"{self._api_root}/app/control/{device_id}",
-            headers,
             {"attrs": {"power": 1 if power else 0}},
         )
         cached_state.timestamp = int(time())
@@ -299,7 +296,6 @@ class BestwayApi:
         headers["X-Gizwits-User-token"] = self._user_token
         await self._do_post(
             f"{self._api_root}/app/control/{device_id}",
-            headers,
             {"attrs": {"heat_power": 1 if heat else 0}},
         )
         cached_state.timestamp = int(time())
@@ -318,7 +314,6 @@ class BestwayApi:
         headers["X-Gizwits-User-token"] = self._user_token
         await self._do_post(
             f"{self._api_root}/app/control/{device_id}",
-            headers,
             {"attrs": {"filter_power": 1 if filtering else 0}},
         )
         cached_state.timestamp = int(time())
@@ -339,7 +334,6 @@ class BestwayApi:
         headers["X-Gizwits-User-token"] = self._user_token
         await self._do_post(
             f"{self._api_root}/app/control/{device_id}",
-            headers,
             {"attrs": {"locked": 1 if locked else 0}},
         )
         cached_state.timestamp = int(time())
@@ -355,7 +349,6 @@ class BestwayApi:
         headers["X-Gizwits-User-token"] = self._user_token
         await self._do_post(
             f"{self._api_root}/app/control/{device_id}",
-            headers,
             {"attrs": {"wave_power": 1 if bubbles else 0}},
         )
         cached_state.timestamp = int(time())
@@ -373,7 +366,6 @@ class BestwayApi:
         headers["X-Gizwits-User-token"] = self._user_token
         await self._do_post(
             f"{self._api_root}/app/control/{device_id}",
-            headers,
             {"attrs": {"temp_set": target_temp}},
         )
         cached_state.timestamp = int(time())
@@ -389,7 +381,6 @@ class BestwayApi:
         headers["X-Gizwits-User-token"] = self._user_token
         await self._do_post(
             f"{self._api_root}/app/control/{device_id}",
-            headers,
             {"attrs": {"power": 1 if power else 0}},
         )
         cached_state.timestamp = int(time())
@@ -401,21 +392,20 @@ class BestwayApi:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         _LOGGER.debug("Setting filter timeout to %d hours", hours)
-        headers = dict(_HEADERS)
-        headers["X-Gizwits-User-token"] = self._user_token
         await self._do_post(
             f"{self._api_root}/app/control/{device_id}",
-            headers,
             {"attrs": {"time": hours}},
         )
         cached_state.timestamp = int(time())
         cached_state.time = hours
 
-    async def _do_get(self, url: str, headers: dict[str, str]) -> dict[str, Any]:
+    async def _do_get(self, url: str) -> dict[str, Any]:
         """Make an API call to the specified URL, returning the response as a JSON object."""
+        headers = dict(_HEADERS)
+        headers["X-Gizwits-User-token"] = self._user_token
         async with async_timeout.timeout(_TIMEOUT):
             response = await self._session.get(url, headers=headers)
-            response.raise_for_status()
+            await _raise_for_status(response)
 
             # All API responses are encoded using JSON, however the headers often incorrectly
             # state 'text/html' as the content type.
@@ -423,10 +413,10 @@ class BestwayApi:
             response_json: dict[str, Any] = await response.json(content_type=None)
             return response_json
 
-    async def _do_post(
-        self, url: str, headers: dict[str, str], body: dict[str, Any]
-    ) -> dict[str, Any]:
+    async def _do_post(self, url: str, body: dict[str, Any]) -> dict[str, Any]:
         """Make an API call to the specified URL, returning the response as a JSON object."""
+        headers = dict(_HEADERS)
+        headers["X-Gizwits-User-token"] = self._user_token
         async with async_timeout.timeout(_TIMEOUT):
             response = await self._session.post(url, headers=headers, json=body)
             await _raise_for_status(response)
