@@ -24,16 +24,7 @@ Bestway uses different API endpoints for EU and US. If you get an error stating 
 
 A Wi-Fi enabled model is required. No custom hardware is required.
 
-The following devices are supported:
-
-* Lay-Z-Spa Airjet
-* Flowclear Smart Touch
-
-The following devices require further development effort from willing and able volunteers:
-
-* Lay-Z-Spa HydroJet Pro
-
-The integration attempts to detect unknown devices and will provide some entities and debug logs in these cases. Please report these values and logs in any reports.
+See the [supported devices](docs/supported-devices.md) list for more details.
 
 ## Installation
 

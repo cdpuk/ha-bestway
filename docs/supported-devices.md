@@ -19,6 +19,6 @@ Raise an issue or log a pull request to update this list. Please do not suggest 
 | Protocol    | Supported          |
 | ----------- | ------------------ |
 | Airjet      | :white_check_mark: |
-| Airjet_V01  | :x:                |
-| Hydrojet    | :x:                |
+| Airjet_V01  | :white_check_mark: |
+| Hydrojet    | :white_check_mark: |
 | Pool Filter | :white_check_mark: |
