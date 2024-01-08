@@ -321,9 +321,10 @@ class BestwayApi:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         _LOGGER.debug("Setting filter mode to %s", "ON" if filtering else "OFF")
-        await self._do_control_post(device_id, filter=1 if filtering else 0)
+        api_value = 2 if filtering else 0
+        await self._do_control_post(device_id, filter=2 if filtering else 0)
         cached_state.timestamp = int(time())
-        cached_state.attrs["filter"] = filtering
+        cached_state.attrs["filter"] = api_value
         if filtering:
             cached_state.attrs["power"] = True
         else:
@@ -340,12 +341,13 @@ class BestwayApi:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         _LOGGER.debug("Setting heater mode to %s", "ON" if heat else "OFF")
-        await self._do_control_post(device_id, heat=HydrojetHeat.ON if heat else 0)
+        api_value = HydrojetHeat.ON if heat else 0
+        await self._do_control_post(device_id, heat=api_value)
         cached_state.timestamp = int(time())
-        cached_state.attrs["heat"] = heat
+        cached_state.attrs["heat"] = api_value
         if heat:
             cached_state.attrs["power"] = True
-            cached_state.attrs["filter"] = HydrojetHeat.ON
+            cached_state.attrs["filter"] = True
 
     async def hydrojet_spa_set_target_temp(
         self, device_id: str, target_temp: int
