@@ -50,7 +50,7 @@ _AIRJET_SPA_FILTER_SWITCH = BestwaySwitchEntityDescription(
     turn_off_fn=lambda api, device_id: api.airjet_spa_set_filter(device_id, False),
 )
 
-_AIRJET_WAVE_POWER_SWITCH = BestwaySwitchEntityDescription(
+_AIRJET_SPA_BUBBLES_SWITCH = BestwaySwitchEntityDescription(
     key="spa_wave_power",
     name="Spa Bubbles",
     icon=Icon.BUBBLES,
@@ -59,13 +59,22 @@ _AIRJET_WAVE_POWER_SWITCH = BestwaySwitchEntityDescription(
     turn_off_fn=lambda api, device_id: api.airjet_spa_set_bubbles(device_id, False),
 )
 
-_AIRJET_LOCK_SWITCH = BestwaySwitchEntityDescription(
+_AIRJET_SPA_LOCK_SWITCH = BestwaySwitchEntityDescription(
     key="spa_locked",
     name="Spa Locked",
     icon=Icon.LOCK,
     value_fn=lambda s: bool(s.attrs["locked"]),
     turn_on_fn=lambda api, device_id: api.airjet_spa_set_locked(device_id, True),
     turn_off_fn=lambda api, device_id: api.airjet_spa_set_locked(device_id, False),
+)
+
+_AIRJET_V01_SPA_BUBBLES_SWITCH = BestwaySwitchEntityDescription(
+    key="spa_wave",
+    name="Spa Bubbles",
+    icon=Icon.BUBBLES,
+    value_fn=lambda s: bool(s.attrs["wave"]),
+    turn_on_fn=lambda api, device_id: api.airjet_v01_spa_set_bubbles(device_id, True),
+    turn_off_fn=lambda api, device_id: api.airjet_v01_spa_set_bubbles(device_id, False),
 )
 
 _HYDROJET_SPA_POWER_SWITCH = BestwaySwitchEntityDescription(
@@ -134,21 +143,18 @@ async def async_setup_entry(
                         coordinator,
                         config_entry,
                         device_id,
-                        _AIRJET_LOCK_SWITCH,
+                        _AIRJET_SPA_BUBBLES_SWITCH,
                     ),
                     SpaSwitch(
                         coordinator,
                         config_entry,
                         device_id,
-                        _AIRJET_WAVE_POWER_SWITCH,
+                        _AIRJET_SPA_LOCK_SWITCH,
                     ),
                 ]
             )
 
-        if device.device_type in [
-            BestwayDeviceType.HYDROJET_PRO_SPA,
-            BestwayDeviceType.AIRJET_V01_SPA,
-        ]:
+        if device.device_type == BestwayDeviceType.AIRJET_V01_SPA:
             entities.extend(
                 [
                     SpaSwitch(
@@ -162,6 +168,42 @@ async def async_setup_entry(
                         config_entry,
                         device_id,
                         _HYDROJET_SPA_FILTER_SWITCH,
+                    ),
+                    SpaSwitch(
+                        coordinator,
+                        config_entry,
+                        device_id,
+                        _AIRJET_V01_SPA_BUBBLES_SWITCH,
+                    ),
+                    SpaSwitch(
+                        coordinator,
+                        config_entry,
+                        device_id,
+                        _HYDROJET_LOCK_SWITCH,
+                    ),
+                ]
+            )
+
+        if device.device_type == BestwayDeviceType.HYDROJET_PRO_SPA:
+            entities.extend(
+                [
+                    SpaSwitch(
+                        coordinator,
+                        config_entry,
+                        device_id,
+                        _HYDROJET_SPA_POWER_SWITCH,
+                    ),
+                    SpaSwitch(
+                        coordinator,
+                        config_entry,
+                        device_id,
+                        _HYDROJET_SPA_FILTER_SWITCH,
+                    ),
+                    SpaSwitch(
+                        coordinator,
+                        config_entry,
+                        device_id,
+                        _HYDROJET_LOCK_SWITCH,
                     ),
                 ]
             )

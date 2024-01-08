@@ -288,6 +288,18 @@ class BestwayApi:
         if bubbles:
             cached_state.attrs["spa_power"] = True
 
+    async def airjet_v01_spa_set_bubbles(self, device_id: str, bubbles: bool) -> None:
+        """Turn the bubbles on/off on an Airjet V01 spa device."""
+        if (cached_state := self._state_cache.get(device_id)) is None:
+            raise BestwayException(f"Device '{device_id}' is not recognised")
+
+        _LOGGER.debug("Setting bubbles mode to %s", "ON" if bubbles else "OFF")
+        await self._do_control_post(device_id, wave=1 if bubbles else 0)
+        cached_state.timestamp = int(time())
+        cached_state.attrs["wave"] = bubbles
+        if bubbles:
+            cached_state.attrs["power"] = True
+
     async def hydrojet_spa_set_power(self, device_id: str, power: bool) -> None:
         """Turn the spa on/off."""
         if (cached_state := self._state_cache.get(device_id)) is None:
