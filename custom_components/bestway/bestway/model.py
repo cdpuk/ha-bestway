@@ -43,8 +43,15 @@ class TemperatureUnit(Enum):
     FAHRENHEIT = auto()
 
 
+class HydrojetFilter(IntEnum):
+    """Airjet_V01/Hydrojet filter values."""
+
+    OFF = 0
+    ON = 2
+
+
 class HydrojetHeat(IntEnum):
-    """Hydrojet heater values."""
+    """Airjet_V01/Hydrojet heater values."""
 
     OFF = 0
     ON = 3

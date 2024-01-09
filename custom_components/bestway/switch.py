@@ -13,7 +13,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import BestwayUpdateCoordinator
 from .bestway.api import BestwayApi
-from .bestway.model import BestwayDeviceStatus, BestwayDeviceType
+from .bestway.model import BestwayDeviceStatus, BestwayDeviceType, HydrojetFilter
 from .const import DOMAIN, Icon
 from .entity import BestwayEntity
 
@@ -91,17 +91,12 @@ _HYDROJET_SPA_FILTER_SWITCH = BestwaySwitchEntityDescription(
     name="Spa Filter",
     icon=Icon.FILTER,
     value_fn=lambda s: bool(s.attrs["filter"] == 2),
-    turn_on_fn=lambda api, device_id: api.hydrojet_spa_set_filter(device_id, True),
-    turn_off_fn=lambda api, device_id: api.hydrojet_spa_set_filter(device_id, False),
-)
-
-_HYDROJET_LOCK_SWITCH = BestwaySwitchEntityDescription(
-    key="spa_locked",
-    name="Spa Locked",
-    icon=Icon.LOCK,
-    value_fn=lambda s: bool(s.attrs["bit6"]),
-    turn_on_fn=lambda api, device_id: api.hydrojet_spa_set_locked(device_id, True),
-    turn_off_fn=lambda api, device_id: api.hydrojet_spa_set_locked(device_id, False),
+    turn_on_fn=lambda api, device_id: api.hydrojet_spa_set_filter(
+        device_id, HydrojetFilter.ON
+    ),
+    turn_off_fn=lambda api, device_id: api.hydrojet_spa_set_filter(
+        device_id, HydrojetFilter.OFF
+    ),
 )
 
 _POOL_FILTER_SWITCH_TYPES = [
@@ -175,12 +170,6 @@ async def async_setup_entry(
                         device_id,
                         _AIRJET_V01_SPA_BUBBLES_SWITCH,
                     ),
-                    SpaSwitch(
-                        coordinator,
-                        config_entry,
-                        device_id,
-                        _HYDROJET_LOCK_SWITCH,
-                    ),
                 ]
             )
 
@@ -198,12 +187,6 @@ async def async_setup_entry(
                         config_entry,
                         device_id,
                         _HYDROJET_SPA_FILTER_SWITCH,
-                    ),
-                    SpaSwitch(
-                        coordinator,
-                        config_entry,
-                        device_id,
-                        _HYDROJET_LOCK_SWITCH,
                     ),
                 ]
             )

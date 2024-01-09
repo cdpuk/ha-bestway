@@ -11,7 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import BestwayUpdateCoordinator
-from .bestway.model import BestwayDeviceType
+from .bestway.model import BestwayDeviceType, HydrojetHeat
 from .const import DOMAIN
 from .entity import BestwayEntity
 
@@ -216,8 +216,14 @@ class HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new target hvac mode."""
-        should_heat = hvac_mode == HVACMode.HEAT
-        await self.coordinator.api.hydrojet_spa_set_heat(self.device_id, should_heat)
+        if hvac_mode == HVACMode.HEAT:
+            await self.coordinator.api.hydrojet_spa_set_heat(
+                self.device_id, HydrojetHeat.ON
+            )
+        else:
+            await self.coordinator.api.hydrojet_spa_set_heat(
+                self.device_id, HydrojetHeat.OFF
+            )
         await self.coordinator.async_refresh()
 
     async def async_set_temperature(self, **kwargs: Any) -> None:

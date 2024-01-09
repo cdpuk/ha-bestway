@@ -15,6 +15,7 @@ from .model import (
     BestwayDeviceType,
     BestwayUserToken,
     HydrojetBubbles,
+    HydrojetFilter,
     HydrojetHeat,
 )
 
@@ -315,23 +316,24 @@ class BestwayApi:
             cached_state.attrs["heat"] = False
             cached_state.attrs["wave"] = HydrojetBubbles.OFF
 
-    async def hydrojet_spa_set_filter(self, device_id: str, filtering: bool) -> None:
+    async def hydrojet_spa_set_filter(
+        self, device_id: str, filtering: HydrojetFilter
+    ) -> None:
         """Turn the filter pump on/off on a spa device."""
         if (cached_state := self._state_cache.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         _LOGGER.debug("Setting filter mode to %s", "ON" if filtering else "OFF")
-        api_value = 2 if filtering else 0
-        await self._do_control_post(device_id, filter=2 if filtering else 0)
+        await self._do_control_post(device_id, filter=filtering)
         cached_state.timestamp = int(time())
-        cached_state.attrs["filter"] = api_value
-        if filtering:
+        cached_state.attrs["filter"] = filtering
+        if filtering == HydrojetFilter.ON:
             cached_state.attrs["power"] = True
         else:
             cached_state.attrs["wave"] = HydrojetBubbles.OFF
             cached_state.attrs["heat"] = False
 
-    async def hydrojet_spa_set_heat(self, device_id: str, heat: bool) -> None:
+    async def hydrojet_spa_set_heat(self, device_id: str, heat: HydrojetHeat) -> None:
         """
         Turn the heater on/off on a Hydrojet spa device.
 
@@ -341,13 +343,12 @@ class BestwayApi:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         _LOGGER.debug("Setting heater mode to %s", "ON" if heat else "OFF")
-        api_value = HydrojetHeat.ON if heat else 0
-        await self._do_control_post(device_id, heat=api_value)
+        await self._do_control_post(device_id, heat=heat)
         cached_state.timestamp = int(time())
-        cached_state.attrs["heat"] = api_value
-        if heat:
+        cached_state.attrs["heat"] = heat
+        if heat == HydrojetHeat.ON:
             cached_state.attrs["power"] = True
-            cached_state.attrs["filter"] = True
+            cached_state.attrs["filter"] = HydrojetFilter.ON
 
     async def hydrojet_spa_set_target_temp(
         self, device_id: str, target_temp: int
@@ -360,16 +361,6 @@ class BestwayApi:
         await self._do_control_post(device_id, Tset=target_temp)
         cached_state.timestamp = int(time())
         cached_state.attrs["Tset"] = target_temp
-
-    async def hydrojet_spa_set_locked(self, device_id: str, locked: bool) -> None:
-        """Lock or unlock the physical control panel on a spa device."""
-        if (cached_state := self._state_cache.get(device_id)) is None:
-            raise BestwayException(f"Device '{device_id}' is not recognised")
-
-        _LOGGER.debug("Setting lock state to %s", "ON" if locked else "OFF")
-        await self._do_control_post(device_id, bit6=1 if locked else 0)
-        cached_state.timestamp = int(time())
-        cached_state.attrs["bit6"] = locked
 
     async def hydrojet_spa_set_bubbles(
         self, device_id: str, bubbles: HydrojetBubbles
