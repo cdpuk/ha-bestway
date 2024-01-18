@@ -3,9 +3,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import Enum, IntEnum, auto
+from logging import getLogger
 from time import time
 
 from typing import Any
+
+_LOGGER = getLogger(__name__)
 
 # How old the latest update can be before a spa is considered offline
 _CONNECTIVITY_TIMEOUT = 1000
@@ -57,22 +60,45 @@ class HydrojetHeat(IntEnum):
     ON = 3
 
 
-class HydrojetBubbles(IntEnum):
-    """Different bubble levels supported by the spa."""
+class BubblesLevel(Enum):
+    OFF = auto()
+    MEDIUM = auto()
+    MAX = auto()
 
-    MAX = 100
-    MEDIUM = 40
-    OFF = 0
 
-    @staticmethod
-    def from_api_value(value: int) -> HydrojetBubbles:
+class BubblesMapping:
+    """Maps off, medium and max bubbles levels to integer API values."""
+
+    def __init__(self, off_val: int, medium_val: int, max_val: int) -> None:
+        self.off_val = off_val
+        self.medium_val = medium_val
+        self.max_val = max_val
+
+    def to_api_value(self, level: BubblesLevel) -> int:
+        """Get the API value to be used for the given bubbles level."""
+        if level == BubblesLevel.MAX:
+            return self.max_val
+        elif level == BubblesLevel.MEDIUM:
+            return self.medium_val
+        else:
+            return self.off_val
+
+    def from_api_value(self, value: int) -> BubblesLevel:
         """Get the enum value based on the 'wave' field in the API response."""
 
-        if value == 100:
-            return HydrojetBubbles.MAX
-        if value == 40:
-            return HydrojetBubbles.MEDIUM
-        return HydrojetBubbles.OFF
+        if value == self.max_val:
+            return BubblesLevel.MAX
+        if value == self.medium_val:
+            return BubblesLevel.MEDIUM
+        if value == self.off_val:
+            return BubblesLevel.OFF
+
+        _LOGGER.warning("Unexpected API value %d - assuming OFF", value)
+        return BubblesLevel.OFF
+
+
+AIRJET_V01_BUBBLES_MAP = BubblesMapping(0, 50, 100)
+HYDROJET_BUBBLES_MAP = BubblesMapping(0, 40, 100)
 
 
 @dataclass

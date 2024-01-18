@@ -68,15 +68,6 @@ _AIRJET_SPA_LOCK_SWITCH = BestwaySwitchEntityDescription(
     turn_off_fn=lambda api, device_id: api.airjet_spa_set_locked(device_id, False),
 )
 
-_AIRJET_V01_SPA_BUBBLES_SWITCH = BestwaySwitchEntityDescription(
-    key="spa_wave",
-    name="Spa Bubbles",
-    icon=Icon.BUBBLES,
-    value_fn=lambda s: bool(s.attrs["wave"]),
-    turn_on_fn=lambda api, device_id: api.airjet_v01_spa_set_bubbles(device_id, True),
-    turn_off_fn=lambda api, device_id: api.airjet_v01_spa_set_bubbles(device_id, False),
-)
-
 _HYDROJET_SPA_POWER_SWITCH = BestwaySwitchEntityDescription(
     key="spa_power",
     name="Spa Power",
@@ -163,12 +154,6 @@ async def async_setup_entry(
                         config_entry,
                         device_id,
                         _HYDROJET_SPA_FILTER_SWITCH,
-                    ),
-                    SpaSwitch(
-                        coordinator,
-                        config_entry,
-                        device_id,
-                        _AIRJET_V01_SPA_BUBBLES_SWITCH,
                     ),
                 ]
             )
