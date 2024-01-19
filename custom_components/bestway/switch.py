@@ -90,6 +90,15 @@ _HYDROJET_SPA_FILTER_SWITCH = BestwaySwitchEntityDescription(
     ),
 )
 
+_HYDROJET_SPA_JETS_SWITCH = BestwaySwitchEntityDescription(
+    key="spa_jets",
+    name="Spa Jets",
+    icon=Icon.JETS,
+    value_fn=lambda s: bool(s.attrs["jet"]),
+    turn_on_fn=lambda api, device_id: api.hydrojet_spa_set_jets(device_id, True),
+    turn_off_fn=lambda api, device_id: api.hydrojet_spa_set_jets(device_id, False),
+)
+
 _POOL_FILTER_SWITCH_TYPES = [
     BestwaySwitchEntityDescription(
         key="pool_filter_power",
@@ -172,6 +181,12 @@ async def async_setup_entry(
                         config_entry,
                         device_id,
                         _HYDROJET_SPA_FILTER_SWITCH,
+                    ),
+                    SpaSwitch(
+                        coordinator,
+                        config_entry,
+                        device_id,
+                        _HYDROJET_SPA_JETS_SWITCH,
                     ),
                 ]
             )

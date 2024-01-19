@@ -61,6 +61,8 @@ class HydrojetHeat(IntEnum):
 
 
 class BubblesLevel(Enum):
+    """Bubbles levels available to a range of spa models."""
+
     OFF = auto()
     MEDIUM = auto()
     MAX = auto()
@@ -70,12 +72,14 @@ class BubblesMapping:
     """Maps off, medium and max bubbles levels to integer API values."""
 
     def __init__(self, off_val: int, medium_val: int, max_val: int) -> None:
+        """Construct a bubbles mapping using the given integer values."""
         self.off_val = off_val
         self.medium_val = medium_val
         self.max_val = max_val
 
     def to_api_value(self, level: BubblesLevel) -> int:
         """Get the API value to be used for the given bubbles level."""
+
         if level == BubblesLevel.MAX:
             return self.max_val
         elif level == BubblesLevel.MEDIUM:
