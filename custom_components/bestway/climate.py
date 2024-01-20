@@ -15,6 +15,11 @@ from .bestway.model import BestwayDeviceType, HydrojetHeat
 from .const import DOMAIN
 from .entity import BestwayEntity
 
+_SPA_MIN_TEMP_C = 20
+_SPA_MIN_TEMP_F = 68
+_SPA_MAX_TEMP_C = 40
+_SPA_MAX_TEMP_F = 104
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -30,16 +35,18 @@ async def async_setup_entry(
         if device.device_type == BestwayDeviceType.AIRJET_SPA:
             entities.append(AirjetSpaThermostat(coordinator, config_entry, device_id))
         if device.device_type in [
-            BestwayDeviceType.HYDROJET_PRO_SPA,
             BestwayDeviceType.AIRJET_V01_SPA,
+            BestwayDeviceType.HYDROJET_PRO_SPA,
         ]:
-            entities.append(HydrojetSpaThermostat(coordinator, config_entry, device_id))
+            entities.append(
+                AirjetV01HydrojetSpaThermostat(coordinator, config_entry, device_id)
+            )
 
     async_add_entities(entities)
 
 
 class AirjetSpaThermostat(BestwayEntity, ClimateEntity):
-    """The main thermostat entity for a spa."""
+    """A thermostat that works for Airjet spa devices."""
 
     _attr_name = "Spa Thermostat"
     _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
@@ -104,7 +111,11 @@ class AirjetSpaThermostat(BestwayEntity, ClimateEntity):
 
         As the Spa can be switched between temperature units, this needs to be dynamic.
         """
-        return 20 if self.temperature_unit == UnitOfTemperature.CELSIUS else 68
+        return (
+            _SPA_MIN_TEMP_C
+            if self.temperature_unit == UnitOfTemperature.CELSIUS
+            else _SPA_MIN_TEMP_F
+        )
 
     @property
     def max_temp(self) -> float:
@@ -113,7 +124,11 @@ class AirjetSpaThermostat(BestwayEntity, ClimateEntity):
 
         As the Spa can be switched between temperature units, this needs to be dynamic.
         """
-        return 40 if self.temperature_unit == UnitOfTemperature.CELSIUS else 104
+        return (
+            _SPA_MAX_TEMP_C
+            if self.temperature_unit == UnitOfTemperature.CELSIUS
+            else _SPA_MAX_TEMP_F
+        )
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new target hvac mode."""
@@ -137,8 +152,8 @@ class AirjetSpaThermostat(BestwayEntity, ClimateEntity):
         await self.coordinator.async_refresh()
 
 
-class HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
-    """The main thermostat entity for a spa."""
+class AirjetV01HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
+    """A thermostat that works for Airjet_V01 and Hydrojet devices."""
 
     _attr_name = "Spa Thermostat"
     _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
@@ -168,7 +183,7 @@ class HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
         """Return the current running action (HEATING or IDLE)."""
         if not self.status:
             return None
-        heat_on = self.status.attrs["heat"] == 3
+        heat_on = self.status.attrs["heat"] == HydrojetHeat.ON
         target_reached = self.status.attrs["word3"] == 1
         return (
             HVACAction.HEATING if (heat_on and not target_reached) else HVACAction.IDLE
@@ -203,7 +218,11 @@ class HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
 
         As the Spa can be switched between temperature units, this needs to be dynamic.
         """
-        return 20 if self.temperature_unit == UnitOfTemperature.CELSIUS else 68
+        return (
+            _SPA_MIN_TEMP_C
+            if self.temperature_unit == UnitOfTemperature.CELSIUS
+            else _SPA_MIN_TEMP_F
+        )
 
     @property
     def max_temp(self) -> float:
@@ -212,7 +231,11 @@ class HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
 
         As the Spa can be switched between temperature units, this needs to be dynamic.
         """
-        return 40 if self.temperature_unit == UnitOfTemperature.CELSIUS else 104
+        return (
+            _SPA_MAX_TEMP_C
+            if self.temperature_unit == UnitOfTemperature.CELSIUS
+            else _SPA_MAX_TEMP_F
+        )
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new target hvac mode."""

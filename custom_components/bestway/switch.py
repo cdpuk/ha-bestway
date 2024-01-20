@@ -68,7 +68,7 @@ _AIRJET_SPA_LOCK_SWITCH = BestwaySwitchEntityDescription(
     turn_off_fn=lambda api, device_id: api.airjet_spa_set_locked(device_id, False),
 )
 
-_HYDROJET_SPA_POWER_SWITCH = BestwaySwitchEntityDescription(
+_AIRJET_V01_HYDROJET_SPA_POWER_SWITCH = BestwaySwitchEntityDescription(
     key="spa_power",
     name="Spa Power",
     icon=Icon.POWER,
@@ -77,7 +77,7 @@ _HYDROJET_SPA_POWER_SWITCH = BestwaySwitchEntityDescription(
     turn_off_fn=lambda api, device_id: api.hydrojet_spa_set_power(device_id, False),
 )
 
-_HYDROJET_SPA_FILTER_SWITCH = BestwaySwitchEntityDescription(
+_AIRJET_V01_HYDROJET_SPA_FILTER_SWITCH = BestwaySwitchEntityDescription(
     key="spa_filter_power",
     name="Spa Filter",
     icon=Icon.FILTER,
@@ -99,16 +99,14 @@ _HYDROJET_SPA_JETS_SWITCH = BestwaySwitchEntityDescription(
     turn_off_fn=lambda api, device_id: api.hydrojet_spa_set_jets(device_id, False),
 )
 
-_POOL_FILTER_SWITCH_TYPES = [
-    BestwaySwitchEntityDescription(
-        key="pool_filter_power",
-        name="Pool Filter Power",
-        icon=Icon.FILTER,
-        value_fn=lambda s: bool(s.attrs["power"]),
-        turn_on_fn=lambda api, device_id: api.pool_filter_set_power(device_id, True),
-        turn_off_fn=lambda api, device_id: api.pool_filter_set_power(device_id, False),
-    ),
-]
+_POOL_FILTER_POWER_SWITCH = BestwaySwitchEntityDescription(
+    key="pool_filter_power",
+    name="Pool Filter Power",
+    icon=Icon.FILTER,
+    value_fn=lambda s: bool(s.attrs["power"]),
+    turn_on_fn=lambda api, device_id: api.pool_filter_set_power(device_id, True),
+    turn_off_fn=lambda api, device_id: api.pool_filter_set_power(device_id, False),
+)
 
 
 async def async_setup_entry(
@@ -125,22 +123,22 @@ async def async_setup_entry(
         if device.device_type == BestwayDeviceType.AIRJET_SPA:
             entities.extend(
                 [
-                    SpaSwitch(
+                    BestwaySwitch(
                         coordinator, config_entry, device_id, _AIRJET_SPA_POWER_SWITCH
                     ),
-                    SpaSwitch(
+                    BestwaySwitch(
                         coordinator,
                         config_entry,
                         device_id,
                         _AIRJET_SPA_FILTER_SWITCH,
                     ),
-                    SpaSwitch(
+                    BestwaySwitch(
                         coordinator,
                         config_entry,
                         device_id,
                         _AIRJET_SPA_BUBBLES_SWITCH,
                     ),
-                    SpaSwitch(
+                    BestwaySwitch(
                         coordinator,
                         config_entry,
                         device_id,
@@ -152,17 +150,17 @@ async def async_setup_entry(
         if device.device_type == BestwayDeviceType.AIRJET_V01_SPA:
             entities.extend(
                 [
-                    SpaSwitch(
+                    BestwaySwitch(
                         coordinator,
                         config_entry,
                         device_id,
-                        _HYDROJET_SPA_POWER_SWITCH,
+                        _AIRJET_V01_HYDROJET_SPA_POWER_SWITCH,
                     ),
-                    SpaSwitch(
+                    BestwaySwitch(
                         coordinator,
                         config_entry,
                         device_id,
-                        _HYDROJET_SPA_FILTER_SWITCH,
+                        _AIRJET_V01_HYDROJET_SPA_FILTER_SWITCH,
                     ),
                 ]
             )
@@ -170,19 +168,19 @@ async def async_setup_entry(
         if device.device_type == BestwayDeviceType.HYDROJET_PRO_SPA:
             entities.extend(
                 [
-                    SpaSwitch(
+                    BestwaySwitch(
                         coordinator,
                         config_entry,
                         device_id,
-                        _HYDROJET_SPA_POWER_SWITCH,
+                        _AIRJET_V01_HYDROJET_SPA_POWER_SWITCH,
                     ),
-                    SpaSwitch(
+                    BestwaySwitch(
                         coordinator,
                         config_entry,
                         device_id,
-                        _HYDROJET_SPA_FILTER_SWITCH,
+                        _AIRJET_V01_HYDROJET_SPA_FILTER_SWITCH,
                     ),
-                    SpaSwitch(
+                    BestwaySwitch(
                         coordinator,
                         config_entry,
                         device_id,
@@ -193,51 +191,18 @@ async def async_setup_entry(
 
         if device.device_type == BestwayDeviceType.POOL_FILTER:
             entities.extend(
-                PoolFilterSwitch(coordinator, config_entry, device_id, description)
-                for description in _POOL_FILTER_SWITCH_TYPES
+                [
+                    BestwaySwitch(
+                        coordinator, config_entry, device_id, _POOL_FILTER_POWER_SWITCH
+                    )
+                ]
             )
 
     async_add_entities(entities)
 
 
-class SpaSwitch(BestwayEntity, SwitchEntity):
-    """Bestway switch entity for spa devices."""
-
-    entity_description: BestwaySwitchEntityDescription
-
-    def __init__(
-        self,
-        coordinator: BestwayUpdateCoordinator,
-        config_entry: ConfigEntry,
-        device_id: str,
-        description: BestwaySwitchEntityDescription,
-    ) -> None:
-        """Initialize switch."""
-        super().__init__(coordinator, config_entry, device_id)
-        self.entity_description = description
-        self._attr_unique_id = f"{device_id}_{description.key}"
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return true if the switch is on."""
-        if status := self.status:
-            return self.entity_description.value_fn(status)
-
-        return None
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        """Turn the switch on."""
-        await self.entity_description.turn_on_fn(self.coordinator.api, self.device_id)
-        await self.coordinator.async_refresh()
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        """Turn the switch off."""
-        await self.entity_description.turn_off_fn(self.coordinator.api, self.device_id)
-        await self.coordinator.async_refresh()
-
-
-class PoolFilterSwitch(BestwayEntity, SwitchEntity):
-    """Bestway switch entity for pool filter devices."""
+class BestwaySwitch(BestwayEntity, SwitchEntity):
+    """Bestway switch entity."""
 
     entity_description: BestwaySwitchEntityDescription
 

@@ -4,14 +4,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum, IntEnum, auto
 from logging import getLogger
-from time import time
 
 from typing import Any
 
 _LOGGER = getLogger(__name__)
-
-# How old the latest update can be before a spa is considered offline
-_CONNECTIVITY_TIMEOUT = 1000
 
 
 class BestwayDeviceType(Enum):
@@ -131,11 +127,6 @@ class BestwayDeviceStatus:
 
     timestamp: int
     attrs: dict[str, Any]
-
-    @property
-    def online(self) -> bool:
-        """Determine whether the device is online based on the age of the latest update."""
-        return self.timestamp > (time() - _CONNECTIVITY_TIMEOUT)
 
 
 @dataclass

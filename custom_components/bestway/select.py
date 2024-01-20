@@ -72,7 +72,7 @@ async def async_setup_entry(
     for device_id, device in coordinator.api.devices.items():
         if device.device_type == BestwayDeviceType.AIRJET_V01_SPA:
             entities.append(
-                SpaBubblesSelect(
+                ThreeWaySpaBubblesSelect(
                     coordinator,
                     config_entry,
                     device_id,
@@ -82,7 +82,7 @@ async def async_setup_entry(
 
         if device.device_type == BestwayDeviceType.HYDROJET_PRO_SPA:
             entities.append(
-                SpaBubblesSelect(
+                ThreeWaySpaBubblesSelect(
                     coordinator,
                     config_entry,
                     device_id,
@@ -93,7 +93,7 @@ async def async_setup_entry(
     async_add_entities(entities)
 
 
-class SpaBubblesSelect(BestwayEntity, SelectEntity):
+class ThreeWaySpaBubblesSelect(BestwayEntity, SelectEntity):
     """Bubbles selection for spa devices that support 3 levels."""
 
     entity_description: BubblesSelectEntityDescription
