@@ -15,7 +15,7 @@ class BestwayDeviceType(Enum):
 
     AIRJET_SPA = "Airjet"
     AIRJET_V01_SPA = "Airjet V01"
-    HYDROJET_PRO_SPA = "Hydrojet Pro"
+    HYDROJET_SPA = "Hydrojet"
     POOL_FILTER = "Pool Filter"
     UNKNOWN = "Unknown"
 
@@ -28,7 +28,7 @@ class BestwayDeviceType(Enum):
         if product_name == "Airjet_V01":
             return BestwayDeviceType.AIRJET_V01_SPA
         if product_name == "Hydrojet":
-            return BestwayDeviceType.HYDROJET_PRO_SPA
+            return BestwayDeviceType.HYDROJET_SPA
         if product_name == "泳池过滤器":
             # Chinese translates to "pool filter"
             return BestwayDeviceType.POOL_FILTER

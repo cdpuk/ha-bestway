@@ -88,7 +88,7 @@ async def async_setup_entry(
                 ]
             )
 
-        if device.device_type == BestwayDeviceType.HYDROJET_PRO_SPA:
+        if device.device_type == BestwayDeviceType.HYDROJET_SPA:
             entities.extend(
                 [
                     DeviceConnectivitySensor(
