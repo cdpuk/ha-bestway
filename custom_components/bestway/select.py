@@ -46,7 +46,9 @@ _AIRJET_V01_BUBBLES_SELECT_DESCRIPTION = BubblesSelectEntityDescription(
     options=list(_BUBBLES_OPTIONS.values()),
     icon=Icon.BUBBLES,
     name="Spa Bubbles",
-    set_fn=lambda api, device_id, level: api.hydrojet_spa_set_bubbles(device_id, level),
+    set_fn=lambda api, device_id, level: api.airjet_v01_spa_set_bubbles(
+        device_id, level
+    ),
     get_fn=lambda api_value: AIRJET_V01_BUBBLES_MAP.from_api_value(api_value),
 )
 
