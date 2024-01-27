@@ -9,8 +9,9 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
 from . import BestwayUpdateCoordinator
+from .bestway.model import BestwayDeviceType
 from .const import DOMAIN
-from .entity import BestwayEntity, BestwayPoolFilterEntity
+from .entity import BestwayEntity
 
 _POOL_FILTER_TIME = NumberEntityDescription(
     key="pool_filter_time",
@@ -30,14 +31,17 @@ async def async_setup_entry(
     coordinator: BestwayUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id]
     entities: list[BestwayEntity] = []
 
-    entities.extend(
-        PoolFilterTimeNumber(coordinator, config_entry, device_id, _POOL_FILTER_TIME)
-        for device_id in coordinator.data.pool_filter_devices.keys()
-    )
+    for device_id, device in coordinator.api.devices.items():
+        if device.device_type == BestwayDeviceType.POOL_FILTER:
+            entities.append(
+                PoolFilterTimeNumber(
+                    coordinator, config_entry, device_id, _POOL_FILTER_TIME
+                )
+            )
     async_add_entities(entities)
 
 
-class PoolFilterTimeNumber(BestwayPoolFilterEntity, NumberEntity):
+class PoolFilterTimeNumber(BestwayEntity, NumberEntity):
     """Pool filter entity representing the number of hours to stay on for."""
 
     def __init__(
@@ -56,7 +60,7 @@ class PoolFilterTimeNumber(BestwayPoolFilterEntity, NumberEntity):
     def native_value(self) -> StateType:
         """Get the number of hours to stay on for."""
         if self.status is not None:
-            return self.status.time
+            return self.status.attrs["time"]
         return None
 
     async def async_set_native_value(self, value: float) -> None:

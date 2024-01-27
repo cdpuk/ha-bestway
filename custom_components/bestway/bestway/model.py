@@ -2,17 +2,20 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum, auto
-from time import time
+from enum import Enum, IntEnum, auto
+from logging import getLogger
 
-# How old the latest update can be before a spa is considered offline
-_CONNECTIVITY_TIMEOUT = 1000
+from typing import Any
+
+_LOGGER = getLogger(__name__)
 
 
 class BestwayDeviceType(Enum):
     """Bestway device types."""
 
     AIRJET_SPA = "Airjet"
+    AIRJET_V01_SPA = "Airjet V01"
+    HYDROJET_SPA = "Hydrojet"
     POOL_FILTER = "Pool Filter"
     UNKNOWN = "Unknown"
 
@@ -22,6 +25,10 @@ class BestwayDeviceType(Enum):
 
         if product_name == "Airjet":
             return BestwayDeviceType.AIRJET_SPA
+        if product_name == "Airjet_V01":
+            return BestwayDeviceType.AIRJET_V01_SPA
+        if product_name == "Hydrojet":
+            return BestwayDeviceType.HYDROJET_SPA
         if product_name == "泳池过滤器":
             # Chinese translates to "pool filter"
             return BestwayDeviceType.POOL_FILTER
@@ -33,6 +40,90 @@ class TemperatureUnit(Enum):
 
     CELSIUS = auto()
     FAHRENHEIT = auto()
+
+
+class HydrojetFilter(IntEnum):
+    """Airjet_V01/Hydrojet filter values."""
+
+    OFF = 0
+    ON = 2
+
+
+class HydrojetHeat(IntEnum):
+    """Airjet_V01/Hydrojet heater values."""
+
+    OFF = 0
+    ON = 3
+
+
+class BubblesLevel(Enum):
+    """Bubbles levels available to a range of spa models."""
+
+    OFF = auto()
+    MEDIUM = auto()
+    MAX = auto()
+
+
+class BubblesValues:
+    """Values that represent a given level of bubbles.
+
+    The write_value is the integer used to set the level via the API.
+
+    The read_values list contains a set of integers that may be read from the API to signal the
+    desired state. This came about because different users of Airjet_V01 devices reported that
+    their app/device would sometimes represent MEDIUM bubbles as 50, but sometimes as 51.
+    """
+
+    write_value: int
+    read_values: list[int]
+
+    def __init__(self, write_value: int, read_values: list[int] | None = None) -> None:
+        """Define the values used for a specific bubbles level."""
+        self.write_value = write_value
+        if read_values:
+            self.read_values = read_values
+        else:
+            self.read_values = [write_value]
+
+
+class BubblesMapping:
+    """Maps off, medium and max bubbles levels to integer API values."""
+
+    def __init__(
+        self, off_val: BubblesValues, medium_val: BubblesValues, max_val: BubblesValues
+    ) -> None:
+        """Construct a bubbles mapping using the given integer values."""
+        self.off_val = off_val
+        self.medium_val = medium_val
+        self.max_val = max_val
+
+    def to_api_value(self, level: BubblesLevel) -> int:
+        """Get the API value to be used when setting the given bubbles level."""
+
+        if level == BubblesLevel.MAX:
+            return self.max_val.write_value
+        elif level == BubblesLevel.MEDIUM:
+            return self.medium_val.write_value
+        else:
+            return self.off_val.write_value
+
+    def from_api_value(self, value: int) -> BubblesLevel:
+        """Get the enum value based on the 'wave' field in the API response."""
+
+        if value in self.max_val.read_values:
+            return BubblesLevel.MAX
+        if value in self.medium_val.read_values:
+            return BubblesLevel.MEDIUM
+        if value in self.off_val.read_values:
+            return BubblesLevel.OFF
+
+        _LOGGER.warning("Unexpected API value %d - assuming OFF", value)
+        return BubblesLevel.OFF
+
+
+BV = BubblesValues
+AIRJET_V01_BUBBLES_MAP = BubblesMapping(BV(0), BV(50, [50, 51]), BV(100))
+HYDROJET_BUBBLES_MAP = BubblesMapping(BV(0), BV(40), BV(100))
 
 
 @dataclass
@@ -60,40 +151,7 @@ class BestwayDeviceStatus:
     """A snapshot of the status of a spa (i.e. Lay-Z-Spa) device."""
 
     timestamp: int
-
-    @property
-    def online(self) -> bool:
-        """Determine whether the device is online based on the age of the latest update."""
-        return self.timestamp > (time() - _CONNECTIVITY_TIMEOUT)
-
-
-@dataclass
-class BestwaySpaDeviceStatus(BestwayDeviceStatus):
-    """A snapshot of the status of a spa (i.e. Lay-Z-Spa) device."""
-
-    spa_power: bool
-    temp_now: float
-    temp_set: float
-    temp_set_unit: TemperatureUnit
-    heat_power: bool
-    heat_temp_reach: bool
-    filter_power: bool
-    wave_power: bool
-    locked: bool
-    errors: list[int]
-    earth_fault: bool
-
-
-@dataclass
-class BestwayPoolFilterDeviceStatus(BestwayDeviceStatus):
-    """A snapshot of the status of a filter device."""
-
-    timestamp: int
-    filter_change_required: bool
-    power: bool
-    time: int
-    running: bool
-    error: bool
+    attrs: dict[str, Any]
 
 
 @dataclass
