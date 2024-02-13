@@ -1,4 +1,5 @@
 """Bestway API."""
+
 from dataclasses import dataclass
 import json
 from logging import getLogger

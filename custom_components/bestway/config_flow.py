@@ -1,4 +1,5 @@
 """Config flow for Bestway integration."""
+
 from __future__ import annotations
 
 from logging import getLogger
