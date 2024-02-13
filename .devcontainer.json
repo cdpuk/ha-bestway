@@ -1,5 +1,5 @@
 {
-	"image": "mcr.microsoft.com/vscode/devcontainers/python:0-3.11-bullseye",
+	"image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm",
 	"name": "bestway",
 	"appPort": [
 		"9125:8123"
