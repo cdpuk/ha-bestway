@@ -20,6 +20,11 @@ _SPA_MIN_TEMP_C = 20
 _SPA_MIN_TEMP_F = 68
 _SPA_MAX_TEMP_C = 40
 _SPA_MAX_TEMP_F = 104
+_CLIMATE_FEATURES = (
+    ClimateEntityFeature.TARGET_TEMPERATURE
+    | ClimateEntityFeature.TURN_OFF
+    | ClimateEntityFeature.TURN_ON
+)
 
 
 async def async_setup_entry(
@@ -50,10 +55,11 @@ class AirjetSpaThermostat(BestwayEntity, ClimateEntity):
     """A thermostat that works for Airjet spa devices."""
 
     _attr_name = "Spa Thermostat"
-    _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
+    _attr_supported_features = _CLIMATE_FEATURES
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
     _attr_precision = PRECISION_WHOLE
     _attr_target_temperature_step = 1
+    _enable_turn_on_off_backwards_compatibility = False
 
     def __init__(
         self,
@@ -157,10 +163,11 @@ class AirjetV01HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
     """A thermostat that works for Airjet_V01 and Hydrojet devices."""
 
     _attr_name = "Spa Thermostat"
-    _attr_supported_features = ClimateEntityFeature.TARGET_TEMPERATURE
+    _attr_supported_features = _CLIMATE_FEATURES
     _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
     _attr_precision = PRECISION_WHOLE
     _attr_target_temperature_step = 1
+    _enable_turn_on_off_backwards_compatibility = False
 
     def __init__(
         self,
