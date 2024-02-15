@@ -1,9 +1,9 @@
 """Data update coordinator for the Bestway API."""
 
+import asyncio
 from datetime import timedelta
 from logging import getLogger
 
-import async_timeout
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
@@ -32,7 +32,7 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
         so entities can quickly look up their data.
         """
         try:
-            async with async_timeout.timeout(10):
+            async with asyncio.timeout(10):
                 await self.api.refresh_bindings()
                 return await self.api.fetch_data()
         except Exception as err:

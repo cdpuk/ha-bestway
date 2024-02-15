@@ -1,5 +1,6 @@
 """Bestway API."""
 
+import asyncio
 from dataclasses import dataclass
 import json
 from logging import getLogger
@@ -8,7 +9,6 @@ from time import time
 from typing import Any
 
 from aiohttp import ClientResponse, ClientSession
-import async_timeout
 
 from .model import (
     AIRJET_V01_BUBBLES_MAP,
@@ -122,7 +122,7 @@ class BestwayApi:
         """
         body = {"username": username, "password": password, "lang": "en"}
 
-        async with async_timeout.timeout(_TIMEOUT):
+        async with asyncio.timeout(_TIMEOUT):
             response = await session.post(
                 f"{api_root}/app/login", headers=_HEADERS, json=body
             )
@@ -426,7 +426,7 @@ class BestwayApi:
         """Make an API call to the specified URL, returning the response as a JSON object."""
         headers = dict(_HEADERS)
         headers["X-Gizwits-User-token"] = self._user_token
-        async with async_timeout.timeout(_TIMEOUT):
+        async with asyncio.timeout(_TIMEOUT):
             response = await self._session.get(url, headers=headers)
             await _raise_for_status(response)
 
@@ -448,7 +448,7 @@ class BestwayApi:
         """Make an API call to the specified URL, returning the response as a JSON object."""
         headers = dict(_HEADERS)
         headers["X-Gizwits-User-token"] = self._user_token
-        async with async_timeout.timeout(_TIMEOUT):
+        async with asyncio.timeout(_TIMEOUT):
             response = await self._session.post(url, headers=headers, json=body)
             await _raise_for_status(response)
 

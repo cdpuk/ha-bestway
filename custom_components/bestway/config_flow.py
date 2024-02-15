@@ -2,12 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
 from logging import getLogger
 
 from typing import Any
 
 from aiohttp import ClientConnectionError
-import async_timeout
 from homeassistant.config_entries import ConfigFlow
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResult
@@ -59,7 +59,7 @@ async def validate_input(
     username = user_input[CONF_USERNAME]
     api_root = user_input[CONF_API_ROOT]
     session = async_get_clientsession(hass)
-    async with async_timeout.timeout(10):
+    async with asyncio.timeout(10):
         token = await BestwayApi.get_user_token(
             session, username, user_input[CONF_PASSWORD], api_root
         )
