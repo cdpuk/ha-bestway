@@ -89,7 +89,10 @@ async def async_setup_entry(
                 ]
             )
 
-        if device.device_type == BestwayDeviceType.HYDROJET_SPA:
+        if device.device_type in [
+            BestwayDeviceType.HYDROJET_SPA,
+            BestwayDeviceType.HYDROJET_PRO,
+        ]:
             entities.extend(
                 [
                     DeviceConnectivitySensor(
@@ -97,7 +100,8 @@ async def async_setup_entry(
                         config_entry,
                         device_id,
                         _SPA_CONNECTIVITY_SENSOR_DESCRIPTION,
-                    )
+                    ),
+                    HydrojetSpaErrorsSensor(coordinator, config_entry, device_id),
                 ]
             )
 
@@ -152,7 +156,7 @@ class DeviceConnectivitySensor(BestwayEntity, BinarySensorEntity):
 
 
 class AirjetSpaErrorsSensor(BestwayEntity, BinarySensorEntity):
-    """Sensor to indicate an error state for a spa."""
+    """Sensor to indicate an error state for an Airjet spa."""
 
     def __init__(
         self,
@@ -200,6 +204,59 @@ class AirjetSpaErrorsSensor(BestwayEntity, BinarySensorEntity):
             "e08": self.status.attrs["system_err8"],
             "e09": self.status.attrs["system_err9"],
             "gcf": self.status.attrs["earth"],
+        }
+
+
+class HydrojetSpaErrorsSensor(BestwayEntity, BinarySensorEntity):
+    """Sensor to indicate an error state for a Hydrojet spa."""
+
+    def __init__(
+        self,
+        coordinator: BestwayUpdateCoordinator,
+        config_entry: ConfigEntry,
+        device_id: str,
+    ) -> None:
+        """Initialize sensor."""
+        self.entity_description = _AIRJET_SPA_ERRORS_SENSOR_DESCRIPTION
+        self._attr_entity_category = EntityCategory.DIAGNOSTIC
+        self._attr_unique_id = f"{device_id}_{self.entity_description.key}"
+        super().__init__(
+            coordinator,
+            config_entry,
+            device_id,
+        )
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if the spa is reporting an error."""
+        if not self.status:
+            return None
+
+        errors = []
+        for err_num in [1,2,3,4,5,8,9,12,13]:
+            if self.status.attrs[f"E{str(err_num).zfill(2)}"] == 1:
+                errors.append(err_num)
+
+        return len(errors) > 0 or self.status.attrs.get("earth")
+
+    @property
+    def extra_state_attributes(self) -> Mapping[str, Any] | None:
+        """Return more detailed error information."""
+        if not self.status:
+            return None
+
+        # Only return errors listed in the instruction manual.
+        return {
+            "e01": self.status.attrs["E01"],
+            "e02": self.status.attrs["E02"],
+            "e03": self.status.attrs["E03"],
+            "e04": self.status.attrs["E04"],
+            "e05": self.status.attrs["E05"],
+            "e08": self.status.attrs["E08"],
+            "e09": self.status.attrs["E09"],
+            "e12": self.status.attrs["E12"],
+            "e13": self.status.attrs["E13"],
+            "gcf": self.status.attrs.get("earth"), # not always present
         }
 
 
