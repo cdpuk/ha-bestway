@@ -19,6 +19,7 @@
 		"vscode": {
 			"extensions": [
 				"ms-python.python",
+				"github.vscode-github-actions",
 				"github.vscode-pull-request-github",
 				"ryanluker.vscode-coverage-gutters",
 				"ms-python.black-formatter",
