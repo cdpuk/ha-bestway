@@ -3,6 +3,7 @@
 from datetime import datetime, timedelta
 from unittest.mock import patch
 
+from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
@@ -13,6 +14,7 @@ from custom_components.bestway import (
     async_setup_entry,
     async_unload_entry,
 )
+from custom_components.bestway.bestway.model import BestwayUserToken
 from custom_components.bestway.const import (
     CONF_API_ROOT,
     CONF_API_ROOT_EU,
@@ -24,7 +26,7 @@ from custom_components.bestway.const import (
 )
 
 
-async def test_setup_unload_and_reload_entry(hass, bypass_get_data):
+async def test_setup_unload_and_reload_entry(hass: HomeAssistant, bypass_get_data):
     """Test entry setup and unload."""
 
     # This config entry has an auth token that expires far enough in
@@ -39,6 +41,7 @@ async def test_setup_unload_and_reload_entry(hass, bypass_get_data):
             CONF_USER_TOKEN: "t0k3n",
             CONF_USER_TOKEN_EXPIRY: int(future),
         },
+        version=2,
         entry_id="test",
     )
 
@@ -60,7 +63,7 @@ async def test_setup_unload_and_reload_entry(hass, bypass_get_data):
     get_user_token_fn.assert_not_called()
 
     # Reload the entry and assert that the data from above is still there
-    assert await async_reload_entry(hass, config_entry) is None
+    await async_reload_entry(hass, config_entry)
     assert DOMAIN in hass.data and config_entry.entry_id in hass.data[DOMAIN]
     assert isinstance(
         hass.data[DOMAIN][config_entry.entry_id], BestwayUpdateCoordinator
@@ -71,7 +74,7 @@ async def test_setup_unload_and_reload_entry(hass, bypass_get_data):
     assert config_entry.entry_id not in hass.data[DOMAIN]
 
 
-async def test_setup_entry_expired_token(hass, bypass_get_data):
+async def test_setup_entry_expired_token(hass: HomeAssistant, bypass_get_data):
     """Test what happens when the auth token needs to be refreshed."""
 
     # This config entry has an auth token that needs renewal (<30 days)
@@ -85,15 +88,25 @@ async def test_setup_entry_expired_token(hass, bypass_get_data):
             CONF_USER_TOKEN: "t0k3n",
             CONF_USER_TOKEN_EXPIRY: int(future),
         },
+        version=2,
         entry_id="test",
     )
+    config_entry.add_to_hass(hass)
+
+    expected_token = BestwayUserToken(user_id="uid", user_token="new_token", expiry=123)
 
     with patch("custom_components.bestway.bestway.api.BestwayApi.get_user_token") as p:
-        await async_setup_entry(hass, config_entry)
+        p.return_value = expected_token
+        await hass.config_entries.async_setup(config_entry.entry_id)
         p.assert_called_once()
 
+    updated_entry = hass.config_entries.async_get_entry(config_entry.entry_id)
+    assert updated_entry is not None
+    assert updated_entry.data[CONF_USER_TOKEN] == expected_token.user_token
+    assert updated_entry.data[CONF_USER_TOKEN_EXPIRY] == expected_token.expiry
 
-async def test_setup_entry_exception(hass, error_on_get_data):
+
+async def test_setup_entry_exception(hass: HomeAssistant, error_on_get_data):
     """Test ConfigEntryNotReady when API raises an exception during entry setup."""
 
     # This config entry has an auth token that expires in the future
@@ -107,6 +120,7 @@ async def test_setup_entry_exception(hass, error_on_get_data):
             CONF_USER_TOKEN: "t0k3n",
             CONF_USER_TOKEN_EXPIRY: int(future),
         },
+        version=2,
         entry_id="test",
     )
 

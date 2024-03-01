@@ -57,6 +57,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 session, username, password, api_root
             )
         except Exception as ex:  # pylint: disable=broad-except
+            _LOGGER.error("Failed to refresh API token: %s", ex)
             raise ConfigEntryNotReady from ex
         user_token = token.user_token
         user_token_expiry = token.expiry
@@ -108,8 +109,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # In version 1, this was hard coded to the EU endpoint
         new = {**entry.data}
         new[CONF_API_ROOT] = CONF_API_ROOT_EU
-        entry.version = 2
-        hass.config_entries.async_update_entry(entry, data=new)
+        hass.config_entries.async_update_entry(entry, data=new, version=2)
 
         _LOGGER.info("Migration to version %s successful", entry.version)
         return True

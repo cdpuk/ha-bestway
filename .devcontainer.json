@@ -1,5 +1,5 @@
 {
-	"image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm",
+	"image": "mcr.microsoft.com/devcontainers/python:3.11-bookworm",
 	"name": "bestway",
 	"appPort": [
 		"9125:8123"
