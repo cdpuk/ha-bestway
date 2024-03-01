@@ -64,52 +64,22 @@ async def async_setup_entry(
     entities: list[BestwayEntity] = []
 
     for device_id, device in coordinator.api.devices.items():
+        # All devices support the connectivity sensor
+        entities.append(
+            DeviceConnectivitySensor(
+                coordinator,
+                config_entry,
+                device_id,
+                _SPA_CONNECTIVITY_SENSOR_DESCRIPTION,
+            )
+        )
+
         if device.device_type == BestwayDeviceType.AIRJET_SPA:
-            entities.extend(
-                [
-                    DeviceConnectivitySensor(
-                        coordinator,
-                        config_entry,
-                        device_id,
-                        _SPA_CONNECTIVITY_SENSOR_DESCRIPTION,
-                    ),
-                    AirjetSpaErrorsSensor(coordinator, config_entry, device_id),
-                ]
-            )
-
-        if device.device_type == BestwayDeviceType.AIRJET_V01_SPA:
-            entities.extend(
-                [
-                    DeviceConnectivitySensor(
-                        coordinator,
-                        config_entry,
-                        device_id,
-                        _SPA_CONNECTIVITY_SENSOR_DESCRIPTION,
-                    )
-                ]
-            )
-
-        if device.device_type == BestwayDeviceType.HYDROJET_SPA:
-            entities.extend(
-                [
-                    DeviceConnectivitySensor(
-                        coordinator,
-                        config_entry,
-                        device_id,
-                        _SPA_CONNECTIVITY_SENSOR_DESCRIPTION,
-                    )
-                ]
-            )
+            entities.append(AirjetSpaErrorsSensor(coordinator, config_entry, device_id))
 
         if device.device_type == BestwayDeviceType.POOL_FILTER:
             entities.extend(
                 [
-                    DeviceConnectivitySensor(
-                        coordinator,
-                        config_entry,
-                        device_id,
-                        _POOL_FILTER_CONNECTIVITY_SENSOR_DESCRIPTION,
-                    ),
                     PoolFilterChangeRequiredSensor(
                         coordinator, config_entry, device_id
                     ),
@@ -152,7 +122,7 @@ class DeviceConnectivitySensor(BestwayEntity, BinarySensorEntity):
 
 
 class AirjetSpaErrorsSensor(BestwayEntity, BinarySensorEntity):
-    """Sensor to indicate an error state for a spa."""
+    """Sensor to indicate an error state for an Airjet spa."""
 
     def __init__(
         self,

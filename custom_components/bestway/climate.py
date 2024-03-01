@@ -40,9 +40,11 @@ async def async_setup_entry(
     for device_id, device in coordinator.api.devices.items():
         if device.device_type == BestwayDeviceType.AIRJET_SPA:
             entities.append(AirjetSpaThermostat(coordinator, config_entry, device_id))
+
         if device.device_type in [
             BestwayDeviceType.AIRJET_V01_SPA,
             BestwayDeviceType.HYDROJET_SPA,
+            BestwayDeviceType.HYDROJET_PRO_SPA,
         ]:
             entities.append(
                 AirjetV01HydrojetSpaThermostat(coordinator, config_entry, device_id)
