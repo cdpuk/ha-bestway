@@ -64,56 +64,22 @@ async def async_setup_entry(
     entities: list[BestwayEntity] = []
 
     for device_id, device in coordinator.api.devices.items():
+        # All devices support the connectivity sensor
+        entities.append(
+            DeviceConnectivitySensor(
+                coordinator,
+                config_entry,
+                device_id,
+                _SPA_CONNECTIVITY_SENSOR_DESCRIPTION,
+            )
+        )
+
         if device.device_type == BestwayDeviceType.AIRJET_SPA:
-            entities.extend(
-                [
-                    DeviceConnectivitySensor(
-                        coordinator,
-                        config_entry,
-                        device_id,
-                        _SPA_CONNECTIVITY_SENSOR_DESCRIPTION,
-                    ),
-                    AirjetSpaErrorsSensor(coordinator, config_entry, device_id),
-                ]
-            )
-
-        if device.device_type == BestwayDeviceType.AIRJET_V01_SPA:
-            entities.extend(
-                [
-                    DeviceConnectivitySensor(
-                        coordinator,
-                        config_entry,
-                        device_id,
-                        _SPA_CONNECTIVITY_SENSOR_DESCRIPTION,
-                    )
-                ]
-            )
-
-        if device.device_type in [
-            BestwayDeviceType.HYDROJET_SPA,
-            BestwayDeviceType.HYDROJET_PRO,
-        ]:
-            entities.extend(
-                [
-                    DeviceConnectivitySensor(
-                        coordinator,
-                        config_entry,
-                        device_id,
-                        _SPA_CONNECTIVITY_SENSOR_DESCRIPTION,
-                    ),
-                    HydrojetSpaErrorsSensor(coordinator, config_entry, device_id),
-                ]
-            )
+            entities.append(AirjetSpaErrorsSensor(coordinator, config_entry, device_id))
 
         if device.device_type == BestwayDeviceType.POOL_FILTER:
             entities.extend(
                 [
-                    DeviceConnectivitySensor(
-                        coordinator,
-                        config_entry,
-                        device_id,
-                        _POOL_FILTER_CONNECTIVITY_SENSOR_DESCRIPTION,
-                    ),
                     PoolFilterChangeRequiredSensor(
                         coordinator, config_entry, device_id
                     ),
@@ -204,59 +170,6 @@ class AirjetSpaErrorsSensor(BestwayEntity, BinarySensorEntity):
             "e08": self.status.attrs["system_err8"],
             "e09": self.status.attrs["system_err9"],
             "gcf": self.status.attrs["earth"],
-        }
-
-
-class HydrojetSpaErrorsSensor(BestwayEntity, BinarySensorEntity):
-    """Sensor to indicate an error state for a Hydrojet spa."""
-
-    def __init__(
-        self,
-        coordinator: BestwayUpdateCoordinator,
-        config_entry: ConfigEntry,
-        device_id: str,
-    ) -> None:
-        """Initialize sensor."""
-        self.entity_description = _AIRJET_SPA_ERRORS_SENSOR_DESCRIPTION
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
-        self._attr_unique_id = f"{device_id}_{self.entity_description.key}"
-        super().__init__(
-            coordinator,
-            config_entry,
-            device_id,
-        )
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return true if the spa is reporting an error."""
-        if not self.status:
-            return None
-
-        errors = []
-        for err_num in [1,2,3,4,5,8,9,12,13]:
-            if self.status.attrs[f"E{str(err_num).zfill(2)}"] == 1:
-                errors.append(err_num)
-
-        return len(errors) > 0 or self.status.attrs.get("earth")
-
-    @property
-    def extra_state_attributes(self) -> Mapping[str, Any] | None:
-        """Return more detailed error information."""
-        if not self.status:
-            return None
-
-        # Only return errors listed in the instruction manual.
-        return {
-            "e01": self.status.attrs["E01"],
-            "e02": self.status.attrs["E02"],
-            "e03": self.status.attrs["E03"],
-            "e04": self.status.attrs["E04"],
-            "e05": self.status.attrs["E05"],
-            "e08": self.status.attrs["E08"],
-            "e09": self.status.attrs["E09"],
-            "e12": self.status.attrs["E12"],
-            "e13": self.status.attrs["E13"],
-            "gcf": self.status.attrs.get("earth"), # not always present
         }
 
 

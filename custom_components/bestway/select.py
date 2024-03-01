@@ -85,7 +85,7 @@ async def async_setup_entry(
 
         if device.device_type in [
             BestwayDeviceType.HYDROJET_SPA,
-            BestwayDeviceType.HYDROJET_PRO,
+            BestwayDeviceType.HYDROJET_PRO_SPA,
         ]:
             entities.append(
                 ThreeWaySpaBubblesSelect(
