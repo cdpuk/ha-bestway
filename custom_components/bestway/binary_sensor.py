@@ -65,31 +65,38 @@ async def async_setup_entry(
     entities: list[BestwayEntity] = []
 
     for device_id, device in coordinator.api.devices.items():
-        # All devices support the connectivity sensor
-        entities.append(
-            DeviceConnectivitySensor(
-                coordinator,
-                config_entry,
-                device_id,
-                _SPA_CONNECTIVITY_SENSOR_DESCRIPTION,
-            )
-        )
-
         if device.device_type in [
             BestwayDeviceType.AIRJET_SPA,
             BestwayDeviceType.AIRJET_V01_SPA,
             BestwayDeviceType.HYDROJET_SPA,
             BestwayDeviceType.HYDROJET_PRO_SPA,
         ]:
-            entities.append(
-                DeviceErrorsSensor(
-                    coordinator, config_entry, device_id, _SPA_ERRORS_SENSOR_DESCRIPTION
-                )
+            entities.extend(
+                [
+                    DeviceConnectivitySensor(
+                        coordinator,
+                        config_entry,
+                        device_id,
+                        _SPA_CONNECTIVITY_SENSOR_DESCRIPTION,
+                    ),
+                    DeviceErrorsSensor(
+                        coordinator,
+                        config_entry,
+                        device_id,
+                        _SPA_ERRORS_SENSOR_DESCRIPTION,
+                    ),
+                ]
             )
 
         if device.device_type == BestwayDeviceType.POOL_FILTER:
             entities.extend(
                 [
+                    DeviceConnectivitySensor(
+                        coordinator,
+                        config_entry,
+                        device_id,
+                        _POOL_FILTER_CONNECTIVITY_SENSOR_DESCRIPTION,
+                    ),
                     PoolFilterChangeRequiredSensor(
                         coordinator, config_entry, device_id
                     ),
