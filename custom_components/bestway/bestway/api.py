@@ -1,6 +1,7 @@
 """Bestway API."""
 
 import asyncio
+from copy import deepcopy
 from dataclasses import dataclass
 import json
 from logging import getLogger
@@ -142,6 +143,10 @@ class BestwayApi:
     async def _get_devices(self) -> list[BestwayDevice]:
         """Get the list of devices available in the account."""
         api_data = await self._do_get(f"{self._api_root}/app/bindings")
+
+        sanitized_data = self._sanitize_bindings_response(api_data)
+        _LOGGER.debug("Device list refreshed: %s", json.dumps(sanitized_data))
+
         return [
             BestwayDevice(
                 raw["protoc"],
@@ -457,3 +462,26 @@ class BestwayApi:
             # We have to disable the check to avoid an exception.
             response_json: dict[str, Any] = await response.json(content_type=None)
             return response_json
+
+    @staticmethod
+    def _sanitize_bindings_response(bindings: dict[str, Any]) -> dict[str, Any]:
+        """Remove potentially sensitive data from device listings for logging purposes.
+
+        People have a habit of simply copying & pasting to online communities without
+        considering whether any of that information could be abused.
+        """
+
+        # Do all this in a safe way in case the response isn't as expected
+        # At least we'll get log output we can work with
+        sanitized = deepcopy(bindings)
+        for device in sanitized.get("devices", {}):
+            if (did := device.get("did")) is not None:
+                device["did"] = "*" * len(did)
+            if (mac := device.get("passcode")) is not None:
+                device["passcode"] = "*" * len(mac)
+            if (mac := device.get("product_key")) is not None:
+                device["product_key"] = "*" * len(mac)
+            if (mac := device.get("mac")) is not None:
+                device["mac"] = "*" * len(mac)
+
+        return sanitized
