@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
+import re
 
 from typing import Any
 
@@ -28,7 +29,7 @@ _SPA_CONNECTIVITY_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
     name="Spa Connected",
 )
 
-_AIRJET_SPA_ERRORS_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
+_SPA_ERRORS_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
     key="spa_has_error",
     name="Spa Errors",
     device_class=BinarySensorDeviceClass.PROBLEM,
@@ -74,8 +75,17 @@ async def async_setup_entry(
             )
         )
 
-        if device.device_type == BestwayDeviceType.AIRJET_SPA:
-            entities.append(AirjetSpaErrorsSensor(coordinator, config_entry, device_id))
+        if device.device_type in [
+            BestwayDeviceType.AIRJET_SPA,
+            BestwayDeviceType.AIRJET_V01_SPA,
+            BestwayDeviceType.HYDROJET_SPA,
+            BestwayDeviceType.HYDROJET_PRO_SPA,
+        ]:
+            entities.append(
+                DeviceErrorsSensor(
+                    coordinator, config_entry, device_id, _SPA_ERRORS_SENSOR_DESCRIPTION
+                )
+            )
 
         if device.device_type == BestwayDeviceType.POOL_FILTER:
             entities.extend(
@@ -83,7 +93,12 @@ async def async_setup_entry(
                     PoolFilterChangeRequiredSensor(
                         coordinator, config_entry, device_id
                     ),
-                    PoolFilterErrorSensor(coordinator, config_entry, device_id),
+                    DeviceErrorsSensor(
+                        coordinator,
+                        config_entry,
+                        device_id,
+                        _POOL_FILTER_ERROR_SENSOR_DESCRIPTION,
+                    ),
                 ]
             )
 
@@ -121,17 +136,18 @@ class DeviceConnectivitySensor(BestwayEntity, BinarySensorEntity):
         return True
 
 
-class AirjetSpaErrorsSensor(BestwayEntity, BinarySensorEntity):
-    """Sensor to indicate an error state for an Airjet spa."""
+class DeviceErrorsSensor(BestwayEntity, BinarySensorEntity):
+    """Sensor to indicate an error state for all device types."""
 
     def __init__(
         self,
         coordinator: BestwayUpdateCoordinator,
         config_entry: ConfigEntry,
         device_id: str,
+        entity_description: BinarySensorEntityDescription,
     ) -> None:
         """Initialize sensor."""
-        self.entity_description = _AIRJET_SPA_ERRORS_SENSOR_DESCRIPTION
+        self.entity_description = entity_description
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_unique_id = f"{device_id}_{self.entity_description.key}"
         super().__init__(
@@ -140,37 +156,44 @@ class AirjetSpaErrorsSensor(BestwayEntity, BinarySensorEntity):
             device_id,
         )
 
+    def _all_error_properties(self) -> dict[str, bool]:
+        """Get all error properties from the device status."""
+        errors: dict[str, bool] = {}
+
+        if not self.status:
+            return errors
+
+        # Airjet error properties
+        for attr in self.status.attrs:
+            if re.match("system_err\\d+", attr):
+                errors[attr] = bool(self.status.attrs[attr])
+
+        # Airjet ground fault
+        if "earth" in self.status.attrs:
+            errors["earth"] = bool(self.status.attrs["earth"])
+
+        # Airjet_V01 and Hydrojet
+        for attr in self.status.attrs:
+            if re.match("E\\d{2}", attr):
+                errors[attr] = bool(self.status.attrs[attr])
+
+        # Pool filter
+        if "error" in self.status.attrs:
+            errors["error"] = bool(self.status.attrs["error"])
+
+        return errors
+
     @property
     def is_on(self) -> bool | None:
         """Return true if the spa is reporting an error."""
-        if not self.status:
-            return None
-
-        errors = []
-        for err_num in range(1, 10):
-            if self.status.attrs[f"system_err{err_num}"] == 1:
-                errors.append(err_num)
-
-        return len(errors) > 0 or self.status.attrs["earth"]
+        errors = self._all_error_properties()
+        active_errors = {k: v for k, v in errors.items() if v}
+        return len(active_errors) > 0
 
     @property
     def extra_state_attributes(self) -> Mapping[str, Any] | None:
         """Return more detailed error information."""
-        if not self.status:
-            return None
-
-        return {
-            "e01": self.status.attrs["system_err1"],
-            "e02": self.status.attrs["system_err2"],
-            "e03": self.status.attrs["system_err3"],
-            "e04": self.status.attrs["system_err4"],
-            "e05": self.status.attrs["system_err5"],
-            "e06": self.status.attrs["system_err6"],
-            "e07": self.status.attrs["system_err7"],
-            "e08": self.status.attrs["system_err8"],
-            "e09": self.status.attrs["system_err9"],
-            "gcf": self.status.attrs["earth"],
-        }
+        return self._all_error_properties()
 
 
 class PoolFilterChangeRequiredSensor(BestwayEntity, BinarySensorEntity):
@@ -196,28 +219,3 @@ class PoolFilterChangeRequiredSensor(BestwayEntity, BinarySensorEntity):
     def is_on(self) -> bool | None:
         """Return true if the spa is online."""
         return self.status is not None and self.status.attrs["filter"]
-
-
-class PoolFilterErrorSensor(BestwayEntity, BinarySensorEntity):
-    """Sensor to indicate an error state for a pool filter."""
-
-    def __init__(
-        self,
-        coordinator: BestwayUpdateCoordinator,
-        config_entry: ConfigEntry,
-        device_id: str,
-    ) -> None:
-        """Initialize sensor."""
-        self.entity_description = _POOL_FILTER_ERROR_SENSOR_DESCRIPTION
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
-        self._attr_unique_id = f"{device_id}_{self.entity_description.key}"
-        super().__init__(
-            coordinator,
-            config_entry,
-            device_id,
-        )
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return true if the pool filter is reporting an error."""
-        return self.status is not None and self.status.attrs["error"]
