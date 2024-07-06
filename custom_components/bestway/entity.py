@@ -55,4 +55,5 @@ class BestwayEntity(CoordinatorEntity[BestwayUpdateCoordinator]):
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
-        return self.bestway_device is not None and self.bestway_device.is_online
+        return True
+        #return self.bestway_device is not None and self.bestway_device.is_online
