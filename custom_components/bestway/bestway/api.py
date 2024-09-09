@@ -9,7 +9,7 @@ from time import time
 
 from typing import Any
 
-from aiohttp import ClientResponse, ClientSession
+from aiohttp import ClientResponse, ClientResponseError, ClientSession
 
 from .model import (
     AIRJET_V01_BUBBLES_MAP,
@@ -431,15 +431,30 @@ class BestwayApi:
         """Make an API call to the specified URL, returning the response as a JSON object."""
         headers = dict(_HEADERS)
         headers["X-Gizwits-User-token"] = self._user_token
-        async with asyncio.timeout(_TIMEOUT):
-            response = await self._session.get(url, headers=headers)
-            await _raise_for_status(response)
+        last_e=None
+        for retry in range(5):
+            try:
+                async with asyncio.timeout(_TIMEOUT):
+                    response = await self._session.get(url, headers=headers)
+                    await _raise_for_status(response)
 
-            # All API responses are encoded using JSON, however the headers often incorrectly
-            # state 'text/html' as the content type.
-            # We have to disable the check to avoid an exception.
-            response_json: dict[str, Any] = await response.json(content_type=None)
-            return response_json
+                    # All API responses are encoded using JSON, however the headers often incorrectly
+                    # state 'text/html' as the content type.
+                    # We have to disable the check to avoid an exception.
+                    response_json: dict[str, Any] = await response.json(content_type=None)
+                    return response_json
+            except ClientResponseError as e:
+                _LOGGER.warn(f"attempt {retry} failed due to a HTTP error, trying again")
+                last_e = e
+            except TimeoutError as e:
+                _LOGGER.warn(f"attempt {retry} failed due to timing out, trying again")
+                last_e = e
+            except Exception as e:
+                raise e
+            asyncio.sleep(10)
+        raise last_e
+                
+
 
     async def _do_control_post(
         self, device_id: str, **kwargs: int | str
@@ -453,15 +468,28 @@ class BestwayApi:
         """Make an API call to the specified URL, returning the response as a JSON object."""
         headers = dict(_HEADERS)
         headers["X-Gizwits-User-token"] = self._user_token
-        async with asyncio.timeout(_TIMEOUT):
-            response = await self._session.post(url, headers=headers, json=body)
-            await _raise_for_status(response)
+        last_e = None
+        for retry in range(5):
+            try:
+                async with asyncio.timeout(_TIMEOUT):
+                    response = await self._session.post(url, headers=headers, json=body)
+                    await _raise_for_status(response)
 
-            # All API responses are encoded using JSON, however the headers often incorrectly
-            # state 'text/html' as the content type.
-            # We have to disable the check to avoid an exception.
-            response_json: dict[str, Any] = await response.json(content_type=None)
-            return response_json
+                    # All API responses are encoded using JSON, however the headers often incorrectly
+                    # state 'text/html' as the content type.
+                    # We have to disable the check to avoid an exception.
+                    response_json: dict[str, Any] = await response.json(content_type=None)
+                    return response_json
+            except ClientResponseError as e:
+                _LOGGER.warn(f"attempt {retry} failed due to a HTTP error, trying again")
+                last_e = e
+            except TimeoutError as e:
+                _LOGGER.warn(f"attempt {retry} failed due to timing out, trying again")
+                last_e = e
+            except Exception as e:
+                raise e
+            asyncio.sleep(10)
+        raise last_e
 
     @staticmethod
     def _sanitize_bindings_response(bindings: dict[str, Any]) -> dict[str, Any]:
