@@ -44,6 +44,7 @@ async def test_setup_unload_and_reload_entry(hass: HomeAssistant, bypass_get_dat
         version=2,
         entry_id="test",
     )
+    config_entry.add_to_hass(hass)
 
     # Set up the entry and assert that the values set during setup are where we expect
     # them to be. Because we have patched the BestwayUpdateCoordinator.async_get_data
@@ -51,7 +52,7 @@ async def test_setup_unload_and_reload_entry(hass: HomeAssistant, bypass_get_dat
     with patch(
         "custom_components.bestway.bestway.api.BestwayApi.get_user_token"
     ) as get_user_token_fn:
-        assert await async_setup_entry(hass, config_entry)
+        await hass.config_entries.async_setup(config_entry.entry_id)
 
     assert DOMAIN in hass.data and config_entry.entry_id in hass.data[DOMAIN]
     assert isinstance(
