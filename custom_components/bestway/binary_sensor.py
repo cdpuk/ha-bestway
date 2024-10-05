@@ -181,6 +181,11 @@ class DeviceErrorsSensor(BestwayEntity, BinarySensorEntity):
 
         # Airjet_V01 and Hydrojet
         for attr in self.status.attrs:
+            # E32: Not actually an error. This means heating is on but the spa has
+            #      already reached the desired temperature.
+            if attr == "E32":
+                continue
+
             if re.match("E\\d{2}", attr):
                 errors[attr] = bool(self.status.attrs[attr])
 
