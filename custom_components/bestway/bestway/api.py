@@ -55,9 +55,9 @@ class BestwayAuthException(BestwayException):
 
 
 class BestwayTokenInvalidException(BestwayAuthException):
+    """Auth token is invalid or expired."""
 
     def __init__(self) -> None:
-        """Auth token is invalid or expired."""
         super().__init__("Server reports auth token is invalid or expired")
 
 
