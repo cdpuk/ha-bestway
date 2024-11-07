@@ -36,11 +36,14 @@ _PLATFORMS: list[Platform] = [
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up bestway from a config entry."""
-    username = entry.data.get(CONF_USERNAME)
-    password = entry.data.get(CONF_PASSWORD)
-    api_root = entry.data.get(CONF_API_ROOT)
-    user_token = entry.data.get(CONF_USER_TOKEN)
-    user_token_expiry = int(entry.data.get(CONF_USER_TOKEN_EXPIRY))
+    username = str(entry.data.get(CONF_USERNAME))
+    password = str(entry.data.get(CONF_PASSWORD))
+    api_root = str(entry.data.get(CONF_API_ROOT))
+    user_token = str(entry.data.get(CONF_USER_TOKEN))
+    user_token_expiry = entry.data.get(CONF_USER_TOKEN_EXPIRY)
+
+    if not isinstance(user_token_expiry, int):
+        user_token_expiry = 0
 
     session = async_get_clientsession(hass)
 

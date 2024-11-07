@@ -7,7 +7,6 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
-from homeassistant.helpers.typing import StateType
 
 from . import BestwayUpdateCoordinator
 from .bestway.model import BestwayDeviceType
@@ -58,10 +57,12 @@ class PoolFilterTimeNumber(BestwayEntity, NumberEntity):
         self._attr_unique_id = f"{device_id}_{description.key}"
 
     @property
-    def native_value(self) -> StateType:
+    def native_value(self) -> float | None:
         """Get the number of hours to stay on for."""
         if self.status is not None:
-            return self.status.attrs["time"]
+            hours = self.status.attrs["time"]
+            if isinstance(hours, int):
+                return hours
         return None
 
     async def async_set_native_value(self, value: float) -> None:

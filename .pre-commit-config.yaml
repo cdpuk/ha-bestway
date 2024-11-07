@@ -1,12 +1,12 @@
 ---
 repos:
   - repo: https://github.com/asottile/pyupgrade
-    rev: v3.17.0
+    rev: v3.19.0
     hooks:
       - id: pyupgrade
         args: [--py312-plus]
   - repo: https://github.com/psf/black
-    rev: 24.8.0
+    rev: 24.10.0
     hooks:
       - id: black
         args:
@@ -63,7 +63,7 @@ repos:
       - id: prettier
         stages: [manual]
   - repo: https://github.com/cdce8p/python-typing-update
-    rev: v0.6.0
+    rev: v0.7.0
     hooks:
       # Run `python-typing-update` hook manually from time to time
       # to update python typing syntax.
@@ -75,11 +75,19 @@ repos:
           - --force
           - --keep-updates
         files: ^(custom_components|tests|script)/.+\.py$
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.11.2
+  # - repo: https://github.com/pre-commit/mirrors-mypy
+  #   rev: v1.13.0
+  #   hooks:
+  #     - id: mypy
+  #       args:
+  #         - --pretty
+  #         - --show-error-codes
+  #         - --show-error-context
+  - repo: local
     hooks:
       - id: mypy
-        args:
-          - --pretty
-          - --show-error-codes
-          - --show-error-context
+        name: mypy
+        entry: mypy
+        language: system
+        types_or: [python, pyi]
+        require_serial: true

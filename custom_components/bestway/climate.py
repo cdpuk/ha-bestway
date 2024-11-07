@@ -74,14 +74,14 @@ class AirjetSpaThermostat(BestwayEntity, ClimateEntity):
         self._attr_unique_id = f"{device_id}_thermostat"
 
     @property
-    def hvac_mode(self) -> HVACMode | str | None:
+    def hvac_mode(self) -> HVACMode | None:
         """Return the current mode (HEAT or OFF)."""
         if not self.status:
             return None
         return HVACMode.HEAT if self.status.attrs["heat_power"] else HVACMode.OFF
 
     @property
-    def hvac_action(self) -> HVACAction | str | None:
+    def hvac_action(self) -> HVACAction | None:
         """Return the current running action (HEATING or IDLE)."""
         if not self.status:
             return None
@@ -182,14 +182,14 @@ class AirjetV01HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
         self._attr_unique_id = f"{device_id}_thermostat"
 
     @property
-    def hvac_mode(self) -> HVACMode | str | None:
+    def hvac_mode(self) -> HVACMode | None:
         """Return the current mode (HEAT or OFF)."""
         if not self.status:
             return None
         return HVACMode.HEAT if self.status.attrs["heat"] == 3 else HVACMode.OFF
 
     @property
-    def hvac_action(self) -> HVACAction | str | None:
+    def hvac_action(self) -> HVACAction | None:
         """Return the current running action (HEATING or IDLE)."""
         if not self.status:
             return None

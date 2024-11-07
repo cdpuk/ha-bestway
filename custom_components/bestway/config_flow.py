@@ -8,9 +8,8 @@ from logging import getLogger
 from typing import Any
 
 from aiohttp import ClientConnectionError
-from homeassistant.config_entries import ConfigFlow
+from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
 from homeassistant.core import HomeAssistant
-from homeassistant.data_entry_flow import FlowResult
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
@@ -70,14 +69,14 @@ async def validate_input(
     return config_entry_data
 
 
-class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):  # type: ignore[call-arg]
+class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle a config flow for bestway."""
 
     VERSION = 2
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
-    ) -> FlowResult:
+    ) -> ConfigFlowResult:
         """Handle the initial step."""
         if user_input is None:
             return self.async_show_form(
