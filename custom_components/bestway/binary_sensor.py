@@ -140,7 +140,7 @@ class DeviceConnectivitySensor(BestwayEntity, BinarySensorEntity):
     @property
     def available(self) -> bool:
         """Return True, as the connectivity sensor is always available."""
-        return True
+        return self.coordinator.last_update_success
 
 
 class DeviceErrorsSensor(BestwayEntity, BinarySensorEntity):

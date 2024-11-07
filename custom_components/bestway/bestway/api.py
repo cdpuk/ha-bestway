@@ -47,7 +47,7 @@ class BestwayOfflineException(BestwayException):
 
     def __init__(self) -> None:
         """Construct the exception."""
-        super().__init__("Device is offline")
+        super().__init__("Server reports device is offline")
 
 
 class BestwayAuthException(BestwayException):
@@ -55,15 +55,24 @@ class BestwayAuthException(BestwayException):
 
 
 class BestwayTokenInvalidException(BestwayAuthException):
-    """Auth token is invalid or expired."""
+
+    def __init__(self) -> None:
+        """Auth token is invalid or expired."""
+        super().__init__("Server reports auth token is invalid or expired")
 
 
 class BestwayUserDoesNotExistException(BestwayAuthException):
     """User does not exist."""
 
+    def __init__(self) -> None:
+        super().__init__("Server reports user does not exist")
+
 
 class BestwayIncorrectPasswordException(BestwayAuthException):
     """Password is incorrect."""
+
+    def __init__(self) -> None:
+        super().__init__("Server reports password is incorrect")
 
 
 async def _raise_for_status(response: ClientResponse) -> None:
@@ -71,23 +80,24 @@ async def _raise_for_status(response: ClientResponse) -> None:
     if response.ok:
         return
 
-    # Try to parse out the bestway error code
-    try:
-        api_error = await response.json()
-    except Exception:  # pylint: disable=broad-except
-        response.raise_for_status()
+    # The API often provides useful error descriptions in JSON format
+    if response.content_type == "application/json":
+        try:
+            api_error = await response.json()
+        except Exception:  # pylint: disable=broad-except
+            response.raise_for_status()
 
-    error_code = api_error.get("error_code", 0)
-    if error_code == 9004:
-        raise BestwayTokenInvalidException()
-    if error_code == 9005:
-        raise BestwayUserDoesNotExistException()
-    if error_code == 9042:
-        raise BestwayOfflineException()
-    if error_code == 9020:
-        raise BestwayIncorrectPasswordException()
+        error_code = api_error.get("error_code", 0)
+        if error_code == 9004:
+            raise BestwayTokenInvalidException()
+        if error_code == 9005:
+            raise BestwayUserDoesNotExistException()
+        if error_code == 9042:
+            raise BestwayOfflineException()
+        if error_code == 9020:
+            raise BestwayIncorrectPasswordException()
 
-    # If we don't understand the error code, provide more detail for debugging
+    # If we can't pull out a Bestway error code, provide more detail for debugging
     response.raise_for_status()
 
 
