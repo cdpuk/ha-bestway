@@ -19,7 +19,6 @@ You must have an account with the Bestway mobile app ([Android][bestway-android]
 
 Bestway uses different API endpoints for EU and US. If you get an error stating account could not be found, try using the other endpoint. If this does not help, then create a new account under a supported country.
 
-
 ## Device Support
 
 A Wi-Fi enabled model is required. No custom hardware is required.
@@ -37,8 +36,8 @@ This integration is delivered as a HACS custom repository.
 
 Ensure you can control your device using the Bestway mobile app. At time of writing, there was also a Lay-Z-Spa branded app, but despite this being the recommended app in the installation manual, the spa could not be added. The Bestway app worked flawlessly.
 
-* Go to **Configuration** > **Devices & Services** > **Add Integration**, then find **Bestway** in the list.
-* Enter your Bestway username and password when prompted.
+- Go to **Configuration** > **Devices & Services** > **Add Integration**, then find **Bestway** in the list.
+- Enter your Bestway username and password when prompted.
 
 ## Update speed
 
@@ -47,14 +46,15 @@ Any changes made to the spa settings via the Bestway app or physical controls ca
 ## Improvement ideas
 
 Achieve faster (or even local) updates.
-* Capture more traffic from the mobile app to work out how it receives updates so quickly.
-* The integration currently has to poll, but the mobile app is able to reflect changes based on physical button presses within a fraction of a second.
-* A brief recent attempt suggested that the Android app may have certificate pinning enabled, making this slightly harder than expected. Perhaps decompilation is an easier route.
-* We know the spa talks directly to the cloud using MQTT. Traffic captures against the Android app appeared to show only HTTPS traffic.
+
+- Capture more traffic from the mobile app to work out how it receives updates so quickly.
+- The integration currently has to poll, but the mobile app is able to reflect changes based on physical button presses within a fraction of a second.
+- A brief recent attempt suggested that the Android app may have certificate pinning enabled, making this slightly harder than expected. Perhaps decompilation is an easier route.
+- We know the spa talks directly to the cloud using MQTT. Traffic captures against the Android app appeared to show only HTTPS traffic.
 
 ## Acknowledgements
 
-* https://github.com/B-Hartley/bruces_homeassistant_config
+- https://github.com/B-Hartley/bruces_homeassistant_config
 
 ## Contributing
 

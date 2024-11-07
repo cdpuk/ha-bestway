@@ -8,6 +8,7 @@ Before you open a new issue, search through the existing issues to see if others
 -->
 
 ## Version of the custom_component
+
 <!--
 If you are not using the newest version, download and try that before opening an issue
 If you are unsure about the version check the const.py file.
@@ -20,7 +21,6 @@ Provide the model of your device. A link to the Bestway product page is sometime
 ## Describe the bug
 
 A clear and concise description of what the bug is.
-
 
 ## Logs
 

@@ -1,48 +1,45 @@
 {
-	"image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm",
-	"name": "bestway",
-	"appPort": [
-		"9125:8123"
-	],
-	"postCreateCommand": "scripts/setup",
-	"portsAttributes": {
-		"9125": {
-			"label": "Home Assistant",
-			"onAutoForward": "notify"
-		},
-		"5678": {
-			"label": "Debug",
-			"onAutoForward": "ignore"
-		}
-	},
-	"customizations": {
-		"vscode": {
-			"extensions": [
-				"ms-python.python",
-				"github.vscode-github-actions",
-				"github.vscode-pull-request-github",
-				"ryanluker.vscode-coverage-gutters",
-				"ms-python.black-formatter",
-				"ms-python.pylint",
-				"ms-python.vscode-pylance",
-				"bierner.github-markdown-preview"
-			],
-			"settings": {
-				"files.eol": "\n",
-				"editor.tabSize": 4,
-				"terminal.integrated.shell.linux": "/bin/bash",
-				"python.pythonPath": "/usr/bin/python3",
-				"python.analysis.autoSearchPaths": false,
-				"python.formatting.provider": "black",
-				"editor.formatOnPaste": false,
-				"editor.formatOnSave": true,
-				"editor.formatOnType": true,
-				"files.trimTrailingWhitespace": true
-			}
-		}
-	},
-	"remoteUser": "vscode",
-	"features": {
-		"ghcr.io/devcontainers/features/github-cli:1": {}
-	}
+  "image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm",
+  "name": "bestway",
+  "appPort": ["9125:8123"],
+  "postCreateCommand": "scripts/setup",
+  "portsAttributes": {
+    "9125": {
+      "label": "Home Assistant",
+      "onAutoForward": "notify"
+    },
+    "5678": {
+      "label": "Debug",
+      "onAutoForward": "ignore"
+    }
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "github.vscode-github-actions",
+        "github.vscode-pull-request-github",
+        "ryanluker.vscode-coverage-gutters",
+        "ms-python.vscode-pylance",
+        "charliermarsh.ruff",
+        "bierner.github-markdown-preview"
+      ],
+      "settings": {
+        "files.eol": "\n",
+        "editor.tabSize": 4,
+        "terminal.integrated.shell.linux": "/bin/bash",
+        "python.pythonPath": "/usr/bin/python3",
+        "python.analysis.autoSearchPaths": false,
+        "editor.defaultFormatter": "charliermarsh.ruff",
+        "editor.formatOnPaste": false,
+        "editor.formatOnSave": true,
+        "editor.formatOnType": true,
+        "files.trimTrailingWhitespace": true
+      }
+    }
+  },
+  "remoteUser": "vscode",
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {}
+  }
 }

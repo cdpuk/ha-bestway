@@ -1,9 +1,7 @@
 {
   "domain": "bestway",
   "name": "Bestway",
-  "codeowners": [
-    "@cdpuk"
-  ],
+  "codeowners": ["@cdpuk"],
   "config_flow": true,
   "dependencies": [],
   "documentation": "https://github.com/cdpuk/ha-bestway",
