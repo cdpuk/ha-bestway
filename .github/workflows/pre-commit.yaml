@@ -16,4 +16,6 @@ jobs:
       - uses: "actions/setup-python@v5"
         with:
           python-version: "3.12"
+      - name: Install requirements
+        run: python3 -m pip install -r requirements_dev.txt
       - uses: "pre-commit/action@v3.0.1"
