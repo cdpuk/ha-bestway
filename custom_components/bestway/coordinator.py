@@ -5,7 +5,7 @@ from datetime import timedelta
 from logging import getLogger
 
 from homeassistant.core import HomeAssistant
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .bestway.api import BestwayApi, BestwayApiResults
 
@@ -31,10 +31,6 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
         This is the place to pre-process the data to lookup tables
         so entities can quickly look up their data.
         """
-        try:
-            async with asyncio.timeout(10):
-                await self.api.refresh_bindings()
-                return await self.api.fetch_data()
-        except Exception as err:
-            _LOGGER.exception("Data update failed")
-            raise UpdateFailed(f"Error communicating with API: {err}") from err
+        async with asyncio.timeout(10):
+            await self.api.refresh_bindings()
+            return await self.api.fetch_data()
