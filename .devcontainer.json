@@ -1,5 +1,5 @@
 {
-  "image": "mcr.microsoft.com/devcontainers/python:3.12-bookworm",
+  "image": "mcr.microsoft.com/devcontainers/python:3.13-bookworm",
   "name": "bestway",
   "appPort": ["9125:8123"],
   "postCreateCommand": "scripts/setup",
@@ -27,7 +27,6 @@
       "settings": {
         "files.eol": "\n",
         "editor.tabSize": 4,
-        "terminal.integrated.shell.linux": "/bin/bash",
         "python.pythonPath": "/usr/bin/python3",
         "python.analysis.autoSearchPaths": false,
         "editor.defaultFormatter": "charliermarsh.ruff",
