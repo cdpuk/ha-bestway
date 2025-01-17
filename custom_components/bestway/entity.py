@@ -1,6 +1,7 @@
 """Home Assistant entity descriptions."""
 
 from __future__ import annotations
+from datetime import datetime, timedelta
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity import DeviceInfo
@@ -9,6 +10,8 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from . import BestwayUpdateCoordinator
 from .bestway.model import BestwayDevice, BestwayDeviceStatus
 from .const import DOMAIN
+
+_OFFLINE_DEVICE_TIMEOUT = timedelta(minutes=5)
 
 
 class BestwayEntity(CoordinatorEntity[BestwayUpdateCoordinator]):
@@ -55,8 +58,9 @@ class BestwayEntity(CoordinatorEntity[BestwayUpdateCoordinator]):
     @property
     def available(self) -> bool:
         """Return True if entity is available."""
+        offline_cutoff = int((datetime.now() - _OFFLINE_DEVICE_TIMEOUT).timestamp())
         return (
             self.coordinator.last_update_success
-            and self.bestway_device is not None
-            and self.bestway_device.is_online
+            and self.status is not None
+            and self.status.timestamp > offline_cutoff
         )

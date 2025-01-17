@@ -1,7 +1,7 @@
 """Data update coordinator for the Bestway API."""
 
 import asyncio
-from datetime import timedelta
+from datetime import datetime, timedelta
 from logging import getLogger
 
 from homeassistant.core import HomeAssistant
@@ -10,6 +10,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .bestway.api import BestwayApi, BestwayApiResults
 
 _LOGGER = getLogger(__name__)
+_BINDINGS_REFRESH_INTERVAL = timedelta(minutes=10)
 
 
 class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
@@ -24,6 +25,7 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
             update_interval=timedelta(seconds=30),
         )
         self.api = api
+        self.last_bindings_refresh = datetime.min
 
     async def _async_update_data(self) -> BestwayApiResults:
         """Fetch data from API endpoint.
@@ -32,5 +34,9 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
         so entities can quickly look up their data.
         """
         async with asyncio.timeout(10):
-            await self.api.refresh_bindings()
+            # Refresh the device list at a slower rate
+            # This may help with rate limiting
+            if self.last_bindings_refresh + _BINDINGS_REFRESH_INTERVAL < datetime.now():
+                await self.api.refresh_bindings()
+                self.last_bindings_refresh = datetime.now()
             return await self.api.fetch_data()
