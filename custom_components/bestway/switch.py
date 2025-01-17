@@ -19,18 +19,13 @@ from .const import DOMAIN, Icon
 from .entity import BestwayEntity
 
 
-@dataclass(frozen=True)
-class SwitchFunctionsMixin:
-    """Functions for spa devices."""
+@dataclass(frozen=True, kw_only=True)
+class BestwaySwitchEntityDescription(SwitchEntityDescription):  # type: ignore[override]
+    """Entity description for bestway spa switches."""
 
     value_fn: Callable[[BestwayDeviceStatus], bool]
     turn_on_fn: Callable[[BestwayApi, str], Awaitable[None]]
     turn_off_fn: Callable[[BestwayApi, str], Awaitable[None]]
-
-
-@dataclass(frozen=True)
-class BestwaySwitchEntityDescription(SwitchEntityDescription, SwitchFunctionsMixin):
-    """Entity description for bestway spa switches."""
 
 
 _AIRJET_SPA_POWER_SWITCH = BestwaySwitchEntityDescription(

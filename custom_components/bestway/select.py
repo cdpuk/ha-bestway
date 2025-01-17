@@ -29,17 +29,12 @@ _BUBBLES_OPTIONS = {
 }
 
 
-@dataclass(frozen=True)
-class BubblesRequiredKeys:
-    """Mixin for required keys."""
+@dataclass(frozen=True, kw_only=True)
+class BubblesSelectEntityDescription(SelectEntityDescription):
+    """Describes bubbles selection."""
 
     set_fn: Callable[[BestwayApi, str, BubblesLevel], Awaitable[None]]
     get_fn: Callable[[int], BubblesLevel]
-
-
-@dataclass(frozen=True)
-class BubblesSelectEntityDescription(SelectEntityDescription, BubblesRequiredKeys):
-    """Describes bubbles selection."""
 
 
 _AIRJET_V01_BUBBLES_SELECT_DESCRIPTION = BubblesSelectEntityDescription(

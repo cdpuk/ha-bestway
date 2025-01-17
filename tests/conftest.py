@@ -21,8 +21,9 @@ def auto_enable_custom_integrations(enable_custom_integrations):
 @pytest.fixture(name="skip_notifications", autouse=True)
 def skip_notifications_fixture():
     """Skip notification calls."""
-    with patch("homeassistant.components.persistent_notification.async_create"), patch(
-        "homeassistant.components.persistent_notification.async_dismiss"
+    with (
+        patch("homeassistant.components.persistent_notification.async_create"),
+        patch("homeassistant.components.persistent_notification.async_dismiss"),
     ):
         yield
 
@@ -50,8 +51,9 @@ def error_auth():
 @pytest.fixture(name="bypass_get_data")
 def bypass_get_data_fixture():
     """Skip calls to get data from API."""
-    with patch("custom_components.bestway.bestway.api.BestwayApi.fetch_data"), patch(
-        "custom_components.bestway.bestway.api.BestwayApi.refresh_bindings"
+    with (
+        patch("custom_components.bestway.bestway.api.BestwayApi.fetch_data"),
+        patch("custom_components.bestway.bestway.api.BestwayApi.refresh_bindings"),
     ):
         yield
 
