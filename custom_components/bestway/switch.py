@@ -20,7 +20,7 @@ from .entity import BestwayEntity
 
 
 @dataclass(frozen=True, kw_only=True)
-class BestwaySwitchEntityDescription(SwitchEntityDescription):  # type: ignore[override]
+class BestwaySwitchEntityDescription(SwitchEntityDescription):
     """Entity description for bestway spa switches."""
 
     value_fn: Callable[[BestwayDeviceStatus], bool]
