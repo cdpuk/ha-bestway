@@ -4,6 +4,7 @@ import asyncio
 from datetime import timedelta
 from logging import getLogger
 
+from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
@@ -15,11 +16,14 @@ _LOGGER = getLogger(__name__)
 class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
     """Update coordinator that polls the device status for all devices in an account."""
 
-    def __init__(self, hass: HomeAssistant, api: BestwayApi) -> None:
+    def __init__(
+        self, hass: HomeAssistant, config_entry: ConfigEntry, api: BestwayApi
+    ) -> None:
         """Initialize my coordinator."""
         super().__init__(
             hass,
             _LOGGER,
+            config_entry=config_entry,
             name="Bestway API",
             update_interval=timedelta(seconds=30),
         )
