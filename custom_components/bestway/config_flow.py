@@ -24,6 +24,7 @@ from .const import (
     CONF_API_ROOT_EU,
     CONF_API_ROOT_US,
     CONF_PASSWORD,
+    CONF_UID,
     CONF_USER_TOKEN,
     CONF_USER_TOKEN_EXPIRY,
     CONF_USERNAME,
@@ -65,6 +66,7 @@ async def validate_input(
     config_entry_data = dict(user_input)
     config_entry_data[CONF_USER_TOKEN] = token.user_token
     config_entry_data[CONF_USER_TOKEN_EXPIRY] = token.expiry
+    config_entry_data[CONF_UID] = token.user_id
     return config_entry_data
 
 

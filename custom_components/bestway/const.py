@@ -10,6 +10,8 @@ CONF_API_ROOT_EU = "https://euapi.gizwits.com"
 CONF_API_ROOT_US = "https://usapi.gizwits.com"
 CONF_USER_TOKEN = "user_token"
 CONF_USER_TOKEN_EXPIRY = "user_token_expiry"
+CONF_UID = "uid"
+GIZWITS_APP_ID = "98754e684ec045528b073876c34c7348"
 
 
 class Icon(str, Enum):

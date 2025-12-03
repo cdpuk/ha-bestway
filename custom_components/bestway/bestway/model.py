@@ -143,6 +143,8 @@ class BestwayDevice:
     wifi_soft_version: str
     wifi_hard_version: str
     is_online: bool
+    ws_host: str = "m2m.gizwits.com"  # WebSocket hostname from bindings API
+    ws_port: int = 8880  # WebSocket port from bindings API
 
     @property
     def device_type(self) -> BestwayDeviceType:
