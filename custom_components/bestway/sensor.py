@@ -41,6 +41,10 @@ async def async_setup_entry(
             BestwayDeviceType.AIRJET_SPA,
             BestwayDeviceType.HYDROJET_SPA,
             BestwayDeviceType.HYDROJET_PRO_SPA,
+            BestwayDeviceType.AIRJET_V02,
+            BestwayDeviceType.ULTRAFIT_AIRJET_V02,
+            BestwayDeviceType.HYDROJET_V02,
+            BestwayDeviceType.HYDROJET_PRO_V02,
         ]:
             name_prefix = "Spa"
         elif device_info.device_type == BestwayDeviceType.POOL_FILTER:

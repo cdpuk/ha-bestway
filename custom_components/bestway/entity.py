@@ -29,13 +29,24 @@ class BestwayEntity(CoordinatorEntity[BestwayUpdateCoordinator]):
     def device_info(self) -> DeviceInfo:
         """Device information for the spa providing this entity."""
 
-        device_info = self.coordinator.api.devices[self.device_id]
+        device = self.coordinator.api.devices[self.device_id]
+
+        # Build model string like reference: "AIRJET (T53NN8)" or just device type
+        if device.product_series and device.product_id:
+            model = f"{device.product_series} ({device.product_id})"
+        elif device.product_id:
+            model = device.product_id
+        elif device.product_series:
+            model = device.product_series
+        else:
+            model = device.device_type.value
 
         return DeviceInfo(
             identifiers={(DOMAIN, self.device_id)},
-            name=device_info.alias,
-            model=device_info.device_type.value,
+            name=device.alias,
+            model=model,
             manufacturer="Bestway",
+            sw_version=device.mcu_soft_version,  # Add version info
         )
 
     @property

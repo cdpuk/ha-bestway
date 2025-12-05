@@ -50,6 +50,17 @@ async def async_setup_entry(
                 AirjetV01HydrojetSpaThermostat(coordinator, config_entry, device_id)
             )
 
+        # V02 AWS IoT devices (use same entities - normalization handles field names)
+        if device.device_type in [
+            BestwayDeviceType.AIRJET_V02,
+            BestwayDeviceType.ULTRAFIT_AIRJET_V02,
+            BestwayDeviceType.HYDROJET_V02,
+            BestwayDeviceType.HYDROJET_PRO_V02,
+        ]:
+            entities.append(
+                AirjetV01HydrojetSpaThermostat(coordinator, config_entry, device_id)
+            )
+
     async_add_entities(entities)
 
 

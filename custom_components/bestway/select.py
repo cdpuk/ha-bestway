@@ -68,7 +68,11 @@ async def async_setup_entry(
     entities: list[BestwayEntity] = []
 
     for device_id, device in coordinator.api.devices.items():
-        if device.device_type == BestwayDeviceType.AIRJET_V01_SPA:
+        if device.device_type in [
+            BestwayDeviceType.AIRJET_V01_SPA,
+            BestwayDeviceType.AIRJET_V02,
+            BestwayDeviceType.ULTRAFIT_AIRJET_V02,
+        ]:
             entities.append(
                 ThreeWaySpaBubblesSelect(
                     coordinator,
@@ -81,6 +85,8 @@ async def async_setup_entry(
         if device.device_type in [
             BestwayDeviceType.HYDROJET_SPA,
             BestwayDeviceType.HYDROJET_PRO_SPA,
+            BestwayDeviceType.HYDROJET_V02,
+            BestwayDeviceType.HYDROJET_PRO_V02,
         ]:
             entities.append(
                 ThreeWaySpaBubblesSelect(

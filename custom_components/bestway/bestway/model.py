@@ -20,6 +20,11 @@ class BestwayDeviceType(Enum):
     HYDROJET_PRO_SPA = "Hydrojet Pro"
     POOL_FILTER = "Pool Filter"
     UNKNOWN = "Unknown"
+    # V02 backend device types (AWS IoT)
+    AIRJET_V02 = "Airjet V02"
+    ULTRAFIT_AIRJET_V02 = "Ultrafit Airjet V02"
+    HYDROJET_V02 = "Hydrojet V02"
+    HYDROJET_PRO_V02 = "Hydrojet Pro V02"
 
     @staticmethod
     def from_api_product_name(product_name: str) -> BestwayDeviceType:
@@ -37,6 +42,24 @@ class BestwayDeviceType(Enum):
             # Chinese translates to "pool filter"
             return BestwayDeviceType.POOL_FILTER
         return BestwayDeviceType.UNKNOWN
+
+    @staticmethod
+    def from_aws_product_series(product_series: str) -> BestwayDeviceType:
+        """Get the enum value based on AWS IoT 'product_series' field.
+
+        Args:
+            product_series: Product series from AWS IoT API (e.g., "AIRJET", "HYDROJET")
+
+        Returns:
+            Corresponding V02 device type enum value
+        """
+        mapping = {
+            "AIRJET": BestwayDeviceType.AIRJET_V02,
+            "ULTRAFIT_AIRJET": BestwayDeviceType.ULTRAFIT_AIRJET_V02,
+            "HYDROJET": BestwayDeviceType.HYDROJET_V02,
+            "HYDROJET_PRO": BestwayDeviceType.HYDROJET_PRO_V02,
+        }
+        return mapping.get(product_series, BestwayDeviceType.UNKNOWN)
 
 
 class TemperatureUnit(Enum):
@@ -136,7 +159,7 @@ class BestwayDevice:
 
     protocol_version: int
     device_id: str
-    product_name: str
+    product_name: str  # For Gizwits: "Airjet", "Hydrojet_Pro", etc.
     alias: str
     mcu_soft_version: str
     mcu_hard_version: str
@@ -145,10 +168,15 @@ class BestwayDevice:
     is_online: bool
     ws_host: str = "m2m.gizwits.com"  # WebSocket hostname from bindings API
     ws_port: int = 8880  # WebSocket port from bindings API
+    backend: str = "gizwits"  # Backend type: "gizwits" or "aws_iot"
+    product_id: str | None = None  # For AWS IoT: model ID like "T53NN8"
+    product_series: str | None = None  # For AWS IoT: series like "AIRJET", "HYDROJET"
 
     @property
     def device_type(self) -> BestwayDeviceType:
-        """Get the derived device type."""
+        """Get the derived device type based on backend."""
+        if self.backend == "aws_iot" and self.product_series:
+            return BestwayDeviceType.from_aws_product_series(self.product_series)
         return BestwayDeviceType.from_api_product_name(self.product_name)
 
 

@@ -70,6 +70,10 @@ async def async_setup_entry(
             BestwayDeviceType.AIRJET_V01_SPA,
             BestwayDeviceType.HYDROJET_SPA,
             BestwayDeviceType.HYDROJET_PRO_SPA,
+            BestwayDeviceType.AIRJET_V02,
+            BestwayDeviceType.ULTRAFIT_AIRJET_V02,
+            BestwayDeviceType.HYDROJET_V02,
+            BestwayDeviceType.HYDROJET_PRO_V02,
         ]:
             entities.extend(
                 [
