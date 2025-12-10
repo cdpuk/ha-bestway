@@ -21,6 +21,8 @@ from .bestway.api import (
     BestwayUserDoesNotExistException,
 )
 from .const import (
+    BACKEND_AWS_IOT,
+    BACKEND_GIZWITS,
     CONF_API_ROOT,
     CONF_API_ROOT_EU,
     CONF_API_ROOT_US,
@@ -94,11 +96,11 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
                             selector.SelectSelectorConfig(
                                 options=[
                                     selector.SelectOptionDict(
-                                        value="gizwits",
+                                        value=BACKEND_GIZWITS,
                                         label="V01 - Bestway Connect / Lay-Z-Spa WiFi (Gizwits)",
                                     ),
                                     selector.SelectOptionDict(
-                                        value="aws_iot",
+                                        value=BACKEND_AWS_IOT,
                                         label="V02 - Bestway Smart Spa app (AWS IoT)",
                                     ),
                                 ]
@@ -111,7 +113,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
         # Store backend choice and route to appropriate auth flow
         self._backend = user_input["backend"]
 
-        if self._backend == "gizwits":
+        if self._backend == BACKEND_GIZWITS:
             return await self.async_step_gizwits_auth()
         else:
             return await self.async_step_aws_iot_auth()
@@ -140,7 +142,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
             errors["base"] = "unknown_connection_error"
         else:
             # Add backend field for Gizwits
-            config_entry_data["backend"] = "gizwits"
+            config_entry_data["backend"] = BACKEND_GIZWITS
             return self.async_create_entry(
                 title=user_input[CONF_USERNAME], data=config_entry_data
             )
@@ -291,7 +293,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(
                     title=f"Bestway Spa (V02 - {region})",
                     data={
-                        "backend": "aws_iot",
+                        "backend": BACKEND_AWS_IOT,
                         "visitor_id": visitor_id,
                         "token": token,
                         "location": "GB",  # Legacy field

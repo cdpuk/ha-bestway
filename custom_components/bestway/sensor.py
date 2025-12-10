@@ -14,7 +14,7 @@ from homeassistant.helpers.typing import StateType
 
 from . import BestwayUpdateCoordinator
 from .bestway.model import BestwayDevice, BestwayDeviceType
-from .const import DOMAIN, Icon
+from .const import BACKEND_GIZWITS, DOMAIN, Icon
 from .entity import BestwayEntity
 
 
@@ -50,80 +50,125 @@ async def async_setup_entry(
         elif device_info.device_type == BestwayDeviceType.POOL_FILTER:
             name_prefix = "Pool Filter"
 
-        entities.extend(
-            [
-                DeviceSensor(
-                    coordinator,
-                    config_entry,
-                    device_id,
-                    sensor_description=DeviceSensorDescription(
+        # Version sensors - different for V01 vs V02
+        if device_info.backend == BACKEND_GIZWITS:
+            # V01 Gizwits devices: Show MCU and WiFi versions from device object
+            entities.extend(
+                [
+                    DeviceSensor(
+                        coordinator,
+                        config_entry,
+                        device_id,
+                        sensor_description=DeviceSensorDescription(
+                            SensorEntityDescription(
+                                key="protocol_version",
+                                name=f"{name_prefix} Protocol Version",
+                                icon=Icon.PROTOCOL,
+                                entity_category=EntityCategory.DIAGNOSTIC,
+                            ),
+                            lambda device: device.protocol_version,
+                        ),
+                    ),
+                    DeviceSensor(
+                        coordinator,
+                        config_entry,
+                        device_id,
+                        sensor_description=DeviceSensorDescription(
+                            SensorEntityDescription(
+                                key="mcu_soft_version",
+                                name=f"{name_prefix} MCU Software Version",
+                                icon=Icon.SOFTWARE,
+                                entity_category=EntityCategory.DIAGNOSTIC,
+                            ),
+                            lambda device: device.mcu_soft_version,
+                        ),
+                    ),
+                    DeviceSensor(
+                        coordinator,
+                        config_entry,
+                        device_id,
+                        sensor_description=DeviceSensorDescription(
+                            SensorEntityDescription(
+                                key="mcu_hard_version",
+                                name=f"{name_prefix} MCU Hardware Version",
+                                icon=Icon.HARDWARE,
+                                entity_category=EntityCategory.DIAGNOSTIC,
+                            ),
+                            lambda device: device.mcu_hard_version,
+                        ),
+                    ),
+                    DeviceSensor(
+                        coordinator,
+                        config_entry,
+                        device_id,
+                        sensor_description=DeviceSensorDescription(
+                            SensorEntityDescription(
+                                key="wifi_soft_version",
+                                name=f"{name_prefix} Wi-Fi Software Version",
+                                icon=Icon.SOFTWARE,
+                                entity_category=EntityCategory.DIAGNOSTIC,
+                            ),
+                            lambda device: device.wifi_soft_version,
+                        ),
+                    ),
+                    DeviceSensor(
+                        coordinator,
+                        config_entry,
+                        device_id,
+                        sensor_description=DeviceSensorDescription(
+                            SensorEntityDescription(
+                                key="wifi_hard_version",
+                                name=f"{name_prefix} Wi-Fi Hardware Version",
+                                icon=Icon.HARDWARE,
+                                entity_category=EntityCategory.DIAGNOSTIC,
+                            ),
+                            lambda device: device.wifi_hard_version,
+                        ),
+                    ),
+                ]
+            )
+        else:
+            # V02 AWS IoT devices: Show WiFi, TRD, OTA from shadow state
+            entities.extend(
+                [
+                    StateSensor(
+                        coordinator,
+                        config_entry,
+                        device_id,
                         SensorEntityDescription(
-                            key="protocol_version",
-                            name=f"{name_prefix} Protocol Version",
+                            key="wifi_version",
+                            name=f"{name_prefix} WiFi Version",
+                            icon=Icon.SOFTWARE,
+                            entity_category=EntityCategory.DIAGNOSTIC,
+                        ),
+                        "wifi_version",
+                    ),
+                    StateSensor(
+                        coordinator,
+                        config_entry,
+                        device_id,
+                        SensorEntityDescription(
+                            key="trd_version",
+                            name=f"{name_prefix} TRD Version",
+                            icon=Icon.SOFTWARE,
+                            entity_category=EntityCategory.DIAGNOSTIC,
+                        ),
+                        "trd_version",
+                    ),
+                    StateSensor(
+                        coordinator,
+                        config_entry,
+                        device_id,
+                        SensorEntityDescription(
+                            key="ota_status",
+                            name=f"{name_prefix} OTA Status",
                             icon=Icon.PROTOCOL,
                             entity_category=EntityCategory.DIAGNOSTIC,
                         ),
-                        lambda device: device.protocol_version,
+                        "ota_status",
                     ),
-                ),
-                DeviceSensor(
-                    coordinator,
-                    config_entry,
-                    device_id,
-                    sensor_description=DeviceSensorDescription(
-                        SensorEntityDescription(
-                            key="mcu_soft_version",
-                            name=f"{name_prefix} MCU Software Version",
-                            icon=Icon.SOFTWARE,
-                            entity_category=EntityCategory.DIAGNOSTIC,
-                        ),
-                        lambda device: device.mcu_soft_version,
-                    ),
-                ),
-                DeviceSensor(
-                    coordinator,
-                    config_entry,
-                    device_id,
-                    sensor_description=DeviceSensorDescription(
-                        SensorEntityDescription(
-                            key="mcu_hard_version",
-                            name=f"{name_prefix} MCU Hardware Version",
-                            icon=Icon.HARDWARE,
-                            entity_category=EntityCategory.DIAGNOSTIC,
-                        ),
-                        lambda device: device.mcu_hard_version,
-                    ),
-                ),
-                DeviceSensor(
-                    coordinator,
-                    config_entry,
-                    device_id,
-                    sensor_description=DeviceSensorDescription(
-                        SensorEntityDescription(
-                            key="wifi_soft_version",
-                            name=f"{name_prefix} Wi-Fi Software Version",
-                            icon=Icon.SOFTWARE,
-                            entity_category=EntityCategory.DIAGNOSTIC,
-                        ),
-                        lambda device: device.wifi_soft_version,
-                    ),
-                ),
-                DeviceSensor(
-                    coordinator,
-                    config_entry,
-                    device_id,
-                    sensor_description=DeviceSensorDescription(
-                        SensorEntityDescription(
-                            key="wifi_hard_version",
-                            name=f"{name_prefix} Wi-Fi Hardware Version",
-                            icon=Icon.HARDWARE,
-                            entity_category=EntityCategory.DIAGNOSTIC,
-                        ),
-                        lambda device: device.wifi_hard_version,
-                    ),
-                ),
-            ]
-        )
+                ]
+            )
 
     async_add_entities(entities)
 
@@ -151,4 +196,29 @@ class DeviceSensor(BestwayEntity, SensorEntity):
         """Return the relevant property."""
         if (device := self.bestway_device) is not None:
             return self.sensor_description.value_fn(device)
+        return None
+
+
+class StateSensor(BestwayEntity, SensorEntity):
+    """A sensor based on device state attributes (for V02 devices)."""
+
+    def __init__(
+        self,
+        coordinator: BestwayUpdateCoordinator,
+        config_entry: ConfigEntry,
+        device_id: str,
+        entity_description: SensorEntityDescription,
+        state_key: str,
+    ) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, config_entry, device_id)
+        self.entity_description = entity_description
+        self._state_key = state_key
+        self._attr_unique_id = f"{device_id}_{entity_description.key}"
+
+    @property
+    def native_value(self) -> StateType:
+        """Return value from state attrs."""
+        if self.status is not None:
+            return self.status.attrs.get(self._state_key)
         return None

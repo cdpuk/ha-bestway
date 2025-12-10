@@ -30,6 +30,7 @@ from ..bestway.model import (
     BubblesLevel,
     HYDROJET_BUBBLES_MAP,
 )
+from ..const import BACKEND_AWS_IOT
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -135,32 +136,55 @@ class AwsIotApi:
         else:
             wave_normalized = wave_state  # 0 and 100 are same in both
 
-        return {
-            # Version fields (diagnostic)
-            "wifi_version": device_state.get("wifivertion"),  # API typo
-            "ota_status": device_state.get("otastatus"),
-            "mcu_version": device_state.get("mcuversion"),
-            "trd_version": device_state.get("trdversion"),
-            "connect_type": device_state.get("ConnectType"),
-            # Control state - use exact V01 field names!
-            "power": bool(power_state == 1) if power_state is not None else None,
-            "heat": device_state.get("heater_state"),  # Keep numeric (0/3/4)
-            "wave": wave_normalized,  # Normalize for select entity
-            "filter": device_state.get("filter_state"),  # Keep numeric (0/1/2)
-            "jet": bool(device_state.get("hydrojet_state") == 1) if device_state.get("hydrojet_state") is not None else None,
-            "locked": device_state.get("locked"),
-            # Temperature - use V01 field names (capital T!)
-            "Tnow": device_state.get("water_temperature"),
-            "Tset": device_state.get("temperature_setting"),
-            "Tunit": temperature_unit,  # 0=°F, 1=°C (keep numeric)
-            # Errors
-            "warning": 0 if warning == "" else warning,
-            "error": 0 if error_code == "" else error_code,
-            # Status
-            "is_online": device_state.get("is_online"),
-            # V01-specific fields for compatibility
-            "word3": 0,  # Target reached flag (unknown for V02)
-        }
+        # Build normalized dict, only including fields with actual values
+        # This prevents None values from overwriting existing data during merges
+        normalized = {}
+
+        # Version fields (diagnostic) - only if present
+        if "wifivertion" in device_state:
+            normalized["wifi_version"] = device_state["wifivertion"]
+        if "otastatus" in device_state:
+            normalized["ota_status"] = device_state["otastatus"]
+        if "mcuversion" in device_state:
+            normalized["mcu_version"] = device_state["mcuversion"]
+        if "trdversion" in device_state:
+            normalized["trd_version"] = device_state["trdversion"]
+        if "ConnectType" in device_state:
+            normalized["connect_type"] = device_state["ConnectType"]
+
+        # Control state - use exact V01 field names!
+        if power_state is not None:
+            normalized["power"] = bool(power_state == 1)
+        if device_state.get("heater_state") is not None:
+            normalized["heat"] = device_state["heater_state"]
+        if wave_state is not None:
+            normalized["wave"] = wave_normalized
+        if device_state.get("filter_state") is not None:
+            normalized["filter"] = device_state["filter_state"]
+        if device_state.get("hydrojet_state") is not None:
+            normalized["jet"] = bool(device_state["hydrojet_state"] == 1)
+        if device_state.get("locked") is not None:
+            normalized["locked"] = device_state["locked"]
+
+        # Temperature - use V01 field names (capital T!)
+        if device_state.get("water_temperature") is not None:
+            normalized["Tnow"] = device_state["water_temperature"]
+        if device_state.get("temperature_setting") is not None:
+            normalized["Tset"] = device_state["temperature_setting"]
+        normalized["Tunit"] = temperature_unit  # Always include
+
+        # Errors
+        normalized["warning"] = 0 if warning == "" else warning
+        normalized["error"] = 0 if error_code == "" else error_code
+
+        # Status
+        if device_state.get("is_online") is not None:
+            normalized["is_online"] = device_state["is_online"]
+
+        # V01-specific fields for compatibility
+        normalized["word3"] = 0  # Target reached flag (unknown for V02)
+
+        return normalized
 
     @staticmethod
     async def authenticate(
@@ -418,7 +442,7 @@ class AwsIotApi:
         1. GET /api/enduser/homes → list of homes
         2. For each home: GET /api/enduser/home/rooms?home_id=X → rooms
         3. For each room: GET /api/enduser/home/room/devices?room_id=Y → devices
-        4. Create BestwayDevice for each device with backend="aws_iot"
+        4. Create BestwayDevice for each device with backend=BACKEND_AWS_IOT
 
         Note: Device discovery is cached after first successful run.
         Devices are only re-discovered if device list is empty.
@@ -504,7 +528,7 @@ class AwsIotApi:
                 is_online=dev.get("is_online", True),
                 ws_host=dev.get("service_region", "eu-central-1"),  # Store region in ws_host
                 ws_port=443,  # AWS IoT WebSocket uses standard HTTPS port
-                backend="aws_iot",
+                backend=BACKEND_AWS_IOT,
                 product_id=product_id,  # NEW: Model ID for shadow fetch
                 product_series=product_series,  # NEW: Series for device_type
             )
@@ -567,8 +591,21 @@ class AwsIotApi:
                 else:
                     device_state = raw_data
 
+                _LOGGER.debug(
+                    "Raw device_state for %s has %d fields: %s",
+                    device_id[:12],
+                    len(device_state),
+                    list(device_state.keys()),
+                )
+
                 # Normalize AWS field names to Gizwits V01 equivalents
                 mapped = self.normalize_aws_state(device_state)
+
+                _LOGGER.debug(
+                    "After normalization: %d fields: %s",
+                    len(mapped),
+                    list(mapped.keys()),
+                )
 
                 # Update state cache
                 self._state_cache[device_id] = BestwayDeviceStatus(

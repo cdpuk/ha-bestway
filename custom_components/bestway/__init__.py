@@ -14,6 +14,8 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from .bestway.api import BestwayApi
 from .bestway.websocket import GizwitsWebSocket
 from .const import (
+    BACKEND_AWS_IOT,
+    BACKEND_GIZWITS,
     CONF_API_ROOT,
     CONF_API_ROOT_EU,
     CONF_PASSWORD,
@@ -40,13 +42,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up bestway from a config entry."""
 
     # Detect backend (default to Gizwits for backwards compatibility)
-    backend = entry.data.get("backend", "gizwits")
+    backend = entry.data.get("backend", BACKEND_GIZWITS)
     _LOGGER.info("Setting up Bestway integration with %s backend", backend)
 
     session = async_get_clientsession(hass)
 
     # Branch based on backend
-    if backend == "aws_iot":
+    if backend == BACKEND_AWS_IOT:
         # AWS IoT V02 backend
         return await _async_setup_aws_iot(hass, entry, session)
     else:

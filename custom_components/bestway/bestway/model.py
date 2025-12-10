@@ -8,6 +8,8 @@ from logging import getLogger
 
 from typing import Any
 
+from ..const import BACKEND_AWS_IOT, BACKEND_GIZWITS
+
 _LOGGER = getLogger(__name__)
 
 
@@ -168,14 +170,14 @@ class BestwayDevice:
     is_online: bool
     ws_host: str = "m2m.gizwits.com"  # WebSocket hostname from bindings API
     ws_port: int = 8880  # WebSocket port from bindings API
-    backend: str = "gizwits"  # Backend type: "gizwits" or "aws_iot"
+    backend: str = BACKEND_GIZWITS  # Backend type: gizwits or aws_iot
     product_id: str | None = None  # For AWS IoT: model ID like "T53NN8"
     product_series: str | None = None  # For AWS IoT: series like "AIRJET", "HYDROJET"
 
     @property
     def device_type(self) -> BestwayDeviceType:
         """Get the derived device type based on backend."""
-        if self.backend == "aws_iot" and self.product_series:
+        if self.backend == BACKEND_AWS_IOT and self.product_series:
             return BestwayDeviceType.from_aws_product_series(self.product_series)
         return BestwayDeviceType.from_api_product_name(self.product_name)
 

@@ -59,10 +59,18 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
             "WebSocket update for device %s with %d attributes", device_id, len(attrs)
         )
 
-        # Update state cache with real-time data
+        # Merge WebSocket updates with existing state to preserve diagnostic fields
+        # WebSocket deltas only include changed fields, not full state
+        existing = self.api._state_cache.get(device_id)
+        if existing:
+            merged_attrs = {**existing.attrs, **attrs}
+        else:
+            merged_attrs = attrs
+
+        # Update state cache with merged data
         self.api._state_cache[device_id] = BestwayDeviceStatus(
             timestamp=int(time()),
-            attrs=attrs,
+            attrs=merged_attrs,
         )
 
         # Track last WebSocket update time for this device

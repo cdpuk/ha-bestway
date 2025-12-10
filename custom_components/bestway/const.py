@@ -13,6 +13,10 @@ CONF_USER_TOKEN_EXPIRY = "user_token_expiry"
 CONF_UID = "uid"
 GIZWITS_APP_ID = "98754e684ec045528b073876c34c7348"
 
+# Backend types
+BACKEND_GIZWITS = "gizwits"
+BACKEND_AWS_IOT = "aws_iot"
+
 
 class Icon(str, Enum):
     """Icon styles."""
