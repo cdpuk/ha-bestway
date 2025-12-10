@@ -490,7 +490,7 @@ class AwsIotApi:
         for dev in discovered_devices:
             device_id = dev["device_id"]
             product_id = dev.get("product_id", "UNKNOWN").strip()  # e.g., "T53NN8"
-            product_series = dev.get("product_series", "AIRJET").strip()  # e.g., "AIRJET" (strip whitespace!)
+            product_series = dev.get("product_series", "AIRJET").strip().replace(" ", "_")  # Normalize spaces to underscores
 
             device = BestwayDevice(
                 protocol_version=2,  # V02 protocol
