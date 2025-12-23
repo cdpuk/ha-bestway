@@ -197,15 +197,15 @@ class AirjetV01HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
         """Return the current mode (HEAT or OFF)."""
         if not self.status:
             return None
-        return HVACMode.HEAT if self.status.attrs["heat"] == 3 else HVACMode.OFF
+        return HVACMode.HEAT if self.status.attrs["heat"] > 0 else HVACMode.OFF
 
     @property
     def hvac_action(self) -> HVACAction | None:
         """Return the current running action (HEATING or IDLE)."""
         if not self.status:
             return None
-        heat_on = self.status.attrs["heat"] == HydrojetHeat.ON
-        target_reached = self.status.attrs["word3"] == 1
+        heat_on = self.status.attrs["heat"] > 0
+        target_reached = self.status.attrs["heat"] == 4
         return (
             HVACAction.HEATING if (heat_on and not target_reached) else HVACAction.IDLE
         )

@@ -156,6 +156,11 @@ class AwsIotApi:
         if power_state is not None:
             normalized["power"] = bool(power_state == 1)
         if device_state.get("heater_state") is not None:
+            # Heater state values (same for V01 and V02):
+            # 0 = OFF
+            # 1 = ON (heater enabled, starting to heat)
+            # 3 = HEATING (actively heating toward target)
+            # 4 = TARGET_REACHED (at target temperature, maintaining)
             normalized["heat"] = device_state["heater_state"]
         if wave_state is not None:
             normalized["wave"] = wave_normalized
@@ -783,8 +788,15 @@ class AwsIotApi:
         await self.set_device_state(device_id, {"hydrojet_state": 1 if state else 0})
 
     async def hydrojet_spa_set_heat(self, device_id: str, heat_state: int) -> None:
-        """Set heater state for Hydrojet spa (0=OFF, 3=ON)."""
-        await self.set_device_state(device_id, {"heater_state": heat_state})
+        """Set heater state for Hydrojet spa.
+
+        Climate entity sends: HydrojetHeat.OFF=0, HydrojetHeat.ON=3
+        V02 command expects: heater_state=0 (OFF) or 1 (ON)
+        Device will respond with: 0,1,3,4 based on heating progress
+        """
+        # Convert V01 enum value (0/3) to V02 command value (0/1)
+        value = 1 if heat_state == 3 else 0
+        await self.set_device_state(device_id, {"heater_state": value})
 
     async def hydrojet_spa_set_target_temp(
         self, device_id: str, temperature: int
