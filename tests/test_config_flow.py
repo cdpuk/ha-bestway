@@ -11,6 +11,7 @@ from custom_components.bestway.const import (
     CONF_API_ROOT,
     CONF_API_ROOT_EU,
     CONF_PASSWORD,
+    CONF_UID,
     CONF_USER_TOKEN,
     CONF_USER_TOKEN_EXPIRY,
     CONF_USERNAME,
@@ -61,6 +62,7 @@ async def test_successful_config_flow(hass, bypass_get_data):
         )
 
     expected_output = dict(MOCK_USER_INPUT)
+    expected_output[CONF_UID] = token.user_id
     expected_output[CONF_USER_TOKEN] = token.user_token
     expected_output[CONF_USER_TOKEN_EXPIRY] = token.expiry
 
