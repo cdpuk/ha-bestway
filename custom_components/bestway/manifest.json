@@ -9,5 +9,5 @@
   "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/cdpuk/ha-bestway/issues",
   "requirements": ["websockets"],
-  "version": "1.6.2"
+  "version": "1.7.0"
 }
