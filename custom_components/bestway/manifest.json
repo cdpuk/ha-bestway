@@ -6,8 +6,8 @@
   "dependencies": [],
   "documentation": "https://github.com/cdpuk/ha-bestway",
   "integration_type": "device",
-  "iot_class": "cloud_polling",
+  "iot_class": "cloud_push",
   "issue_tracker": "https://github.com/cdpuk/ha-bestway/issues",
-  "requirements": [],
+  "requirements": ["websockets"],
   "version": "1.6.2"
 }
