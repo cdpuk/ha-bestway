@@ -176,11 +176,14 @@ class AwsIotApi:
             normalized["Tnow"] = device_state["water_temperature"]
         if device_state.get("temperature_setting") is not None:
             normalized["Tset"] = device_state["temperature_setting"]
-        normalized["Tunit"] = temperature_unit  # Always include
+        if "temperature_unit" in device_state:
+            normalized["Tunit"] = temperature_unit
 
-        # Errors
-        normalized["warning"] = 0 if warning == "" else warning
-        normalized["error"] = 0 if error_code == "" else error_code
+        # Errors - only include if present to avoid overwriting during delta merges
+        if "warning" in device_state:
+            normalized["warning"] = 0 if warning == "" else warning
+        if "error_code" in device_state:
+            normalized["error"] = 0 if error_code == "" else error_code
 
         # Status
         if device_state.get("is_online") is not None:

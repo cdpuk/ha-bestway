@@ -58,8 +58,8 @@ async def test_handle_message_calls_callback_with_normalized_attrs(aws_websocket
         }
     }
 
-    with patch("custom_components.bestway.aws_iot.api.AwsIotApi._normalize_state") as mock_normalize:
-        mock_normalize.return_value = {"power": True, "heat": 3, "temp_set": 37}
+    with patch("custom_components.bestway.aws_iot.api.AwsIotApi.normalize_aws_state") as mock_normalize:
+        mock_normalize.return_value = {"power": True, "heat": 3, "Tset": 37}
 
         await aws_websocket._handle_message(message)
 
@@ -67,7 +67,7 @@ async def test_handle_message_calls_callback_with_normalized_attrs(aws_websocket
         mock_callback.assert_called_once()
         call_args = mock_callback.call_args[0]
         assert call_args[0] == "test_device_123"  # device_id
-        assert call_args[1] == {"power": True, "heat": 3, "temp_set": 37}  # normalized
+        assert call_args[1] == {"power": True, "heat": 3, "Tset": 37}  # normalized
 
 
 @pytest.mark.asyncio
@@ -77,7 +77,7 @@ async def test_handle_message_no_callback_error(aws_websocket):
     message = {"state": {"reported": {"power_state": 1}}}
 
     # Should not raise exception
-    with patch("custom_components.bestway.aws_iot.api.AwsIotApi._normalize_state"):
+    with patch("custom_components.bestway.aws_iot.api.AwsIotApi.normalize_aws_state"):
         await aws_websocket._handle_message(message)
 
 
@@ -203,7 +203,7 @@ async def test_listen_loop_processes_shadow_updates(aws_websocket):
     mock_ws.__aiter__ = lambda self: message_generator()
     aws_websocket._websocket = mock_ws
 
-    with patch("custom_components.bestway.aws_iot.api.AwsIotApi._normalize_state") as mock_normalize:
+    with patch("custom_components.bestway.aws_iot.api.AwsIotApi.normalize_aws_state") as mock_normalize:
         mock_normalize.side_effect = [
             {"power": True},
             {"heat": 3},

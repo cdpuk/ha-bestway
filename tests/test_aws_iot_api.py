@@ -6,8 +6,6 @@ import pytest
 from custom_components.bestway.aws_iot.api import (
     AwsIotApi,
     AwsIotAuthException,
-    FIELD_MAPPING,
-    GIZWITS_TO_AWS_FIELDS,
 )
 from custom_components.bestway.bestway.model import BestwayDeviceType
 
@@ -160,52 +158,83 @@ async def test_refresh_bindings_multiple_devices(aws_api, mock_session):
     assert aws_api.devices["device2"].alias == "Spa 2"
 
 
-def test_normalize_state_comprehensive(aws_api):
+def test_normalize_state_comprehensive():
     """Test comprehensive field normalization including power, temperature, and wave."""
     aws_state = {
         "power_state": 1,
         "heater_state": 0,
         "temperature_setting": 37,
-        "current_temperature": 36,
+        "water_temperature": 36,
         "temperature_unit": 1,
         "wave_state": 100,
+        "warning": "",
+        "error_code": "",
     }
-    normalized = aws_api._normalize_state(aws_state)
+    normalized = AwsIotApi.normalize_aws_state(aws_state)
 
     # Power fields
     assert normalized["power"] is True
     assert normalized["heat"] == 0
 
     # Temperature fields
-    assert normalized["temp_set"] == 37
-    assert normalized["temp_now"] == 36
-    assert normalized["temp_set_unit"] == 1
+    assert normalized["Tset"] == 37
+    assert normalized["Tnow"] == 36
+    assert normalized["Tunit"] == 1
 
     # Wave field
     assert normalized["wave"] == 100
 
 
-def test_normalize_state_filter(aws_api):
-    """Test filter_state normalization (2=ON)."""
+def test_normalize_state_filter():
+    """Test filter_state normalization."""
     # Filter on
     aws_state = {"filter_state": 2}
-    normalized = aws_api._normalize_state(aws_state)
-    assert normalized["filter_power"] is True
+    normalized = AwsIotApi.normalize_aws_state(aws_state)
+    assert normalized["filter"] == 2
 
     # Filter off
     aws_state = {"filter_state": 0}
-    normalized = aws_api._normalize_state(aws_state)
-    assert normalized["filter_power"] is False
+    normalized = AwsIotApi.normalize_aws_state(aws_state)
+    assert normalized["filter"] == 0
 
 
-def test_normalize_state_unmapped_fields(aws_api):
-    """Test unmapped fields are preserved with aws_ prefix."""
-    aws_state = {"power_state": 1, "unknown_field": 42, "debug_info": "test"}
-    normalized = aws_api._normalize_state(aws_state)
+def test_normalize_state_partial_update_preserves_absent_fields():
+    """Test that partial WebSocket updates don't overwrite absent fields.
 
-    assert normalized["power"] is True
-    assert normalized["aws_unknown_field"] == 42
-    assert normalized["aws_debug_info"] == "test"
+    Regression test for temperature unit flip-flop bug: WebSocket deltas
+    that omit temperature_unit should not default it to Celsius (1),
+    which would overwrite a Fahrenheit (0) setting.
+    """
+    # Simulate a partial WebSocket delta with only temperature change
+    partial_state = {
+        "water_temperature": 30,
+    }
+    normalized = AwsIotApi.normalize_aws_state(partial_state)
+
+    # temperature_unit was not in the delta, so Tunit should not be set
+    assert "Tunit" not in normalized
+    # warning/error also absent, should not be set
+    assert "warning" not in normalized
+    assert "error" not in normalized
+    # The field that was present should be set
+    assert normalized["Tnow"] == 30
+
+
+def test_normalize_state_wave_mapping():
+    """Test V02 wave_state value mapping to V01 format."""
+    # V02 MEDIUM (40) maps to V01 Airjet MEDIUM (50)
+    aws_state = {"wave_state": 40}
+    normalized = AwsIotApi.normalize_aws_state(aws_state)
+    assert normalized["wave"] == 50
+
+    # 0 and 100 are the same in both versions
+    aws_state = {"wave_state": 0}
+    normalized = AwsIotApi.normalize_aws_state(aws_state)
+    assert normalized["wave"] == 0
+
+    aws_state = {"wave_state": 100}
+    normalized = AwsIotApi.normalize_aws_state(aws_state)
+    assert normalized["wave"] == 100
 
 
 @pytest.mark.asyncio
@@ -251,8 +280,8 @@ async def test_fetch_data_returns_results(aws_api, mock_session):
     status = results.devices["device1"]
     assert status.attrs["power"] is True
     assert status.attrs["heat"] == 3
-    assert status.attrs["temp_set"] == 37
-    assert status.attrs["temp_now"] == 36
+    assert status.attrs["Tset"] == 37
+    assert status.attrs["Tnow"] == 36
 
 
 @pytest.mark.asyncio
