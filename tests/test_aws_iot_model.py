@@ -5,15 +5,30 @@ from custom_components.bestway.bestway.model import BestwayDevice, BestwayDevice
 
 def test_from_aws_product_series_mappings():
     """Test V02 product series to device type mappings."""
-    assert BestwayDeviceType.from_aws_product_series("AIRJET") == BestwayDeviceType.AIRJET_V02
-    assert BestwayDeviceType.from_aws_product_series("ULTRAFIT_AIRJET") == BestwayDeviceType.ULTRAFIT_AIRJET_V02
-    assert BestwayDeviceType.from_aws_product_series("HYDROJET") == BestwayDeviceType.HYDROJET_V02
-    assert BestwayDeviceType.from_aws_product_series("HYDROJET_PRO") == BestwayDeviceType.HYDROJET_PRO_V02
+    assert (
+        BestwayDeviceType.from_aws_product_series("AIRJET")
+        == BestwayDeviceType.AIRJET_V02
+    )
+    assert (
+        BestwayDeviceType.from_aws_product_series("ULTRAFIT_AIRJET")
+        == BestwayDeviceType.ULTRAFIT_AIRJET_V02
+    )
+    assert (
+        BestwayDeviceType.from_aws_product_series("HYDROJET")
+        == BestwayDeviceType.HYDROJET_V02
+    )
+    assert (
+        BestwayDeviceType.from_aws_product_series("HYDROJET_PRO")
+        == BestwayDeviceType.HYDROJET_PRO_V02
+    )
 
 
 def test_from_aws_product_series_unknown():
     """Test unknown and empty product series return UNKNOWN."""
-    assert BestwayDeviceType.from_aws_product_series("UNKNOWN_SERIES") == BestwayDeviceType.UNKNOWN
+    assert (
+        BestwayDeviceType.from_aws_product_series("UNKNOWN_SERIES")
+        == BestwayDeviceType.UNKNOWN
+    )
     assert BestwayDeviceType.from_aws_product_series("") == BestwayDeviceType.UNKNOWN
 
 

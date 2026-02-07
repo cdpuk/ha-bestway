@@ -18,7 +18,6 @@ from __future__ import annotations
 import base64
 import hashlib
 import logging
-from typing import TYPE_CHECKING
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -60,8 +59,7 @@ def encrypt_command_payload(sign: str, app_secret: str, plaintext: str) -> str:
     """
     if not HAS_PYCRYPTODOME:
         raise RuntimeError(
-            "pycryptodome not installed. "
-            "Install with: pip install pycryptodome>=3.20.0"
+            "pycryptodome not installed. Install with: pip install pycryptodome>=3.20.0"
         )
 
     # Key derivation: SHA-256(f"{sign},{app_secret}")[:32] as UTF-8 bytes
@@ -99,8 +97,7 @@ def decrypt_command_payload(sign: str, app_secret: str, ciphertext: str) -> str:
     """
     if not HAS_PYCRYPTODOME:
         raise RuntimeError(
-            "pycryptodome not installed. "
-            "Install with: pip install pycryptodome>=3.20.0"
+            "pycryptodome not installed. Install with: pip install pycryptodome>=3.20.0"
         )
 
     # Derive key same way as encryption
@@ -118,4 +115,4 @@ def decrypt_command_payload(sign: str, app_secret: str, ciphertext: str) -> str:
     padded_plaintext = cipher.decrypt(ct)
     plaintext = unpad(padded_plaintext, AES.block_size)
 
-    return plaintext.decode("utf-8")
+    return str(plaintext.decode("utf-8"))

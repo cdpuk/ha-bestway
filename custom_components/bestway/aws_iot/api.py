@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
-import json
 import logging
 import secrets
 from time import time
@@ -23,12 +22,9 @@ from aiohttp import ClientSession
 
 from .encryption import encrypt_command_payload
 from ..bestway.model import (
-    AIRJET_V01_BUBBLES_MAP,
     BestwayDevice,
     BestwayDeviceStatus,
-    BestwayDeviceType,
     BubblesLevel,
-    HYDROJET_BUBBLES_MAP,
 )
 from ..const import BACKEND_AWS_IOT
 
@@ -124,7 +120,6 @@ class AwsIotApi:
         warning = device_state.get("warning")
         error_code = device_state.get("error_code")
         power_state = device_state.get("power_state")
-        filter_state = device_state.get("filter_state")
         temperature_unit = device_state.get("temperature_unit", 1)
         wave_state = device_state.get("wave_state", 0)
 
@@ -244,7 +239,9 @@ class AwsIotApi:
 
         # Add client_id conditionally (reference logic)
         if push_type == "fcm":
-            client_id = secrets.token_urlsafe(11)[:15].replace("-", "").replace("_", "").lower()
+            client_id = (
+                secrets.token_urlsafe(11)[:15].replace("-", "").replace("_", "").lower()
+            )
             payload["client_id"] = client_id
 
         # Headers EXACTLY as reference
@@ -266,12 +263,14 @@ class AwsIotApi:
 
         _LOGGER.debug("Authenticating visitor %s", visitor_id[:12])
         _LOGGER.debug("Payload: %s", payload)
-        _LOGGER.debug("Nonce in headers: %s", 'nonce' in headers)
-        _LOGGER.debug("Sign in headers: %s", 'sign' in headers)
+        _LOGGER.debug("Nonce in headers: %s", "nonce" in headers)
+        _LOGGER.debug("Sign in headers: %s", "sign" in headers)
         _LOGGER.debug("All header keys: %s", list(headers.keys()))
 
         async with asyncio.timeout(TIMEOUT):
-            async with session.post(url, headers=headers, json=payload, ssl=False) as resp:
+            async with session.post(
+                url, headers=headers, json=payload, ssl=False
+            ) as resp:
                 data = await resp.json()
                 _LOGGER.debug("Auth response: %s", data)
                 _LOGGER.debug("Response status: %s", resp.status)
@@ -281,7 +280,7 @@ class AwsIotApi:
                     _LOGGER.error("No token in response. Full response: %s", data)
                     raise AwsIotAuthException("No token in authentication response")
 
-                return token
+                return str(token)
 
     @staticmethod
     async def bind_qr_code(
@@ -342,7 +341,8 @@ class AwsIotApi:
             response.raise_for_status()
             data = await response.json()
 
-            return data.get("data")
+            result = data.get("data")
+            return dict(result) if result else None
 
     def _generate_auth_headers(self) -> dict[str, str]:
         """Generate authentication headers for API requests.
@@ -358,7 +358,11 @@ class AwsIotApi:
         # Generate nonce EXACTLY as reference
         nonce = "".join(random.choices(string.ascii_lowercase + string.digits, k=32))
         timestamp = str(int(time()))
-        signature = hashlib.md5(f"{APP_ID}{APP_SECRET}{nonce}{timestamp}".encode()).hexdigest().upper()
+        signature = (
+            hashlib.md5(f"{APP_ID}{APP_SECRET}{nonce}{timestamp}".encode())
+            .hexdigest()
+            .upper()
+        )
 
         # Headers EXACTLY as reference (order matters!)
         return {
@@ -404,7 +408,7 @@ class AwsIotApi:
                 if response.status != 200:
                     raise AwsIotException(f"API error: {response.status}")
 
-                return data
+                return dict(data)
 
     async def _do_post(self, path: str, data: dict[str, Any]) -> dict[str, Any]:
         """Execute POST request with authentication.
@@ -426,10 +430,14 @@ class AwsIotApi:
         _LOGGER.debug("POST %s", path)
 
         async with asyncio.timeout(TIMEOUT):
-            async with self._session.post(url, headers=headers, json=data, ssl=False) as response:
+            async with self._session.post(
+                url, headers=headers, json=data, ssl=False
+            ) as response:
                 result = await response.json()
 
-                _LOGGER.debug("POST %s response (status=%d): %s", path, response.status, result)
+                _LOGGER.debug(
+                    "POST %s response (status=%d): %s", path, response.status, result
+                )
 
                 # Check for errors
                 if response.status in (400, 401):
@@ -438,7 +446,7 @@ class AwsIotApi:
                 if response.status != 200:
                     raise AwsIotException(f"API error: {response.status}")
 
-                return result
+                return dict(result)
 
     async def refresh_bindings(self) -> None:
         """Discover and store all devices under visitor account.
@@ -522,19 +530,25 @@ class AwsIotApi:
         for dev in discovered_devices:
             device_id = dev["device_id"]
             product_id = dev.get("product_id", "UNKNOWN").strip()  # e.g., "T53NN8"
-            product_series = dev.get("product_series", "AIRJET").strip().replace(" ", "_")  # Normalize spaces to underscores
+            product_series = (
+                dev.get("product_series", "AIRJET").strip().replace(" ", "_")
+            )  # Normalize spaces to underscores
 
             device = BestwayDevice(
                 protocol_version=2,  # V02 protocol
                 device_id=device_id,
                 product_name=product_series,  # For backwards compat (V02 uses series as name)
-                alias=dev.get("device_alias") or dev.get("device_name") or device_id[:12],
+                alias=dev.get("device_alias")
+                or dev.get("device_name")
+                or device_id[:12],
                 mcu_soft_version=dev.get("mcu_version", "unknown"),
                 mcu_hard_version=dev.get("mcu_version", "unknown"),
                 wifi_soft_version=dev.get("wifi_version", "unknown"),
                 wifi_hard_version=dev.get("wifi_version", "unknown"),
                 is_online=dev.get("is_online", True),
-                ws_host=dev.get("service_region", "eu-central-1"),  # Store region in ws_host
+                ws_host=dev.get(
+                    "service_region", "eu-central-1"
+                ),  # Store region in ws_host
                 ws_port=443,  # AWS IoT WebSocket uses standard HTTPS port
                 backend=BACKEND_AWS_IOT,
                 product_id=product_id,  # NEW: Model ID for shadow fetch
@@ -576,13 +590,13 @@ class AwsIotApi:
                 # Build payload with device_id and product_id (EXACT reference format)
                 payload = {
                     "device_id": device_id,
-                    "product_id": device.product_id or device.product_name,  # Model ID (e.g., "T53NN8")
+                    "product_id": device.product_id
+                    or device.product_name,  # Model ID (e.g., "T53NN8")
                 }
 
                 # Fetch device shadow using POST (EXACT reference endpoint!)
                 shadow_response = await self._do_post(
-                    "/api/device/thing_shadow/",
-                    payload
+                    "/api/device/thing_shadow/", payload
                 )
 
                 # Extract state (EXACT reference logic!)
@@ -627,7 +641,9 @@ class AwsIotApi:
                 )
 
             except Exception as err:
-                _LOGGER.warning("Failed to fetch state for device %s: %s", device_id[:12], err)
+                _LOGGER.warning(
+                    "Failed to fetch state for device %s: %s", device_id[:12], err
+                )
                 # Keep existing cache or mark offline
                 if device_id not in self._state_cache:
                     self._state_cache[device_id] = BestwayDeviceStatus(
@@ -657,7 +673,7 @@ class AwsIotApi:
         for key, value in state_updates.items():
             if isinstance(value, bool):
                 value = 1 if value else 0
-            elif hasattr(value, 'value'):  # Extract from IntEnum
+            elif hasattr(value, "value"):  # Extract from IntEnum
                 value = int(value.value)
             elif not isinstance(value, int):
                 value = int(value)
@@ -689,7 +705,9 @@ class AwsIotApi:
         # Serialize to JSON string
         plaintext = json_module.dumps(command_payload, separators=(",", ":"))
 
-        _LOGGER.info("v2 command: fields=%s, product_id=%s", aws_updates, device.product_id)
+        _LOGGER.info(
+            "v2 command: fields=%s, product_id=%s", aws_updates, device.product_id
+        )
         _LOGGER.debug("v2 plaintext: %s", plaintext)
 
         # Encrypt plaintext string (EXACT reference signature!)
@@ -704,10 +722,12 @@ class AwsIotApi:
                 f"{self._api_base}/api/v2/device/command",
                 headers=headers,  # Use SAME headers with matching sign!
                 json=body,
-                ssl=False
+                ssl=False,
             ) as response:
                 result = await response.json()
-                _LOGGER.debug("v2 POST response (status=%d): %s", response.status, result)
+                _LOGGER.debug(
+                    "v2 POST response (status=%d): %s", response.status, result
+                )
 
                 if result.get("code") == 0:
                     _LOGGER.info("✓ v2 API command sent to device %s", device_id[:12])
@@ -734,17 +754,21 @@ class AwsIotApi:
         _LOGGER.debug("v1 payload: %s", v1_payload)
 
         try:
-            response = await self._do_post("/api/device/command/", v1_payload)
+            v1_result: dict[str, Any] = await self._do_post(
+                "/api/device/command/", v1_payload
+            )
 
-            if response.get("code") == 0:
+            if v1_result.get("code") == 0:
                 _LOGGER.info("✓ v1 API command sent to device %s", device_id[:12])
                 return True
             else:
-                _LOGGER.error("v1 API also failed with code %s", response.get("code"))
+                _LOGGER.error("v1 API also failed with code %s", v1_result.get("code"))
                 return False
 
         except Exception as err:
-            _LOGGER.error("Failed to send command to device %s: %s", device_id[:12], err)
+            _LOGGER.error(
+                "Failed to send command to device %s: %s", device_id[:12], err
+            )
             return False
 
     # Convenience methods matching Gizwits interface (with AWS field name translation)
@@ -759,6 +783,10 @@ class AwsIotApi:
     async def airjet_spa_set_bubbles(self, device_id: str, state: bool) -> None:
         """Set bubbles state for Airjet spa."""
         await self.set_device_state(device_id, {"wave_state": 100 if state else 0})
+
+    async def airjet_spa_set_heat(self, device_id: str, heat: bool) -> None:
+        """Set heater state for Airjet spa."""
+        await self.set_device_state(device_id, {"heater_state": 1 if heat else 0})
 
     async def airjet_spa_set_locked(self, device_id: str, state: bool) -> None:
         """Set locked state for Airjet spa."""
@@ -780,7 +808,7 @@ class AwsIotApi:
         V02 uses: 0=OFF, 1=ON (not 2!)
         """
         # Extract value from enum if needed
-        value = filter_state.value if hasattr(filter_state, 'value') else filter_state
+        value = filter_state.value if hasattr(filter_state, "value") else filter_state
         # V02 uses 1 for ON, not 2
         if value == 2:
             value = 1
@@ -841,3 +869,12 @@ class AwsIotApi:
         """
         # V02 uses toggle approach (same as Airjet V02)
         await self.airjet_v01_spa_set_bubbles(device_id, level)
+
+    # Pool filter methods (V01 only, not applicable to V02 spas)
+    async def pool_filter_set_power(self, device_id: str, power: bool) -> None:
+        """Not supported on V02 devices."""
+        raise NotImplementedError("Pool filter not supported on V02 devices")
+
+    async def pool_filter_set_time(self, device_id: str, hours: int) -> None:
+        """Not supported on V02 devices."""
+        raise NotImplementedError("Pool filter not supported on V02 devices")

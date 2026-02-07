@@ -163,9 +163,15 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
                         vol.Required("region", default="EU"): selector.SelectSelector(
                             selector.SelectSelectorConfig(
                                 options=[
-                                    selector.SelectOptionDict(value="EU", label="Europe"),
-                                    selector.SelectOptionDict(value="US", label="United States"),
-                                    selector.SelectOptionDict(value="CN", label="China"),
+                                    selector.SelectOptionDict(
+                                        value="EU", label="Europe"
+                                    ),
+                                    selector.SelectOptionDict(
+                                        value="US", label="United States"
+                                    ),
+                                    selector.SelectOptionDict(
+                                        value="CN", label="China"
+                                    ),
                                 ]
                             )
                         ),
@@ -194,9 +200,15 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
                         vol.Required("region", default=region): selector.SelectSelector(
                             selector.SelectSelectorConfig(
                                 options=[
-                                    selector.SelectOptionDict(value="EU", label="Europe"),
-                                    selector.SelectOptionDict(value="US", label="United States"),
-                                    selector.SelectOptionDict(value="CN", label="China"),
+                                    selector.SelectOptionDict(
+                                        value="EU", label="Europe"
+                                    ),
+                                    selector.SelectOptionDict(
+                                        value="US", label="United States"
+                                    ),
+                                    selector.SelectOptionDict(
+                                        value="CN", label="China"
+                                    ),
                                 ]
                             )
                         ),
@@ -235,7 +247,9 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
                 visitor_id = AwsIotApi.generate_visitor_id()
 
                 # Authenticate to get token
-                token = await AwsIotApi.authenticate(session, visitor_id, api_base=api_base)
+                token = await AwsIotApi.authenticate(
+                    session, visitor_id, api_base=api_base
+                )
 
                 # Bind QR code to visitor account
                 try:
@@ -272,7 +286,9 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
                 visitor_id = visitor_id_input
 
                 # Authenticate to get token
-                token = await AwsIotApi.authenticate(session, visitor_id, api_base=api_base)
+                token = await AwsIotApi.authenticate(
+                    session, visitor_id, api_base=api_base
+                )
 
             # Test by discovering devices
             api = AwsIotApi(
@@ -317,7 +333,9 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
                         selector.SelectSelectorConfig(
                             options=[
                                 selector.SelectOptionDict(value="EU", label="Europe"),
-                                selector.SelectOptionDict(value="US", label="United States"),
+                                selector.SelectOptionDict(
+                                    value="US", label="United States"
+                                ),
                                 selector.SelectOptionDict(value="CN", label="China"),
                             ]
                         )

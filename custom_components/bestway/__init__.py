@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from logging import getLogger
 
+from aiohttp import ClientSession
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -57,7 +58,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def _async_setup_gizwits(
-    hass: HomeAssistant, entry: ConfigEntry, session
+    hass: HomeAssistant, entry: ConfigEntry, session: ClientSession
 ) -> bool:
     """Set up Gizwits V01 backend (existing logic)."""
     username = str(entry.data.get(CONF_USERNAME))
@@ -154,7 +155,7 @@ async def _async_setup_gizwits(
 
 
 async def _async_setup_aws_iot(
-    hass: HomeAssistant, entry: ConfigEntry, session
+    hass: HomeAssistant, entry: ConfigEntry, session: ClientSession
 ) -> bool:
     """Set up AWS IoT V02 backend."""
     from .aws_iot.api import AwsIotApi, AwsIotAuthException
@@ -168,10 +169,15 @@ async def _async_setup_aws_iot(
     # Fallback for existing configs without api_base
     if not api_base:
         from .aws_iot.api import API_ENDPOINTS
+
         region = entry.data.get("region", "EU")
         api_base = API_ENDPOINTS.get(region, API_ENDPOINTS["EU"])
 
-    _LOGGER.info("Initializing AWS IoT API for visitor %s (endpoint: %s)", visitor_id[:12], api_base)
+    _LOGGER.info(
+        "Initializing AWS IoT API for visitor %s (endpoint: %s)",
+        visitor_id[:12],
+        api_base,
+    )
 
     # Initialize API
     api = AwsIotApi(session, visitor_id, token, location, api_base)
@@ -179,7 +185,9 @@ async def _async_setup_aws_iot(
     # Authenticate if token missing or refresh if needed
     if not token:
         try:
-            token = await AwsIotApi.authenticate(session, visitor_id, location, api_base)
+            token = await AwsIotApi.authenticate(
+                session, visitor_id, location, api_base
+            )
             # Update entry with token
             hass.config_entries.async_update_entry(
                 entry, data={**entry.data, "token": token}
@@ -199,8 +207,10 @@ async def _async_setup_aws_iot(
         for device_id, device in api.devices.items():
             try:
                 # Token refresh callback
-                async def token_refresh_callback():
-                    new_token = await AwsIotApi.authenticate(session, visitor_id, location, api_base)
+                async def token_refresh_callback() -> str:
+                    new_token = await AwsIotApi.authenticate(
+                        session, visitor_id, location, api_base
+                    )
                     api._token = new_token
                     hass.config_entries.async_update_entry(
                         entry, data={**entry.data, "token": new_token}
@@ -256,18 +266,21 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
         # Cleanup WebSocket connection(s)
         # Gizwits: Single websocket
-        if hasattr(coordinator, "websocket") and coordinator.websocket:
+        if coordinator.websocket:
             await coordinator.websocket.disconnect()
             _LOGGER.info("Gizwits WebSocket disconnected")
 
         # AWS IoT: Multiple websockets (list)
-        if hasattr(coordinator, "websockets") and coordinator.websockets:
+        if coordinator.websockets:
             for ws in coordinator.websockets:
                 try:
                     await ws.disconnect()
                 except Exception as ex:
                     _LOGGER.warning("Error disconnecting WebSocket: %s", ex)
-            _LOGGER.info("AWS IoT WebSockets disconnected (%d devices)", len(coordinator.websockets))
+            _LOGGER.info(
+                "AWS IoT WebSockets disconnected (%d devices)",
+                len(coordinator.websockets),
+            )
 
     return unload_ok
 

@@ -4,7 +4,6 @@ import json
 import pytest
 
 from custom_components.bestway.aws_iot.encryption import (
-    FIXED_IV,
     decrypt_command_payload,
     encrypt_command_payload,
 )

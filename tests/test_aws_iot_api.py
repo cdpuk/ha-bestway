@@ -1,13 +1,12 @@
 """Tests for AWS IoT API client."""
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from custom_components.bestway.aws_iot.api import (
     AwsIotApi,
     AwsIotAuthException,
 )
-from custom_components.bestway.bestway.model import BestwayDeviceType
 
 
 def create_mock_response(status: int, json_data: dict):
@@ -75,25 +74,26 @@ def test_signature_different_for_different_inputs(aws_api):
 @pytest.mark.asyncio
 async def test_refresh_bindings_discovers_devices(aws_api, mock_session):
     """Test device discovery populates devices dict."""
-    # Mock API responses with context manager support
-    homes_response = create_mock_response(200, {"list": [{"home_id": "home1"}]})
-    rooms_response = create_mock_response(200, {"list": [{"room_id": "room1"}]})
-    devices_response = create_mock_response(
-        200,
-        {
+    # Patch _do_get to return properly structured API responses
+    homes_data = {"code": 0, "data": {"list": [{"id": "home1", "name": "My Home"}]}}
+    rooms_data = {"code": 0, "data": {"list": [{"id": "room1", "name": "Garden"}]}}
+    devices_data = {
+        "code": 0,
+        "data": {
             "list": [
                 {
                     "device_id": "device123",
                     "device_alias": "Test Spa",
                     "product_series": "AIRJET",
+                    "product_id": "T53NN8",
                     "service_region": "eu-central-1",
                     "is_online": True,
                 }
             ]
         },
-    )
+    }
 
-    mock_session.get = MagicMock(side_effect=[homes_response, rooms_response, devices_response])
+    aws_api._do_get = AsyncMock(side_effect=[homes_data, rooms_data, devices_data])
 
     # Execute
     await aws_api.refresh_bindings()
@@ -114,39 +114,47 @@ async def test_refresh_bindings_discovers_devices(aws_api, mock_session):
 async def test_refresh_bindings_multiple_devices(aws_api, mock_session):
     """Test discovery of multiple devices across rooms."""
     # 1 home, 2 rooms, 1 device per room
-    homes_response = create_mock_response(200, {"list": [{"home_id": "home1"}]})
-    rooms_response = create_mock_response(
-        200, {"list": [{"room_id": "room1"}, {"room_id": "room2"}]}
-    )
-    devices1_response = create_mock_response(
-        200,
-        {
+    homes_data = {"code": 0, "data": {"list": [{"id": "home1", "name": "My Home"}]}}
+    rooms_data = {
+        "code": 0,
+        "data": {
+            "list": [
+                {"id": "room1", "name": "Garden"},
+                {"id": "room2", "name": "Patio"},
+            ]
+        },
+    }
+    devices1_data = {
+        "code": 0,
+        "data": {
             "list": [
                 {
                     "device_id": "device1",
                     "device_alias": "Spa 1",
                     "product_series": "AIRJET",
+                    "product_id": "T53NN8",
                     "service_region": "eu-central-1",
                 }
             ]
         },
-    )
-    devices2_response = create_mock_response(
-        200,
-        {
+    }
+    devices2_data = {
+        "code": 0,
+        "data": {
             "list": [
                 {
                     "device_id": "device2",
                     "device_alias": "Spa 2",
                     "product_series": "HYDROJET",
+                    "product_id": "T53NN9",
                     "service_region": "us-east-1",
                 }
             ]
         },
-    )
+    }
 
-    mock_session.get = MagicMock(
-        side_effect=[homes_response, rooms_response, devices1_response, devices2_response]
+    aws_api._do_get = AsyncMock(
+        side_effect=[homes_data, rooms_data, devices1_data, devices2_data]
     )
 
     await aws_api.refresh_bindings()
@@ -240,35 +248,40 @@ def test_normalize_state_wave_mapping():
 @pytest.mark.asyncio
 async def test_fetch_data_returns_results(aws_api, mock_session):
     """Test fetch_data returns BestwayApiResults."""
-    # Setup device
-    aws_api.refresh_bindings = AsyncMock()
+    from custom_components.bestway.bestway.model import BestwayDevice
+
+    # Setup device with real attributes (not MagicMock) so JSON serialization works
     aws_api.devices = {
-        "device1": MagicMock(
+        "device1": BestwayDevice(
+            protocol_version=2,
             device_id="device1",
             product_name="AIRJET",
+            alias="Test Spa",
+            mcu_soft_version="unknown",
+            mcu_hard_version="unknown",
+            wifi_soft_version="unknown",
+            wifi_hard_version="unknown",
+            is_online=True,
+            backend="aws_iot",
+            product_id="T53NN8",
         )
     }
 
-    # Mock shadow response with context manager support
-    shadow_response = create_mock_response(
-        200,
-        {
-            "data": {
-                "shadow": {
-                    "state": {
-                        "reported": {
-                            "power_state": 1,
-                            "heater_state": 3,
-                            "temperature_setting": 37,
-                            "current_temperature": 36,
-                        }
-                    }
+    # Patch _do_post to return properly structured shadow response
+    shadow_data = {
+        "code": 0,
+        "data": {
+            "state": {
+                "reported": {
+                    "power_state": 1,
+                    "heater_state": 3,
+                    "temperature_setting": 37,
+                    "water_temperature": 36,
                 }
             }
         },
-    )
-
-    mock_session.get = MagicMock(return_value=shadow_response)
+    }
+    aws_api._do_post = AsyncMock(return_value=shadow_data)
 
     # Execute
     results = await aws_api.fetch_data()
@@ -287,19 +300,31 @@ async def test_fetch_data_returns_results(aws_api, mock_session):
 @pytest.mark.asyncio
 async def test_set_device_state_sends_command(aws_api, mock_session):
     """Test control command sends encrypted payload."""
-    # Setup device
+    from custom_components.bestway.bestway.model import BestwayDevice
+
+    # Setup device with real attributes for JSON serialization
     aws_api.devices = {
-        "device1": MagicMock(device_id="device1", product_name="AIRJET")
+        "device1": BestwayDevice(
+            protocol_version=2,
+            device_id="device1",
+            product_name="AIRJET",
+            alias="Test Spa",
+            mcu_soft_version="unknown",
+            mcu_hard_version="unknown",
+            wifi_soft_version="unknown",
+            wifi_hard_version="unknown",
+            is_online=True,
+            backend="aws_iot",
+            product_id="T53NN8",
+        )
     }
-    aws_api._state_cache = {"device1": MagicMock(attrs={})}
 
-    # Mock POST response with context manager support
-    post_response = create_mock_response(200, {"code": 0})
-
-    mock_session.post = MagicMock(return_value=post_response)
+    # Mock the v2 POST to succeed
+    v2_response = create_mock_response(200, {"code": 0})
+    mock_session.post = MagicMock(return_value=v2_response)
 
     # Execute
-    success = await aws_api.set_device_state("device1", {"power": True})
+    success = await aws_api.set_device_state("device1", {"power_state": True})
 
     # Verify
     assert success is True

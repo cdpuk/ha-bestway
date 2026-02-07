@@ -28,11 +28,12 @@ def aws_websocket(mock_callback):
 @pytest.mark.asyncio
 async def test_connect_calls_websockets_with_auth_header(aws_websocket):
     """Test connect uses Authorization header."""
-    with patch("websockets.connect") as mock_connect, \
-         patch("homeassistant.util.ssl.get_default_context"), \
-         patch.object(aws_websocket, "_listen_loop", return_value=None), \
-         patch.object(aws_websocket, "_heartbeat_loop", return_value=None):
-
+    with (
+        patch("websockets.connect") as mock_connect,
+        patch("homeassistant.util.ssl.get_default_context"),
+        patch.object(aws_websocket, "_listen_loop", return_value=None),
+        patch.object(aws_websocket, "_heartbeat_loop", return_value=None),
+    ):
         mock_connect.return_value = AsyncMock()
 
         await aws_websocket.connect()
@@ -45,7 +46,9 @@ async def test_connect_calls_websockets_with_auth_header(aws_websocket):
 
 
 @pytest.mark.asyncio
-async def test_handle_message_calls_callback_with_normalized_attrs(aws_websocket, mock_callback):
+async def test_handle_message_calls_callback_with_normalized_attrs(
+    aws_websocket, mock_callback
+):
     """Test shadow delta message triggers callback with normalized fields."""
     # Shadow delta message from AWS IoT
     message = {
@@ -58,7 +61,9 @@ async def test_handle_message_calls_callback_with_normalized_attrs(aws_websocket
         }
     }
 
-    with patch("custom_components.bestway.aws_iot.api.AwsIotApi.normalize_aws_state") as mock_normalize:
+    with patch(
+        "custom_components.bestway.aws_iot.api.AwsIotApi.normalize_aws_state"
+    ) as mock_normalize:
         mock_normalize.return_value = {"power": True, "heat": 3, "Tset": 37}
 
         await aws_websocket._handle_message(message)
@@ -87,7 +92,9 @@ async def test_http_400_triggers_token_refresh(aws_websocket):
     token_refresh = AsyncMock(return_value="new_token_789")
     aws_websocket._token_refresh_callback = token_refresh
 
-    with patch("custom_components.bestway.aws_iot.websocket.websockets.connect") as mock_connect:
+    with patch(
+        "custom_components.bestway.aws_iot.websocket.websockets.connect"
+    ) as mock_connect:
         # First call fails with HTTP 400, second succeeds
         mock_connect.side_effect = [
             Exception("HTTP 400 Bad Request"),
@@ -125,9 +132,12 @@ async def test_reconnect_uses_exponential_backoff(aws_websocket):
     """Test reconnection delay increases with each attempt."""
     aws_websocket._running = True
 
-    with patch("custom_components.bestway.aws_iot.websocket.asyncio.sleep") as mock_sleep, \
-         patch.object(aws_websocket, "connect", new_callable=AsyncMock):
-
+    with (
+        patch(
+            "custom_components.bestway.aws_iot.websocket.asyncio.sleep"
+        ) as mock_sleep,
+        patch.object(aws_websocket, "connect", new_callable=AsyncMock),
+    ):
         # First reconnect (delay = 3s)
         aws_websocket._reconnect_count = 0
         await aws_websocket._schedule_reconnect()
@@ -203,7 +213,9 @@ async def test_listen_loop_processes_shadow_updates(aws_websocket):
     mock_ws.__aiter__ = lambda self: message_generator()
     aws_websocket._websocket = mock_ws
 
-    with patch("custom_components.bestway.aws_iot.api.AwsIotApi.normalize_aws_state") as mock_normalize:
+    with patch(
+        "custom_components.bestway.aws_iot.api.AwsIotApi.normalize_aws_state"
+    ) as mock_normalize:
         mock_normalize.side_effect = [
             {"power": True},
             {"heat": 3},
@@ -228,7 +240,9 @@ async def test_connection_closed_triggers_reconnect(aws_websocket):
     aws_websocket._websocket = mock_ws
     aws_websocket._running = True
 
-    with patch.object(aws_websocket, "_schedule_reconnect", new_callable=AsyncMock) as mock_reconnect:
+    with patch.object(
+        aws_websocket, "_schedule_reconnect", new_callable=AsyncMock
+    ) as mock_reconnect:
         # Simulate connection closed by raising exception
         mock_ws.__aiter__.side_effect = ConnectionClosed(None, None)
 

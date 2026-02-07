@@ -17,10 +17,11 @@ import asyncio
 import json
 import logging
 import time
+from collections.abc import Awaitable
 from typing import Any, Callable
 
 import websockets
-from websockets.client import ClientProtocol
+from websockets.asyncio.client import ClientConnection
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -54,7 +55,7 @@ class AwsIotWebSocket:
         token: str,
         update_callback: Callable[[str, dict[str, Any]], None],
         disconnect_callback: Callable[[], None] | None = None,
-        token_refresh_callback: Callable[[], str] | None = None,
+        token_refresh_callback: Callable[[], Awaitable[str]] | None = None,
     ) -> None:
         """Initialize per-device WebSocket client.
 
@@ -73,7 +74,7 @@ class AwsIotWebSocket:
         self._disconnect_callback = disconnect_callback
         self._token_refresh_callback = token_refresh_callback
 
-        self._websocket: ClientProtocol | None = None
+        self._websocket: ClientConnection | None = None
         self._listen_task: asyncio.Task[Any] | None = None
         self._heartbeat_task: asyncio.Task[Any] | None = None
         self._running = False
@@ -99,7 +100,9 @@ class AwsIotWebSocket:
         and starts background tasks for heartbeat and message listening.
         """
         if self._running:
-            _LOGGER.warning("WebSocket already running for device %s", self._device_id[:12])
+            _LOGGER.warning(
+                "WebSocket already running for device %s", self._device_id[:12]
+            )
             return
 
         _LOGGER.info(
@@ -125,9 +128,7 @@ class AwsIotWebSocket:
             self._running = True
             self._reconnect_count = 0  # Reset on successful connection
 
-            _LOGGER.info(
-                "✓ WebSocket connected for device %s", self._device_id[:12]
-            )
+            _LOGGER.info("✓ WebSocket connected for device %s", self._device_id[:12])
 
             # Start background tasks
             self._listen_task = asyncio.create_task(self._listen_loop())
@@ -142,7 +143,7 @@ class AwsIotWebSocket:
             )
 
             # Handle HTTP 400 (token expired) - trigger refresh and immediate retry
-            if "HTTP 400" in error_msg and self._token_refresh_callback:
+            if "HTTP 400" in error_msg and self._token_refresh_callback is not None:
                 _LOGGER.info("HTTP 400 detected - attempting token refresh")
                 try:
                     new_token = await self._token_refresh_callback()
@@ -214,9 +215,7 @@ class AwsIotWebSocket:
                     _LOGGER.warning("Received malformed JSON message")
 
         except websockets.exceptions.ConnectionClosed:
-            _LOGGER.warning(
-                "WebSocket closed for device %s", self._device_id[:12]
-            )
+            _LOGGER.warning("WebSocket closed for device %s", self._device_id[:12])
             # Trigger reconnection
             if self._running:
                 await self._schedule_reconnect()
@@ -246,10 +245,11 @@ class AwsIotWebSocket:
 
             # Normalize AWS field names to Gizwits V01 equivalents using shared method
             from .api import AwsIotApi
+
             normalized = AwsIotApi.normalize_aws_state(state)
 
             # Call coordinator callback with (device_id, normalized_attrs)
-            if self._update_callback:
+            if self._update_callback is not None:
                 try:
                     self._update_callback(self._device_id, normalized)
                 except Exception as err:
@@ -281,7 +281,9 @@ class AwsIotWebSocket:
             except asyncio.CancelledError:
                 break
             except Exception as err:
-                _LOGGER.warning("Heartbeat failed for device %s: %s", self._device_id[:12], err)
+                _LOGGER.warning(
+                    "Heartbeat failed for device %s: %s", self._device_id[:12], err
+                )
                 break
 
     async def _schedule_reconnect(self) -> None:

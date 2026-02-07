@@ -1,6 +1,6 @@
 """Test bestway config flow."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResultType
@@ -11,9 +11,7 @@ from custom_components.bestway.const import (
     CONF_API_ROOT,
     CONF_API_ROOT_EU,
     CONF_PASSWORD,
-    CONF_UID,
     CONF_USER_TOKEN,
-    CONF_USER_TOKEN_EXPIRY,
     CONF_USERNAME,
     DOMAIN,
 )
