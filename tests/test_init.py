@@ -37,7 +37,7 @@ async def test_setup_unload_and_reload_entry(hass: HomeAssistant, bypass_get_dat
             CONF_API_ROOT: CONF_API_ROOT_EU,
             CONF_USER_TOKEN: "t0k3n",
             CONF_USER_TOKEN_EXPIRY: int(future),
-            CONF_UID: "uid",
+            CONF_UID: "test_uid_123",  # Required to prevent token refresh
         },
         version=2,
         entry_id="test",

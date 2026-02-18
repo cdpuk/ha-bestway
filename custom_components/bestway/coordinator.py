@@ -10,8 +10,11 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
+from .aws_iot.api import AwsIotApi
+from .aws_iot.websocket import AwsIotWebSocket
 from .bestway.api import BestwayApi, BestwayApiResults
 from .bestway.model import BestwayDeviceStatus
+from .bestway.websocket import GizwitsWebSocket
 
 _LOGGER = getLogger(__name__)
 
@@ -20,7 +23,10 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
     """Update coordinator that polls the device status for all devices in an account."""
 
     def __init__(
-        self, hass: HomeAssistant, config_entry: ConfigEntry, api: BestwayApi
+        self,
+        hass: HomeAssistant,
+        config_entry: ConfigEntry,
+        api: BestwayApi | AwsIotApi,
     ) -> None:
         """Initialize my coordinator."""
         super().__init__(
@@ -32,7 +38,8 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
         )
         self.api = api
         self._ws_last_update: dict[str, float] = {}  # Track WebSocket update times
-        self.websocket: Any = None  # WebSocket client (set in __init__.py)
+        self.websocket: GizwitsWebSocket | None = None
+        self.websockets: list[AwsIotWebSocket] = []
 
     async def _async_update_data(self) -> BestwayApiResults:
         """Fetch data from API endpoint.
@@ -59,10 +66,18 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
             "WebSocket update for device %s with %d attributes", device_id, len(attrs)
         )
 
-        # Update state cache with real-time data
+        # Merge WebSocket updates with existing state to preserve diagnostic fields
+        # WebSocket deltas only include changed fields, not full state
+        existing = self.api._state_cache.get(device_id)
+        if existing:
+            merged_attrs = {**existing.attrs, **attrs}
+        else:
+            merged_attrs = attrs
+
+        # Update state cache with merged data
         self.api._state_cache[device_id] = BestwayDeviceStatus(
             timestamp=int(time()),
-            attrs=attrs,
+            attrs=merged_attrs,
         )
 
         # Track last WebSocket update time for this device
