@@ -13,15 +13,14 @@ This custom component integrates with the Bestway cloud API, providing control o
   <img src="images/demo-diagnostic.png" width="200" />
 </p>
 
-## Required Account
-
-You must have an account with the Bestway mobile app ([Android][bestway-android]/[iOS][bestway-ios]). Lay-Z-Spa app credentials will not work. Both apps appear to have identical feature sets.
-
-Bestway uses different API endpoints for EU and US. If you get an error stating account could not be found, try using the other endpoint. If this does not help, then create a new account under a supported country.
-
 ## Device Support
 
 A Wi-Fi enabled model is required. No custom hardware is required.
+
+This integration supports two main generations of devices (V1 and V2), which must be selected when adding your device to Home Assistant. Broadly speaking:
+
+- V1 covers older models up to around 2024.
+- V2 covers newer models with UltraFit pumps from 2025 onwards.
 
 See the [supported devices](docs/supported-devices.md) list for more details.
 
@@ -34,27 +33,21 @@ This integration is delivered as a HACS custom repository.
 
 ## Configuration
 
-Ensure you can control your device using the Bestway mobile app. At time of writing, there was also a Lay-Z-Spa branded app, but despite this being the recommended app in the installation manual, the spa could not be added. The Bestway app worked flawlessly.
+Initial configuration must be done via the relevant mobile app:
 
-- Go to **Configuration** > **Devices & Services** > **Add Integration**, then find **Bestway** in the list.
-- Enter your Bestway username and password when prompted.
+- V1 models must be configured via the Bestway mobile app ([Android][bestway-android]/[iOS][bestway-ios]). We have found that the spa can also be controlled via the Lay-Z-Spa app, but this integration will not accept credentials from that app.
 
-## Update speed
+- V2 models must be configured via the Lay-Z-Spa mobile app ([Android][layzspa-android]/[iOS][layzspa-ios]).
 
-Any changes made to the spa settings via the Bestway app or physical controls can take a short amount of time to be reflected in Home Assistant. This delay is typically under 30 seconds, but can sometimes extend to a few minutes.
+With this done, open Home Assistant and go to **Configuration** > **Devices & Services** > **Add Integration**, then find **Bestway** in the list.
 
-## Improvement ideas
+The process varies depending on model:
 
-Achieve faster (or even local) updates.
+- V1 models require your Bestway username and password. You must also select the required region (EU or US).
 
-- Capture more traffic from the mobile app to work out how it receives updates so quickly.
-- The integration currently has to poll, but the mobile app is able to reflect changes based on physical button presses within a fraction of a second.
-- A brief recent attempt suggested that the Android app may have certificate pinning enabled, making this slightly harder than expected. Perhaps decompilation is an easier route.
-- We know the spa talks directly to the cloud using MQTT. Traffic captures against the Android app appeared to show only HTTPS traffic.
+- V2 models require a scan of the QR code from the Lay-Z-Spa app settings. You must also select the required region (Europe, US or China).
 
-## Acknowledgements
-
-- https://github.com/B-Hartley/bruces_homeassistant_config
+All devices in your account will be automatically detected and added by the integration.
 
 ## Contributing
 
@@ -71,3 +64,5 @@ If you want to contribute to this please read the [Contribution Guidelines](CONT
 [hacs-custom]: https://hacs.xyz/docs/faq/custom_repositories
 [bestway-android]: https://play.google.com/store/apps/details?id=com.layzspa.smartHome
 [bestway-ios]: https://apps.apple.com/us/app/bestway-smart-hub/id1456731336
+[layzspa-android]: https://play.google.com/store/apps/details?id=com.wiltonbradley.layzspaapp
+[layzspa-ios]: https://apps.apple.com/gb/app/lay-z-spa-wifi-app/id6736467418
