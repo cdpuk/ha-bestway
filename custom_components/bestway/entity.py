@@ -65,9 +65,19 @@ class BestwayEntity(CoordinatorEntity[BestwayUpdateCoordinator]):
 
     @property
     def available(self) -> bool:
-        """Return True if entity is available."""
+        """Return True if entity is available.
+
+        Note: is_online from the Bestway/Gizwits API is unreliable and
+        frequently returns false even when the device is functioning and
+        controllable via the app. The API continues to return valid state
+        data regardless of this flag. We therefore only check that the
+        coordinator has data and the device is known.
+
+        See: https://github.com/cdpuk/ha-bestway/issues/89
+        See: https://github.com/cdpuk/ha-bestway/issues/93
+        See: https://github.com/cdpuk/ha-bestway/issues/100
+        """
         return (
             self.coordinator.last_update_success
             and self.bestway_device is not None
-            and self.bestway_device.is_online
         )
