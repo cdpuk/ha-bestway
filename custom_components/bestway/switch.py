@@ -226,20 +226,46 @@ class BestwaySwitch(BestwayEntity, SwitchEntity):
         self.entity_description = description
         self._attr_unique_id = f"{device_id}_{description.key}"
 
+    _attr_assumed_state = True
+
     @property
     def is_on(self) -> bool | None:
         """Return true if the switch is on."""
+        if self._optimistic_state is not None:
+            return self._optimistic_state
         if status := self.status:
             return self.entity_description.value_fn(status)
 
         return None
 
+    def __init__(
+        self,
+        coordinator: BestwayUpdateCoordinator,
+        config_entry: ConfigEntry,
+        device_id: str,
+        description: BestwaySwitchEntityDescription,
+    ) -> None:
+        """Initialize switch."""
+        super().__init__(coordinator, config_entry, device_id)
+        self.entity_description = description
+        self._attr_unique_id = f"{device_id}_{description.key}"
+        self._optimistic_state: bool | None = None
+
+    def _handle_coordinator_update(self) -> None:
+        """Clear optimistic state when real data arrives."""
+        self._optimistic_state = None
+        super()._handle_coordinator_update()
+
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on."""
+        self._optimistic_state = True
+        self.async_write_ha_state()
         await self.entity_description.turn_on_fn(self.coordinator.api, self.device_id)
-        await self.coordinator.async_refresh()
+        await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off."""
+        self._optimistic_state = False
+        self.async_write_ha_state()
         await self.entity_description.turn_off_fn(self.coordinator.api, self.device_id)
-        await self.coordinator.async_refresh()
+        await self.coordinator.async_request_refresh()
