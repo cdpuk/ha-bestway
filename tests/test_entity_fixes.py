@@ -200,8 +200,10 @@ class TestSwitchOptimistic:
 
         assert switch.is_on is False  # Optimistic overrides
 
-        # Simulate coordinator update
-        switch._handle_coordinator_update()
+        # Simulate coordinator update — patch async_write_ha_state since
+        # there's no real HA instance in unit tests
+        with patch.object(switch, "async_write_ha_state"):
+            switch._handle_coordinator_update()
         assert switch._optimistic_state is None  # Cleared
         # Now reads actual state from coordinator (power=True)
         assert switch.is_on is True
