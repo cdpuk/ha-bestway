@@ -213,30 +213,7 @@ class BestwaySwitch(BestwayEntity, SwitchEntity):
     """Bestway switch entity."""
 
     entity_description: BestwaySwitchEntityDescription
-
-    def __init__(
-        self,
-        coordinator: BestwayUpdateCoordinator,
-        config_entry: ConfigEntry,
-        device_id: str,
-        description: BestwaySwitchEntityDescription,
-    ) -> None:
-        """Initialize switch."""
-        super().__init__(coordinator, config_entry, device_id)
-        self.entity_description = description
-        self._attr_unique_id = f"{device_id}_{description.key}"
-
     _attr_assumed_state = True
-
-    @property
-    def is_on(self) -> bool | None:
-        """Return true if the switch is on."""
-        if self._optimistic_state is not None:
-            return self._optimistic_state
-        if status := self.status:
-            return self.entity_description.value_fn(status)
-
-        return None
 
     def __init__(
         self,
@@ -250,6 +227,16 @@ class BestwaySwitch(BestwayEntity, SwitchEntity):
         self.entity_description = description
         self._attr_unique_id = f"{device_id}_{description.key}"
         self._optimistic_state: bool | None = None
+
+    @property
+    def is_on(self) -> bool | None:
+        """Return true if the switch is on."""
+        if self._optimistic_state is not None:
+            return self._optimistic_state
+        if status := self.status:
+            return self.entity_description.value_fn(status)
+
+        return None
 
     def _handle_coordinator_update(self) -> None:
         """Clear optimistic state when real data arrives."""

@@ -77,7 +77,4 @@ class BestwayEntity(CoordinatorEntity[BestwayUpdateCoordinator]):
         See: https://github.com/cdpuk/ha-bestway/issues/93
         See: https://github.com/cdpuk/ha-bestway/issues/100
         """
-        return (
-            self.coordinator.last_update_success
-            and self.bestway_device is not None
-        )
+        return self.coordinator.last_update_success and self.bestway_device is not None

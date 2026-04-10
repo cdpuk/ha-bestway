@@ -7,15 +7,11 @@ These tests cover the fixes in:
 """
 
 from unittest.mock import MagicMock, AsyncMock, patch
-from dataclasses import dataclass
 from typing import Any
-
-import pytest
 
 from custom_components.bestway.bestway.model import (
     BestwayDevice,
     BestwayDeviceStatus,
-    BestwayDeviceType,
 )
 from custom_components.bestway.bestway.api import BestwayApiResults
 
@@ -23,6 +19,7 @@ from custom_components.bestway.bestway.api import BestwayApiResults
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_device(is_online: bool = True) -> BestwayDevice:
     return BestwayDevice(
@@ -61,9 +58,7 @@ def _make_coordinator(device: BestwayDevice, status: BestwayDeviceStatus):
     coordinator = MagicMock()
     coordinator.api = MagicMock()
     coordinator.api.devices = {"test_device": device}
-    coordinator.data = BestwayApiResults(
-        devices={"test_device": status}
-    )
+    coordinator.data = BestwayApiResults(devices={"test_device": status})
     coordinator.last_update_success = True
     coordinator.async_request_refresh = AsyncMock()
     coordinator.async_refresh = AsyncMock()
@@ -73,6 +68,7 @@ def _make_coordinator(device: BestwayDevice, status: BestwayDeviceStatus):
 # ---------------------------------------------------------------------------
 # entity.py: available property
 # ---------------------------------------------------------------------------
+
 
 class TestEntityAvailability:
     """Test that entity availability does NOT depend on is_online."""
@@ -133,12 +129,16 @@ class TestEntityAvailability:
 # switch.py: optimistic state tracking
 # ---------------------------------------------------------------------------
 
+
 class TestSwitchOptimistic:
     """Test that switches use optimistic state updates."""
 
     def test_switch_has_assumed_state(self):
         """Switch should declare assumed_state for optimistic updates."""
-        from custom_components.bestway.switch import BestwaySwitch, BestwaySwitchEntityDescription
+        from custom_components.bestway.switch import (
+            BestwaySwitch,
+            BestwaySwitchEntityDescription,
+        )
 
         desc = BestwaySwitchEntityDescription(
             key="test_power",
@@ -156,7 +156,10 @@ class TestSwitchOptimistic:
 
     def test_switch_optimistic_turn_on(self):
         """Switch shows ON immediately after turn_on, before API responds."""
-        from custom_components.bestway.switch import BestwaySwitch, BestwaySwitchEntityDescription
+        from custom_components.bestway.switch import (
+            BestwaySwitch,
+            BestwaySwitchEntityDescription,
+        )
 
         desc = BestwaySwitchEntityDescription(
             key="test_power",
@@ -181,7 +184,10 @@ class TestSwitchOptimistic:
 
     def test_switch_optimistic_cleared_on_update(self):
         """Optimistic state is cleared when coordinator provides real data."""
-        from custom_components.bestway.switch import BestwaySwitch, BestwaySwitchEntityDescription
+        from custom_components.bestway.switch import (
+            BestwaySwitch,
+            BestwaySwitchEntityDescription,
+        )
 
         desc = BestwaySwitchEntityDescription(
             key="test_power",
@@ -212,6 +218,7 @@ class TestSwitchOptimistic:
 # ---------------------------------------------------------------------------
 # climate.py: Tunit KeyError safety
 # ---------------------------------------------------------------------------
+
 
 class TestClimateTunitSafety:
     """Test that missing Tunit key doesn't crash the climate entity."""

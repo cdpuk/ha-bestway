@@ -188,9 +188,7 @@ async def _async_setup_aws_iot(
     # avoids the "Token is not authorized" failure that leaves all entities
     # unavailable until the next HA restart.
     try:
-        token = await AwsIotApi.authenticate(
-            session, visitor_id, location, api_base
-        )
+        token = await AwsIotApi.authenticate(session, visitor_id, location, api_base)
         # Update entry with fresh token
         hass.config_entries.async_update_entry(
             entry, data={**entry.data, "token": token}
