@@ -263,7 +263,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry, _PLATFORMS
     )
     if unload_ok:
-        coordinator = hass.data[DOMAIN].pop(entry.entry_id)
+        coordinator = hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
+        if coordinator is None:
+            return unload_ok
 
         # Cleanup WebSocket connection(s)
         # Gizwits: Single websocket
