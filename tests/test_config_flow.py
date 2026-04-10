@@ -1,5 +1,8 @@
 """Test bestway config flow."""
 
+import asyncio
+import threading
+from collections.abc import Generator
 from unittest.mock import patch
 
 from homeassistant import config_entries
@@ -48,13 +51,30 @@ def bypass_setup_fixture():
         yield
 
 
+@pytest.fixture(autouse=True)
+def verify_cleanup(event_loop: asyncio.AbstractEventLoop) -> Generator[None]:
+    """Override verify_cleanup to join daemon threads before checking.
+
+    The upstream pytest-homeassistant-custom-component verify_cleanup calls
+    shutdown_default_executor() which spawns a short-lived daemon thread
+    (_run_safe_shutdown_loop). The thread assertion then races with this
+    thread's exit, causing intermittent failures.
+
+    Config flow tests don't create real entities or coordinators, so the
+    full task/timer checks from the upstream fixture are unnecessary here.
+    """
+    threads_before = frozenset(threading.enumerate())
+    yield
+
+    event_loop.run_until_complete(event_loop.shutdown_default_executor())
+
+    # Join any threads spawned by shutdown_default_executor before asserting
+    for thread in frozenset(threading.enumerate()) - threads_before:
+        if not isinstance(thread, threading._DummyThread):
+            thread.join(timeout=2.0)
+
+
 # Simulate a successful Gizwits config flow.
-@pytest.mark.xfail(
-    reason="pytest-homeassistant-custom-component teardown thread check "
-    "rejects _run_safe_shutdown_loop daemon thread from asyncio internals. "
-    "Pre-existing on main. Test logic passes, only teardown assertion fails.",
-    strict=False,
-)
 async def test_successful_config_flow(hass, bypass_get_data):
     """Test a successful Gizwits (V01) config flow."""
     # Initialize a config flow
