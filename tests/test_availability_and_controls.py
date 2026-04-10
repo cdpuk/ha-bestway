@@ -231,9 +231,7 @@ class TestClimateTunitSafety:
         status = _make_status(attrs) if attrs is not None else _make_status()
         coordinator = _make_coordinator(device, status)
         config_entry = MagicMock()
-        return AirjetV01HydrojetSpaThermostat(
-            coordinator, config_entry, "test_device"
-        )
+        return AirjetV01HydrojetSpaThermostat(coordinator, config_entry, "test_device")
 
     def _make_thermostat_no_status(self):
         """Create a thermostat whose coordinator has no status for the device."""
@@ -246,9 +244,7 @@ class TestClimateTunitSafety:
         coordinator.data = BestwayApiResults(devices={})
         coordinator.last_update_success = True
         config_entry = MagicMock()
-        return AirjetV01HydrojetSpaThermostat(
-            coordinator, config_entry, "test_device"
-        )
+        return AirjetV01HydrojetSpaThermostat(coordinator, config_entry, "test_device")
 
     def test_temperature_unit_with_tunit_present(self):
         """Returns Celsius when Tunit=1 (truthy value)."""
