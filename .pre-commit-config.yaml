@@ -1,11 +1,11 @@
 ---
 repos:
   - repo: https://github.com/rhysd/actionlint
-    rev: v1.7.11
+    rev: v1.7.12
     hooks:
       - id: actionlint
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.1
+    rev: v0.15.10
     hooks:
       - id: ruff-check
         args:
@@ -13,7 +13,7 @@ repos:
       - id: ruff-format
         files: ^(custom_components|tests)/.+\.py$
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.1
+    rev: v2.4.2
     hooks:
       - id: codespell
         args:
