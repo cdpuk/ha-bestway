@@ -182,20 +182,21 @@ async def _async_setup_aws_iot(
     # Initialize API
     api = AwsIotApi(session, visitor_id, token, location, api_base)
 
-    # Authenticate if token missing or refresh if needed
-    if not token:
-        try:
-            token = await AwsIotApi.authenticate(
-                session, visitor_id, location, api_base
-            )
-            # Update entry with token
-            hass.config_entries.async_update_entry(
-                entry, data={**entry.data, "token": token}
-            )
-            api._token = token
-        except AwsIotAuthException as ex:
-            _LOGGER.error("AWS IoT authentication failed: %s", ex)
-            raise ConfigEntryAuthFailed from ex
+    # Always request a fresh token on startup.
+    # Stored tokens expire server-side without warning, and the API has no
+    # expiry field we can check. Re-authenticating is cheap (one POST) and
+    # avoids the "Token is not authorized" failure that leaves all entities
+    # unavailable until the next HA restart.
+    try:
+        token = await AwsIotApi.authenticate(session, visitor_id, location, api_base)
+        # Update entry with fresh token
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, "token": token}
+        )
+        api._token = token
+    except AwsIotAuthException as ex:
+        _LOGGER.error("AWS IoT authentication failed: %s", ex)
+        raise ConfigEntryAuthFailed from ex
 
     # Initialize coordinator
     coordinator = BestwayUpdateCoordinator(hass, entry, api)
@@ -262,7 +263,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         entry, _PLATFORMS
     )
     if unload_ok:
-        coordinator = hass.data[DOMAIN].pop(entry.entry_id)
+        coordinator = hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
+        if coordinator is None:
+            return unload_ok
 
         # Cleanup WebSocket connection(s)
         # Gizwits: Single websocket

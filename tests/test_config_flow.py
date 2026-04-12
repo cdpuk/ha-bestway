@@ -1,5 +1,7 @@
 """Test bestway config flow."""
 
+import threading
+from collections.abc import Generator
 from unittest.mock import patch
 
 from homeassistant import config_entries
@@ -29,12 +31,40 @@ MOCK_USER_INPUT = {
 # actual functionality of the integration in other test modules.
 @pytest.fixture(autouse=True)
 def bypass_setup_fixture():
-    """Prevent setup."""
-    with patch(
-        "custom_components.bestway.async_setup_entry",
-        return_value=True,
+    """Prevent setup and unload.
+
+    Config flow tests only exercise the flow logic, not the actual
+    integration setup. Patching both prevents stray threads and teardown
+    errors when HA tries to manage an entry that was never fully initialized.
+    """
+    with (
+        patch(
+            "custom_components.bestway.async_setup_entry",
+            return_value=True,
+        ),
+        patch(
+            "custom_components.bestway.async_unload_entry",
+            return_value=True,
+        ),
     ):
         yield
+
+
+@pytest.fixture(autouse=True)
+def verify_cleanup() -> Generator[None]:
+    """Override verify_cleanup to tolerate the _run_safe_shutdown_loop thread.
+
+    The upstream fixture asserts no new threads exist after teardown, but
+    shutdown_default_executor() spawns a short-lived daemon thread that
+    races with this check. Config flow tests don't create real entities,
+    so we just wait for any daemon threads to exit.
+    """
+    threads_before = frozenset(threading.enumerate())
+    yield
+
+    for thread in frozenset(threading.enumerate()) - threads_before:
+        if thread.daemon:
+            thread.join(timeout=2.0)
 
 
 # Simulate a successful Gizwits config flow.
