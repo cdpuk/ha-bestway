@@ -33,11 +33,11 @@ This integration is delivered as a HACS custom repository.
 
 ## Configuration
 
-Initial configuration must be done via the relevant mobile app:
+Initial configuration must be done via the relevant mobile app. Bestway have published no less than three different apps, so care must be taken to use the right one.
 
-- V1 models must be configured via the Bestway mobile app ([Android][bestway-android]/[iOS][bestway-ios]). We have found that the spa can also be controlled via the Lay-Z-Spa app, but this integration will not accept credentials from that app.
+- V1 models must be configured via the Bestway Smart Hubapp ([Android][bestway-android]/[iOS][bestway-ios]). We have found that the spa can also be controlled via the Lay-Z-Spa Wi-Fi app ([Android][layzspa-android]/[iOS][layzspa-ios]), but this integration will not accept credentials from that app.
 
-- V2 models must be configured via the Lay-Z-Spa mobile app ([Android][layzspa-android]/[iOS][layzspa-ios]).
+- V2 models must be configured via the Bestway Connect app ([Android][bestway-connect-android]/[iOS][bestway-connect-ios]). Users have reported that the Lay-Z-Spa Wi-Fi app will control devices, but does not provide the crucial sharing QR code described below.
 
 With this done, open Home Assistant and go to **Configuration** > **Devices & Services** > **Add Integration**, then find **Bestway** in the list.
 
@@ -66,3 +66,5 @@ If you want to contribute to this please read the [Contribution Guidelines](CONT
 [bestway-ios]: https://apps.apple.com/us/app/bestway-smart-hub/id1456731336
 [layzspa-android]: https://play.google.com/store/apps/details?id=com.wiltonbradley.layzspaapp
 [layzspa-ios]: https://apps.apple.com/gb/app/lay-z-spa-wifi-app/id6736467418
+[bestway-connect-android]: https://play.google.com/store/apps/details?id=com.bestway.smartspa
+[bestway-connect-ios]: https://apps.apple.com/gb/app/bestway-connect-smartspa/id6503030222
