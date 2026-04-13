@@ -151,7 +151,7 @@ class BubblesMapping:
 
 
 BV = BubblesValues
-AIRJET_V01_BUBBLES_MAP = BubblesMapping(BV(0), BV(50, [50, 51]), BV(100))
+AIRJET_V01_BUBBLES_MAP = BubblesMapping(BV(0), BV(50, [40, 41, 50, 51]), BV(100))
 HYDROJET_BUBBLES_MAP = BubblesMapping(BV(0), BV(40), BV(100))
 
 
