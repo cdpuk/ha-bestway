@@ -242,6 +242,7 @@ class StateSensor(BestwayEntity, SensorEntity):
             return self.status.attrs.get(self._state_key)
         return None
 
+
 class EstimatedPowerSensor(BestwayEntity, SensorEntity):
     """Estimated instantaneous power consumption for a spa.
 
@@ -293,9 +294,9 @@ class EstimatedPowerSensor(BestwayEntity, SensorEntity):
                 attrs.get("heat_temp_reach")
             )
         elif "heat" in attrs:
-            heater_active = int(attrs.get("heat") or 0) > 0 and int(
-                attrs.get("heat") or 0
-            ) != 4
+            heater_active = (
+                int(attrs.get("heat") or 0) > 0 and int(attrs.get("heat") or 0) != 4
+            )
 
         if heater_active:
             watts += ESTIMATED_HEATER_WATTS
