@@ -23,8 +23,8 @@ from .bestway.model import BestwayDevice, BestwayDeviceType
 from .const import BACKEND_GIZWITS, DOMAIN, Icon
 from .entity import BestwayEntity
 
-ESTIMATED_HEATER_WATTS = 2000
-ESTIMATED_BUBBLES_WATTS = 250
+ESTIMATED_HEATER_WATTS = 2050
+ESTIMATED_BUBBLES_WATTS = 800
 ESTIMATED_FILTER_WATTS = 50
 ESTIMATED_JETS_WATTS = 0  # set later if you want Hydrojet jet estimate
 
