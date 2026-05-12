@@ -230,10 +230,23 @@ def test_normalize_state_partial_update_preserves_absent_fields():
 
 def test_normalize_state_wave_mapping():
     """Test V02 wave_state value mapping to V01 format."""
+    from custom_components.bestway.bestway.model import (
+        HYDROJET_BUBBLES_MAP,
+        BubblesLevel,
+    )
+
     # V02 MEDIUM (40) maps to V01 Airjet MEDIUM (50)
     aws_state = {"wave_state": 40}
     normalized = AwsIotApi.normalize_aws_state(aws_state)
     assert normalized["wave"] == 50
+
+    # Hydrojet may report 41; treat it as MEDIUM as well.
+    aws_state = {"wave_state": 41}
+    normalized = AwsIotApi.normalize_aws_state(aws_state)
+    assert normalized["wave"] == 41
+    assert (
+        HYDROJET_BUBBLES_MAP.from_api_value(normalized["wave"]) == BubblesLevel.MEDIUM
+    )
 
     # 0 and 100 are the same in both versions
     aws_state = {"wave_state": 0}
@@ -329,6 +342,44 @@ async def test_set_device_state_sends_command(aws_api, mock_session):
     # Verify
     assert success is True
     assert mock_session.post.called
+
+
+@pytest.mark.asyncio
+async def test_hydrojet_medium_from_off_uses_toggle_sequence(aws_api):
+    """Test MEDIUM from OFF sends HIGH first, then MEDIUM."""
+    from custom_components.bestway.bestway.model import (
+        BestwayDevice,
+        BestwayDeviceStatus,
+        BubblesLevel,
+    )
+    from unittest.mock import AsyncMock, patch
+
+    aws_api.devices = {
+        "device1": BestwayDevice(
+            protocol_version=2,
+            device_id="device1",
+            product_name="AIRJET",
+            alias="Test Spa",
+            mcu_soft_version="unknown",
+            mcu_hard_version="unknown",
+            wifi_soft_version="unknown",
+            wifi_hard_version="unknown",
+            is_online=True,
+            backend="aws_iot",
+            product_id="T53NN8",
+        )
+    }
+    aws_api._state_cache = {
+        "device1": BestwayDeviceStatus(timestamp=0, attrs={"wave": 0})
+    }
+    aws_api.set_device_state = AsyncMock(return_value=True)
+
+    with patch("custom_components.bestway.aws_iot.api.asyncio.sleep", new=AsyncMock()):
+        await aws_api.hydrojet_spa_set_bubbles("device1", BubblesLevel.MEDIUM)
+
+    assert aws_api.set_device_state.await_count == 2
+    assert aws_api.set_device_state.await_args_list[0].args[1] == {"wave_state": 100}
+    assert aws_api.set_device_state.await_args_list[1].args[1] == {"wave_state": 40}
 
 
 @pytest.mark.asyncio

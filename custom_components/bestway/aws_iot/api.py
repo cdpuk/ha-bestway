@@ -126,10 +126,14 @@ class AwsIotApi:
         # V02 wave_state actual values: 0=OFF, 40=MEDIUM, 100=HIGH
         # Map to V01 Airjet format (0/50/100) for AIRJET_V01_BUBBLES_MAP compatibility
         # Note: Hydrojet uses 40 for MEDIUM, so no mapping needed there
+        _LOGGER.debug("🔵 normalize_aws_state: INPUT wave_state=%s", wave_state)
         if wave_state == 40:
             wave_normalized = 50  # Map V02 MEDIUM (40) → V01 Airjet MEDIUM (50)
         else:
             wave_normalized = wave_state  # 0 and 100 are same in both
+        _LOGGER.debug(
+            "🔵 normalize_aws_state: OUTPUT wave_normalized=%s", wave_normalized
+        )
 
         # Build normalized dict, only including fields with actual values
         # This prevents None values from overwriting existing data during merges
@@ -848,6 +852,8 @@ class AwsIotApi:
         Physical button cycles: OFF → HIGH → MEDIUM → OFF
         Try sending absolute values first (simplest approach).
         """
+        _LOGGER.debug("🔵 airjet_v01_spa_set_bubbles: input level=%s", level)
+
         # Map BubblesLevel enum to V02 wave_state values
         value_map = {
             BubblesLevel.OFF: 0,
@@ -856,9 +862,45 @@ class AwsIotApi:
         }
 
         target_value = value_map.get(level)
-        if target_value is not None:
-            await self.set_device_state(device_id, {"wave_state": target_value})
-            _LOGGER.debug("Set bubbles to %s (wave_state=%d)", level.name, target_value)
+        _LOGGER.debug("🔵 airjet_v01_spa_set_bubbles: target_value=%s", target_value)
+
+        if target_value is None:
+            return
+
+        # Some V02 Hydrojet devices ignore a direct MEDIUM (40) command when currently OFF.
+        # Physical button cycles: OFF -> HIGH -> MEDIUM -> OFF. To reliably reach MEDIUM
+        # from OFF, send a HIGH (100) toggle first, wait briefly, then send MEDIUM (40).
+        try:
+            cached = self._state_cache.get(device_id)
+            current_wave = None
+            if cached and isinstance(cached.attrs, dict):
+                current_wave = cached.attrs.get("wave")
+        except Exception:
+            current_wave = None
+
+        # If requesting MEDIUM but currently OFF, perform a toggle sequence
+        if target_value == 40 and (current_wave is None or int(current_wave) == 0):
+            _LOGGER.debug(
+                "🔵 airjet_v01_spa_set_bubbles: current_wave=%s, sending toggle sequence HIGH->MEDIUM",
+                current_wave,
+            )
+            # Send HIGH first
+            await self.set_device_state(device_id, {"wave_state": 100})
+            # Give device a short moment to apply
+            try:
+                await asyncio.sleep(1)
+            except Exception:
+                pass
+            # Now send MEDIUM
+            await self.set_device_state(device_id, {"wave_state": 40})
+            _LOGGER.debug(
+                "🔵 Set bubbles to %s (wave_state=%d after toggle)", level.name, 40
+            )
+            return
+
+        # Default: send the requested absolute value
+        await self.set_device_state(device_id, {"wave_state": target_value})
+        _LOGGER.debug("🔵 Set bubbles to %s (wave_state=%d)", level.name, target_value)
 
     async def hydrojet_spa_set_bubbles(
         self, device_id: str, level: BubblesLevel
@@ -867,6 +909,10 @@ class AwsIotApi:
 
         V02 uses same toggle approach as Airjet V02.
         """
+        _LOGGER.debug(
+            "🔵 hydrojet_spa_set_bubbles: delegating to airjet_v01_spa_set_bubbles with level=%s",
+            level,
+        )
         # V02 uses toggle approach (same as Airjet V02)
         await self.airjet_v01_spa_set_bubbles(device_id, level)
 

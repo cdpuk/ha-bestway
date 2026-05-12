@@ -7,3 +7,4 @@ venv
 .coverage
 .idea
 node_modules
+tests/LOGS/
