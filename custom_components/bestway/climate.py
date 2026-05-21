@@ -292,8 +292,8 @@ class AirjetV01HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new target hvac mode."""
         want_heat = hvac_mode == HVACMode.HEAT
-        self._optimistic_heat = int(HydrojetHeat.ON) if want_heat else int(
-            HydrojetHeat.OFF
+        self._optimistic_heat = (
+            int(HydrojetHeat.ON) if want_heat else int(HydrojetHeat.OFF)
         )
         self.async_write_ha_state()
         await self.coordinator.api.hydrojet_spa_set_heat(
@@ -310,8 +310,8 @@ class AirjetV01HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
 
         if hvac_mode := kwargs.get(ATTR_HVAC_MODE):
             want_heat = hvac_mode == HVACMode.HEAT
-            self._optimistic_heat = int(HydrojetHeat.ON) if want_heat else int(
-                HydrojetHeat.OFF
+            self._optimistic_heat = (
+                int(HydrojetHeat.ON) if want_heat else int(HydrojetHeat.OFF)
             )
             await self.coordinator.api.hydrojet_spa_set_heat(
                 self.device_id,
