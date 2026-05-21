@@ -182,8 +182,8 @@ class TestSwitchOptimistic:
         switch._optimistic_state = True
         assert switch.is_on is True
 
-    def test_switch_optimistic_cleared_on_update(self):
-        """Optimistic state is cleared when coordinator provides real data."""
+    def test_switch_optimistic_cleared_when_real_state_matches(self):
+        """Optimistic state is cleared once real data confirms what we set."""
         from custom_components.bestway.switch import (
             BestwaySwitch,
             BestwaySwitchEntityDescription,
@@ -197,21 +197,52 @@ class TestSwitchOptimistic:
             turn_off_fn=AsyncMock(),
         )
         device = _make_device()
+        # Real state already matches what we optimistically set (True)
         status = _make_status({"power": True})
         coordinator = _make_coordinator(device, status)
         config_entry = MagicMock()
 
         switch = BestwaySwitch(coordinator, config_entry, "test_device", desc)
-        switch._optimistic_state = False  # Optimistic says OFF
+        switch._optimistic_state = True
 
-        assert switch.is_on is False  # Optimistic overrides
-
-        # Simulate coordinator update — patch async_write_ha_state since
-        # there's no real HA instance in unit tests
         with patch.object(switch, "async_write_ha_state"):
             switch._handle_coordinator_update()
-        assert switch._optimistic_state is None  # Cleared
-        # Now reads actual state from coordinator (power=True)
+
+        assert switch._optimistic_state is None  # Cleared on confirmation
+        assert switch.is_on is True  # Reads from coordinator now
+
+    def test_switch_optimistic_kept_when_real_state_lags(self):
+        """Optimistic state survives a refresh that hasn't yet caught the change.
+
+        Without this, the UI flickers ON -> OFF -> ON when async_request_refresh
+        fires before the Bestway cloud has acked the command and the shadow
+        still reports the previous value.
+        """
+        from custom_components.bestway.switch import (
+            BestwaySwitch,
+            BestwaySwitchEntityDescription,
+        )
+
+        desc = BestwaySwitchEntityDescription(
+            key="test_power",
+            name="Test Power",
+            value_fn=lambda s: bool(s.attrs["power"]),
+            turn_on_fn=AsyncMock(),
+            turn_off_fn=AsyncMock(),
+        )
+        device = _make_device()
+        # Shadow still has the old value while the command is in flight
+        status = _make_status({"power": False})
+        coordinator = _make_coordinator(device, status)
+        config_entry = MagicMock()
+
+        switch = BestwaySwitch(coordinator, config_entry, "test_device", desc)
+        switch._optimistic_state = True  # User pressed ON
+
+        with patch.object(switch, "async_write_ha_state"):
+            switch._handle_coordinator_update()
+
+        assert switch._optimistic_state is True  # Kept, no flicker
         assert switch.is_on is True
 
 

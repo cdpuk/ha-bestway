@@ -87,6 +87,69 @@ async def test_handle_message_no_callback_error(aws_websocket):
 
 
 @pytest.mark.asyncio
+async def test_handle_message_delta_shape(aws_websocket, mock_callback):
+    """Delta-shape shadow messages (no nested reported/desired) reach the callback.
+
+    AWS IoT also publishes update-delta notifications where the changed
+    fields live directly under "state". Before the fix these were silently
+    dropped.
+    """
+    message = {"state": {"power_state": 1, "filter_state": 1}, "version": 42}
+
+    with patch(
+        "custom_components.bestway.aws_iot.api.AwsIotApi.normalize_aws_state"
+    ) as mock_normalize:
+        mock_normalize.return_value = {"power": True, "filter": 1}
+        await aws_websocket._handle_message(message)
+
+    mock_normalize.assert_called_once_with({"power_state": 1, "filter_state": 1})
+    mock_callback.assert_called_once()
+    assert mock_callback.call_args[0][1] == {"power": True, "filter": 1}
+
+
+@pytest.mark.asyncio
+async def test_handle_message_documents_shape(aws_websocket, mock_callback):
+    """Documents-shape shadow snapshots (current.state.reported) reach the callback."""
+    message = {
+        "current": {
+            "state": {
+                "reported": {"power_state": 1},
+                "desired": {"heater_state": 1},
+            }
+        }
+    }
+
+    with patch(
+        "custom_components.bestway.aws_iot.api.AwsIotApi.normalize_aws_state"
+    ) as mock_normalize:
+        mock_normalize.return_value = {"power": True, "heat": 1}
+        await aws_websocket._handle_message(message)
+
+    # desired wins over reported on key conflicts; here they're disjoint
+    mock_normalize.assert_called_once_with({"power_state": 1, "heater_state": 1})
+    mock_callback.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_handle_message_desired_overrides_reported(aws_websocket, mock_callback):
+    """When reported and desired disagree, desired wins (matches Bestway app)."""
+    message = {
+        "state": {
+            "reported": {"filter_state": 0},
+            "desired": {"filter_state": 1},
+        }
+    }
+
+    with patch(
+        "custom_components.bestway.aws_iot.api.AwsIotApi.normalize_aws_state"
+    ) as mock_normalize:
+        mock_normalize.return_value = {"filter": 1}
+        await aws_websocket._handle_message(message)
+
+    mock_normalize.assert_called_once_with({"filter_state": 1})
+
+
+@pytest.mark.asyncio
 async def test_http_400_triggers_token_refresh(aws_websocket):
     """Test HTTP 400 error triggers token refresh and immediate retry."""
     token_refresh = AsyncMock(return_value="new_token_789")
