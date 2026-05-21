@@ -239,8 +239,19 @@ class BestwaySwitch(BestwayEntity, SwitchEntity):
         return None
 
     def _handle_coordinator_update(self) -> None:
-        """Clear optimistic state when real data arrives."""
-        self._optimistic_state = None
+        """Clear optimistic state only once real data confirms the value.
+
+        Otherwise a refresh that fires before the cloud has acked the
+        command exposes the stale "old" state for a few hundred ms,
+        producing a visible ON -> OFF -> ON flicker.
+        """
+        if self._optimistic_state is not None and self.status is not None:
+            try:
+                actual = self.entity_description.value_fn(self.status)
+            except (KeyError, TypeError):
+                actual = None
+            if actual == self._optimistic_state:
+                self._optimistic_state = None
         super()._handle_coordinator_update()
 
     async def async_turn_on(self, **kwargs: Any) -> None:

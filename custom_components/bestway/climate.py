@@ -195,9 +195,25 @@ class AirjetV01HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
         self._optimistic_tset: int | None = None
 
     def _handle_coordinator_update(self) -> None:
-        """Clear optimistic state when real data arrives."""
-        self._optimistic_heat = None
-        self._optimistic_tset = None
+        """Clear optimistic state only once real data confirms the value.
+
+        A refresh that fires before the cloud has acked the command would
+        otherwise expose the stale state and flicker the UI back to the
+        previous mode/temperature for a few hundred ms.
+        """
+        if self.status is not None:
+            attrs = self.status.attrs
+            if self._optimistic_heat is not None:
+                want_on = self._optimistic_heat > 0
+                actual_on = attrs.get("heat", 0) > 0
+                if want_on == actual_on:
+                    self._optimistic_heat = None
+            if self._optimistic_tset is not None:
+                try:
+                    if int(attrs.get("Tset", -1)) == self._optimistic_tset:
+                        self._optimistic_tset = None
+                except (TypeError, ValueError):
+                    pass
         super()._handle_coordinator_update()
 
     @property
