@@ -78,7 +78,7 @@ _AIRJET_V01_HYDROJET_SPA_FILTER_SWITCH = BestwaySwitchEntityDescription(
     key="spa_filter_power",
     name="Spa Filter",
     icon=Icon.FILTER,
-    value_fn=lambda s: bool(s.attrs["filter"] == 2),
+    value_fn=lambda s: bool(s.attrs.get("filter")),
     turn_on_fn=lambda api, device_id: api.hydrojet_spa_set_filter(
         device_id, HydrojetFilter.ON
     ),

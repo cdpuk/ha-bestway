@@ -228,32 +228,58 @@ class AwsIotWebSocket:
                 await self._schedule_reconnect()
 
     async def _handle_message(self, data: dict[str, Any]) -> None:
-        """Process shadow delta message.
+        """Process shadow update message.
 
-        Args:
-            data: Parsed WebSocket message containing shadow state
+        Handles the three AWS IoT shadow notification shapes:
+        - documents:  {current: {state: {reported: {...}, desired: {...}}}, ...}
+        - update:     {state: {reported: {...}, desired: {...}}, ...}
+        - delta:      {state: {<field>: <value>, ...}, ...}
         """
-        # Extract shadow state (matches AWS IoT shadow delta format)
-        if "state" in data and "reported" in data.get("state", {}):
-            state = data["state"]["reported"]
+        state: dict[str, Any] | None = None
 
-            _LOGGER.debug(
-                "Shadow update for device %s: %d fields",
-                self._device_id[:12],
-                len(state),
-            )
+        # "documents" notification — full shadow snapshot
+        current = data.get("current")
+        if isinstance(current, dict):
+            current_state = current.get("state")
+            if isinstance(current_state, dict):
+                reported = current_state.get("reported") or {}
+                desired = current_state.get("desired") or {}
+                if reported or desired:
+                    state = {**reported, **desired}
 
-            # Normalize AWS field names to Gizwits V01 equivalents using shared method
-            from .api import AwsIotApi
+        # "update" / "delta" notifications carry "state" at the top level
+        if state is None:
+            raw_state = data.get("state")
+            if isinstance(raw_state, dict):
+                reported = raw_state.get("reported")
+                desired = raw_state.get("desired")
+                if isinstance(reported, dict) or isinstance(desired, dict):
+                    # update-style: merge desired over reported (desired wins)
+                    state = {**(reported or {}), **(desired or {})}
+                else:
+                    # delta-style: state values are the deltas themselves
+                    state = raw_state
 
-            normalized = AwsIotApi.normalize_aws_state(state)
+        if not state:
+            return
 
-            # Call coordinator callback with (device_id, normalized_attrs)
-            if self._update_callback is not None:
-                try:
-                    self._update_callback(self._device_id, normalized)
-                except Exception as err:
-                    _LOGGER.error("Callback error: %s", err)
+        _LOGGER.debug(
+            "Shadow update for device %s: %d fields",
+            self._device_id[:12],
+            len(state),
+        )
+
+        # Normalize AWS field names to Gizwits V01 equivalents using shared method
+        from .api import AwsIotApi
+
+        normalized = AwsIotApi.normalize_aws_state(state)
+
+        # Call coordinator callback with (device_id, normalized_attrs)
+        if self._update_callback is not None:
+            try:
+                self._update_callback(self._device_id, normalized)
+            except Exception as err:
+                _LOGGER.error("Callback error: %s", err)
 
     async def _heartbeat_loop(self) -> None:
         """Send heartbeat every 30 seconds to maintain connection."""

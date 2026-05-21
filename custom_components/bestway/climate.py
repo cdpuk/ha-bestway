@@ -191,10 +191,20 @@ class AirjetV01HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
         """Initialize thermostat."""
         super().__init__(coordinator, config_entry, device_id)
         self._attr_unique_id = f"{device_id}_thermostat"
+        self._optimistic_heat: int | None = None
+        self._optimistic_tset: int | None = None
+
+    def _handle_coordinator_update(self) -> None:
+        """Clear optimistic state when real data arrives."""
+        self._optimistic_heat = None
+        self._optimistic_tset = None
+        super()._handle_coordinator_update()
 
     @property
     def hvac_mode(self) -> HVACMode | None:
         """Return the current mode (HEAT or OFF)."""
+        if self._optimistic_heat is not None:
+            return HVACMode.HEAT if self._optimistic_heat > 0 else HVACMode.OFF
         if not self.status:
             return None
         return HVACMode.HEAT if self.status.attrs["heat"] > 0 else HVACMode.OFF
@@ -202,10 +212,13 @@ class AirjetV01HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
     @property
     def hvac_action(self) -> HVACAction | None:
         """Return the current running action (HEATING or IDLE)."""
-        if not self.status:
-            return None
-        heat_on = self.status.attrs["heat"] > 0
-        target_reached = self.status.attrs["heat"] == 4
+        heat_value: int | None = self._optimistic_heat
+        if heat_value is None:
+            if not self.status:
+                return None
+            heat_value = self.status.attrs["heat"]
+        heat_on = heat_value > 0
+        target_reached = heat_value == 4
         return (
             HVACAction.HEATING if (heat_on and not target_reached) else HVACAction.IDLE
         )
@@ -220,6 +233,8 @@ class AirjetV01HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
     @property
     def target_temperature(self) -> float | None:
         """Return the temperature we try to reach."""
+        if self._optimistic_tset is not None:
+            return float(self._optimistic_tset)
         if not self.status:
             return None
         return int(self.status.attrs["Tset"])
@@ -260,14 +275,15 @@ class AirjetV01HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new target hvac mode."""
-        if hvac_mode == HVACMode.HEAT:
-            await self.coordinator.api.hydrojet_spa_set_heat(
-                self.device_id, HydrojetHeat.ON
-            )
-        else:
-            await self.coordinator.api.hydrojet_spa_set_heat(
-                self.device_id, HydrojetHeat.OFF
-            )
+        want_heat = hvac_mode == HVACMode.HEAT
+        self._optimistic_heat = int(HydrojetHeat.ON) if want_heat else int(
+            HydrojetHeat.OFF
+        )
+        self.async_write_ha_state()
+        await self.coordinator.api.hydrojet_spa_set_heat(
+            self.device_id,
+            HydrojetHeat.ON if want_heat else HydrojetHeat.OFF,
+        )
         await self.coordinator.async_request_refresh()
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
@@ -277,11 +293,17 @@ class AirjetV01HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
             return
 
         if hvac_mode := kwargs.get(ATTR_HVAC_MODE):
-            should_heat = hvac_mode == HVACMode.HEAT
+            want_heat = hvac_mode == HVACMode.HEAT
+            self._optimistic_heat = int(HydrojetHeat.ON) if want_heat else int(
+                HydrojetHeat.OFF
+            )
             await self.coordinator.api.hydrojet_spa_set_heat(
-                self.device_id, should_heat
+                self.device_id,
+                HydrojetHeat.ON if want_heat else HydrojetHeat.OFF,
             )
 
+        self._optimistic_tset = int(target_temperature)
+        self.async_write_ha_state()
         await self.coordinator.api.hydrojet_spa_set_target_temp(
             self.device_id, target_temperature
         )
