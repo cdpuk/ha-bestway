@@ -56,6 +56,18 @@ _AIRJET_SPA_BUBBLES_SWITCH = BestwaySwitchEntityDescription(
     turn_off_fn=lambda api, device_id: api.airjet_spa_set_bubbles(device_id, False),
 )
 
+# V02 Airjet (e.g. T53NN8) only supports on/off bubbles physically, even
+# though the device shadow accepts/echoes the 0/40/100 wave_state values.
+# Use a simple switch instead of the 3-way select.
+_AIRJET_V02_BUBBLES_SWITCH = BestwaySwitchEntityDescription(
+    key="spa_wave_power",
+    name="Spa Bubbles",
+    icon=Icon.BUBBLES,
+    value_fn=lambda s: bool(s.attrs.get("wave")),
+    turn_on_fn=lambda api, device_id: api.airjet_spa_set_bubbles(device_id, True),
+    turn_off_fn=lambda api, device_id: api.airjet_spa_set_bubbles(device_id, False),
+)
+
 _AIRJET_SPA_LOCK_SWITCH = BestwaySwitchEntityDescription(
     key="spa_locked",
     name="Spa Locked",
@@ -165,6 +177,21 @@ async def async_setup_entry(
                         _AIRJET_V01_HYDROJET_SPA_FILTER_SWITCH,
                     ),
                 ]
+            )
+
+        # V02 Airjet bubbles are on/off only (no MEDIUM level despite the
+        # shadow accepting wave_state=40). Expose as a switch.
+        if device.device_type in [
+            BestwayDeviceType.AIRJET_V02,
+            BestwayDeviceType.ULTRAFIT_AIRJET_V02,
+        ]:
+            entities.append(
+                BestwaySwitch(
+                    coordinator,
+                    config_entry,
+                    device_id,
+                    _AIRJET_V02_BUBBLES_SWITCH,
+                )
             )
 
         # V01 and V02 Hydrojet devices (normalization provides consistent field names)

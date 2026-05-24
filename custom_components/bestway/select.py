@@ -68,11 +68,10 @@ async def async_setup_entry(
     entities: list[BestwayEntity] = []
 
     for device_id, device in coordinator.api.devices.items():
-        if device.device_type in [
-            BestwayDeviceType.AIRJET_V01_SPA,
-            BestwayDeviceType.AIRJET_V02,
-            BestwayDeviceType.ULTRAFIT_AIRJET_V02,
-        ]:
+        # V01 Airjet has 3 physical levels (OFF/MEDIUM/MAX) and uses the select.
+        # V02 Airjet (e.g. T53NN8) only has on/off physically even though the
+        # shadow accepts wave_state=40 — handled by a switch in switch.py.
+        if device.device_type == BestwayDeviceType.AIRJET_V01_SPA:
             entities.append(
                 ThreeWaySpaBubblesSelect(
                     coordinator,
