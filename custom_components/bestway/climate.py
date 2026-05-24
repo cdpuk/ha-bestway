@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from time import monotonic
 from typing import Any
 
 from homeassistant.components.climate import ClimateEntity, ClimateEntityFeature
@@ -15,6 +16,8 @@ from . import BestwayUpdateCoordinator
 from .bestway.model import BestwayDeviceType, HydrojetHeat
 from .const import DOMAIN
 from .entity import BestwayEntity
+
+_OPTIMISTIC_TIMEOUT_S = 8.0
 
 _SPA_MIN_TEMP_C = 20
 _SPA_MIN_TEMP_F = 68
@@ -192,28 +195,44 @@ class AirjetV01HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
         super().__init__(coordinator, config_entry, device_id)
         self._attr_unique_id = f"{device_id}_thermostat"
         self._optimistic_heat: int | None = None
+        self._optimistic_heat_set_at: float = 0.0
         self._optimistic_tset: int | None = None
+        self._optimistic_tset_set_at: float = 0.0
+
+    def _set_optimistic_heat(self, value: int) -> None:
+        self._optimistic_heat = value
+        self._optimistic_heat_set_at = monotonic()
+
+    def _set_optimistic_tset(self, value: int) -> None:
+        self._optimistic_tset = value
+        self._optimistic_tset_set_at = monotonic()
 
     def _handle_coordinator_update(self) -> None:
-        """Clear optimistic state only once real data confirms the value.
+        """Clear optimistic state once real data confirms it, or after a
+        short timeout.
 
-        A refresh that fires before the cloud has acked the command would
-        otherwise expose the stale state and flicker the UI back to the
-        previous mode/temperature for a few hundred ms.
+        Without the confirmation check, a refresh that fires before the
+        cloud has acked the command exposes the stale state. Without the
+        timeout, rapid input (or a dropped/reordered command) leaves the
+        UI stuck on a value the cloud never reaches.
         """
+        now = monotonic()
         if self.status is not None:
             attrs = self.status.attrs
             if self._optimistic_heat is not None:
                 want_on = self._optimistic_heat > 0
                 actual_on = attrs.get("heat", 0) > 0
-                if want_on == actual_on:
+                timed_out = now - self._optimistic_heat_set_at >= _OPTIMISTIC_TIMEOUT_S
+                if want_on == actual_on or timed_out:
                     self._optimistic_heat = None
             if self._optimistic_tset is not None:
+                timed_out = now - self._optimistic_tset_set_at >= _OPTIMISTIC_TIMEOUT_S
                 try:
-                    if int(attrs.get("Tset", -1)) == self._optimistic_tset:
-                        self._optimistic_tset = None
+                    matched = int(attrs.get("Tset", -1)) == self._optimistic_tset
                 except (TypeError, ValueError):
-                    pass
+                    matched = False
+                if matched or timed_out:
+                    self._optimistic_tset = None
         super()._handle_coordinator_update()
 
     @property
@@ -292,7 +311,7 @@ class AirjetV01HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new target hvac mode."""
         want_heat = hvac_mode == HVACMode.HEAT
-        self._optimistic_heat = (
+        self._set_optimistic_heat(
             int(HydrojetHeat.ON) if want_heat else int(HydrojetHeat.OFF)
         )
         self.async_write_ha_state()
@@ -310,7 +329,7 @@ class AirjetV01HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
 
         if hvac_mode := kwargs.get(ATTR_HVAC_MODE):
             want_heat = hvac_mode == HVACMode.HEAT
-            self._optimistic_heat = (
+            self._set_optimistic_heat(
                 int(HydrojetHeat.ON) if want_heat else int(HydrojetHeat.OFF)
             )
             await self.coordinator.api.hydrojet_spa_set_heat(
@@ -318,7 +337,7 @@ class AirjetV01HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
                 HydrojetHeat.ON if want_heat else HydrojetHeat.OFF,
             )
 
-        self._optimistic_tset = int(target_temperature)
+        self._set_optimistic_tset(int(target_temperature))
         self.async_write_ha_state()
         await self.coordinator.api.hydrojet_spa_set_target_temp(
             self.device_id, target_temperature

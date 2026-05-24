@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from time import monotonic
 
 from typing import Any
 
@@ -18,6 +19,12 @@ from .bestway.api import BestwayApi
 from .bestway.model import BestwayDeviceStatus, BestwayDeviceType, HydrojetFilter
 from .const import DOMAIN, Icon
 from .entity import BestwayEntity
+
+# Maximum time an optimistic value is trusted before the entity falls back
+# to whatever the cloud last reported. Long enough to ride out a normal
+# Bestway/AWS round trip, short enough that a stuck UI self-heals quickly
+# when commands fail or get processed out of order.
+_OPTIMISTIC_TIMEOUT_S = 8.0
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -227,6 +234,12 @@ class BestwaySwitch(BestwayEntity, SwitchEntity):
         self.entity_description = description
         self._attr_unique_id = f"{device_id}_{description.key}"
         self._optimistic_state: bool | None = None
+        self._optimistic_set_at: float = 0.0
+
+    def _set_optimistic(self, value: bool) -> None:
+        """Set the optimistic value and stamp it for the timeout check."""
+        self._optimistic_state = value
+        self._optimistic_set_at = monotonic()
 
     @property
     def is_on(self) -> bool | None:
@@ -239,31 +252,37 @@ class BestwaySwitch(BestwayEntity, SwitchEntity):
         return None
 
     def _handle_coordinator_update(self) -> None:
-        """Clear optimistic state only once real data confirms the value.
+        """Clear optimistic state once real data confirms it, or after a
+        short timeout.
 
-        Otherwise a refresh that fires before the cloud has acked the
-        command exposes the stale "old" state for a few hundred ms,
-        producing a visible ON -> OFF -> ON flicker.
+        Without the confirmation check, a refresh that fires before the
+        cloud has acked the command exposes the stale "old" state and the
+        UI flickers ON -> OFF -> ON. Without the timeout, a rapid
+        double-tap (or any command the cloud reorders / drops) can leave
+        the switch stuck on the unconfirmed value indefinitely because
+        the real state never matches.
         """
         if self._optimistic_state is not None and self.status is not None:
             try:
                 actual = self.entity_description.value_fn(self.status)
             except (KeyError, TypeError):
                 actual = None
-            if actual == self._optimistic_state:
+            confirmed = actual == self._optimistic_state
+            timed_out = monotonic() - self._optimistic_set_at >= _OPTIMISTIC_TIMEOUT_S
+            if confirmed or timed_out:
                 self._optimistic_state = None
         super()._handle_coordinator_update()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on."""
-        self._optimistic_state = True
+        self._set_optimistic(True)
         self.async_write_ha_state()
         await self.entity_description.turn_on_fn(self.coordinator.api, self.device_id)
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off."""
-        self._optimistic_state = False
+        self._set_optimistic(False)
         self.async_write_ha_state()
         await self.entity_description.turn_off_fn(self.coordinator.api, self.device_id)
         await self.coordinator.async_request_refresh()

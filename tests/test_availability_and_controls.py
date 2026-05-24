@@ -238,12 +238,56 @@ class TestSwitchOptimistic:
 
         switch = BestwaySwitch(coordinator, config_entry, "test_device", desc)
         switch._optimistic_state = True  # User pressed ON
+        # Stamp recent so the timeout safety net doesn't fire
+        from time import monotonic
+
+        switch._optimistic_set_at = monotonic()
 
         with patch.object(switch, "async_write_ha_state"):
             switch._handle_coordinator_update()
 
         assert switch._optimistic_state is True  # Kept, no flicker
         assert switch.is_on is True
+
+    def test_switch_optimistic_cleared_after_timeout(self):
+        """Optimistic state is force-cleared if the cloud never confirms.
+
+        Rapid taps or dropped/reordered commands can leave the cloud in a
+        state that never matches the user's last optimistic value. Without
+        a timeout the switch would stick on the unconfirmed value forever;
+        the timeout self-heals the UI back to reality.
+        """
+        from custom_components.bestway.switch import (
+            BestwaySwitch,
+            BestwaySwitchEntityDescription,
+            _OPTIMISTIC_TIMEOUT_S,
+        )
+
+        desc = BestwaySwitchEntityDescription(
+            key="test_power",
+            name="Test Power",
+            value_fn=lambda s: bool(s.attrs["power"]),
+            turn_on_fn=AsyncMock(),
+            turn_off_fn=AsyncMock(),
+        )
+        device = _make_device()
+        # Cloud says OFF, but user's last optimistic value was ON.
+        status = _make_status({"power": False})
+        coordinator = _make_coordinator(device, status)
+        config_entry = MagicMock()
+
+        switch = BestwaySwitch(coordinator, config_entry, "test_device", desc)
+        switch._optimistic_state = True
+        from time import monotonic
+
+        # Stamp far enough in the past that the timeout has elapsed.
+        switch._optimistic_set_at = monotonic() - _OPTIMISTIC_TIMEOUT_S - 1
+
+        with patch.object(switch, "async_write_ha_state"):
+            switch._handle_coordinator_update()
+
+        assert switch._optimistic_state is None  # Cleared by timeout
+        assert switch.is_on is False  # Falls back to real cloud state
 
 
 # ---------------------------------------------------------------------------
