@@ -95,8 +95,12 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
     @staticmethod
     @callback
     def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
-        """Return the options flow handler."""
-        return BestwayOptionsFlowHandler(config_entry)
+        """Return the options flow handler.
+
+        The framework injects ``config_entry`` onto the returned flow as
+        a property, so we don't pass it through the constructor.
+        """
+        return BestwayOptionsFlowHandler()
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -364,11 +368,12 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
 
 
 class BestwayOptionsFlowHandler(OptionsFlow):
-    """Handle options for an existing Bestway config entry."""
+    """Handle options for an existing Bestway config entry.
 
-    def __init__(self, config_entry: ConfigEntry) -> None:
-        """Initialise options flow."""
-        self.config_entry = config_entry
+    In modern Home Assistant ``self.config_entry`` is a read-only
+    property injected by the framework, so we don't override
+    ``__init__`` or assign to it here.
+    """
 
     async def async_step_init(
         self, user_input: dict[str, Any] | None = None
