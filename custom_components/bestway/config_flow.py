@@ -8,8 +8,13 @@ from logging import getLogger
 from typing import Any
 
 from aiohttp import ClientConnectionError
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
-from homeassistant.core import HomeAssistant
+from homeassistant.config_entries import (
+    ConfigEntry,
+    ConfigFlow,
+    ConfigFlowResult,
+    OptionsFlow,
+)
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 import voluptuous as vol
@@ -23,9 +28,13 @@ from .bestway.api import (
 from .const import (
     BACKEND_AWS_IOT,
     BACKEND_GIZWITS,
+    BUBBLES_MODE_3WAY,
+    BUBBLES_MODE_DEFAULT,
+    BUBBLES_MODE_ONOFF,
     CONF_API_ROOT,
     CONF_API_ROOT_EU,
     CONF_API_ROOT_US,
+    CONF_BUBBLES_MODE,
     CONF_PASSWORD,
     CONF_UID,
     CONF_USER_TOKEN,
@@ -82,6 +91,12 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
         """Initialize config flow."""
         super().__init__()
         self._backend: str | None = None
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry: ConfigEntry) -> OptionsFlow:
+        """Return the options flow handler."""
+        return BestwayOptionsFlowHandler(config_entry)
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None
@@ -345,4 +360,47 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
                 }
             ),
             errors=errors,
+        )
+
+
+class BestwayOptionsFlowHandler(OptionsFlow):
+    """Handle options for an existing Bestway config entry."""
+
+    def __init__(self, config_entry: ConfigEntry) -> None:
+        """Initialise options flow."""
+        self.config_entry = config_entry
+
+    async def async_step_init(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Manage the integration options."""
+        if user_input is not None:
+            return self.async_create_entry(title="", data=user_input)
+
+        current_mode = self.config_entry.options.get(
+            CONF_BUBBLES_MODE, BUBBLES_MODE_DEFAULT
+        )
+
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema(
+                {
+                    vol.Required(
+                        CONF_BUBBLES_MODE, default=current_mode
+                    ): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[
+                                selector.SelectOptionDict(
+                                    value=BUBBLES_MODE_3WAY,
+                                    label="3 levels (Off / Medium / Max)",
+                                ),
+                                selector.SelectOptionDict(
+                                    value=BUBBLES_MODE_ONOFF,
+                                    label="On / Off only",
+                                ),
+                            ]
+                        )
+                    ),
+                }
+            ),
         )

@@ -16,7 +16,13 @@ from . import BestwayUpdateCoordinator
 from .aws_iot.api import AwsIotApi
 from .bestway.api import BestwayApi
 from .bestway.model import BestwayDeviceStatus, BestwayDeviceType, HydrojetFilter
-from .const import DOMAIN, Icon
+from .const import (
+    BUBBLES_MODE_DEFAULT,
+    BUBBLES_MODE_ONOFF,
+    CONF_BUBBLES_MODE,
+    DOMAIN,
+    Icon,
+)
 from .entity import BestwayEntity
 
 
@@ -179,12 +185,19 @@ async def async_setup_entry(
                 ]
             )
 
-        # V02 Airjet bubbles are on/off only (no MEDIUM level despite the
-        # shadow accepting wave_state=40). Expose as a switch.
-        if device.device_type in [
-            BestwayDeviceType.AIRJET_V02,
-            BestwayDeviceType.ULTRAFIT_AIRJET_V02,
-        ]:
+        # V02 Airjet bubbles: some models physically only have on/off,
+        # others have 3 levels (the product_id doesn't distinguish them).
+        # When the user has chosen the "on/off" mode in options, expose
+        # a switch here; otherwise the 3-way select in select.py handles it.
+        bubbles_mode = config_entry.options.get(CONF_BUBBLES_MODE, BUBBLES_MODE_DEFAULT)
+        if (
+            device.device_type
+            in [
+                BestwayDeviceType.AIRJET_V02,
+                BestwayDeviceType.ULTRAFIT_AIRJET_V02,
+            ]
+            and bubbles_mode == BUBBLES_MODE_ONOFF
+        ):
             entities.append(
                 BestwaySwitch(
                     coordinator,

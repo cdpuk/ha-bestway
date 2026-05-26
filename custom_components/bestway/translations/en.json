@@ -42,5 +42,19 @@
       "qr_code_required": "Either provide an existing visitor_id OR scan a QR code. One option is required.",
       "unknown": "Unknown error"
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Bestway options",
+        "description": "Adjust how the integration represents your spa in Home Assistant.",
+        "data": {
+          "bubbles_mode": "Airjet V02 bubble control"
+        },
+        "data_description": {
+          "bubbles_mode": "Some Airjet V02 hot tubs only have on/off bubbles physically, even though the cloud accepts a 3-level value. Pick the option that matches your hardware. Changes apply after the integration reloads."
+        }
+      }
+    }
   }
 }
