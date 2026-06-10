@@ -602,12 +602,14 @@ class AwsIotApi:
                 # Extract state (EXACT reference logic!)
                 raw_data = shadow_response.get("data", {})
 
-                # Try reported first, then desired, then raw state (reference logic)
-                if "state" in raw_data:
-                    if "reported" in raw_data["state"]:
-                        device_state = raw_data["state"]["reported"]
-                    elif "desired" in raw_data["state"]:
-                        device_state = raw_data["state"]["desired"]
+                # Merge reported + desired so HA reflects the target state
+                # (matches what the Bestway app shows) instead of lagging on
+                # reported until the device fully acks.
+                if "state" in raw_data and isinstance(raw_data["state"], dict):
+                    reported = raw_data["state"].get("reported") or {}
+                    desired = raw_data["state"].get("desired") or {}
+                    if reported or desired:
+                        device_state = {**reported, **desired}
                     else:
                         device_state = raw_data["state"]
                 else:
