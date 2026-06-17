@@ -19,7 +19,13 @@ from .bestway.model import (
     BestwayDeviceType,
     BubblesLevel,
 )
-from .const import DOMAIN, Icon
+from .const import (
+    BUBBLES_MODE_3WAY,
+    BUBBLES_MODE_DEFAULT,
+    CONF_BUBBLES_MODE,
+    DOMAIN,
+    Icon,
+)
 from .entity import BestwayEntity
 
 _BUBBLES_OPTIONS = {
@@ -67,12 +73,22 @@ async def async_setup_entry(
     coordinator: BestwayUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id]
     entities: list[BestwayEntity] = []
 
+    bubbles_mode = config_entry.options.get(CONF_BUBBLES_MODE, BUBBLES_MODE_DEFAULT)
+
     for device_id, device in coordinator.api.devices.items():
-        if device.device_type in [
-            BestwayDeviceType.AIRJET_V01_SPA,
-            BestwayDeviceType.AIRJET_V02,
-            BestwayDeviceType.ULTRAFIT_AIRJET_V02,
-        ]:
+        # V01 Airjet has 3 physical levels (OFF/MEDIUM/MAX) and always uses the select.
+        # V02 Airjet hardware varies: some have 3 levels, some only on/off. The
+        # product_id doesn't tell them apart, so we honour the user's choice
+        # from the options flow. Default (3-way) is the safe pre-existing
+        # behaviour; on/off mode shows a switch in switch.py instead.
+        if device.device_type == BestwayDeviceType.AIRJET_V01_SPA or (
+            device.device_type
+            in (
+                BestwayDeviceType.AIRJET_V02,
+                BestwayDeviceType.ULTRAFIT_AIRJET_V02,
+            )
+            and bubbles_mode == BUBBLES_MODE_3WAY
+        ):
             entities.append(
                 ThreeWaySpaBubblesSelect(
                     coordinator,

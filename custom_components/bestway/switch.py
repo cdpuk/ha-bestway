@@ -17,7 +17,13 @@ from . import BestwayUpdateCoordinator
 from .aws_iot.api import AwsIotApi
 from .bestway.api import BestwayApi
 from .bestway.model import BestwayDeviceStatus, BestwayDeviceType, HydrojetFilter
-from .const import DOMAIN, Icon
+from .const import (
+    BUBBLES_MODE_DEFAULT,
+    BUBBLES_MODE_ONOFF,
+    CONF_BUBBLES_MODE,
+    DOMAIN,
+    Icon,
+)
 from .entity import BestwayEntity
 
 # Maximum time an optimistic value is trusted before the entity falls back
@@ -59,6 +65,18 @@ _AIRJET_SPA_BUBBLES_SWITCH = BestwaySwitchEntityDescription(
     name="Spa Bubbles",
     icon=Icon.BUBBLES,
     value_fn=lambda s: bool(s.attrs["wave_power"]),
+    turn_on_fn=lambda api, device_id: api.airjet_spa_set_bubbles(device_id, True),
+    turn_off_fn=lambda api, device_id: api.airjet_spa_set_bubbles(device_id, False),
+)
+
+# V02 Airjet (e.g. T53NN8) only supports on/off bubbles physically, even
+# though the device shadow accepts/echoes the 0/40/100 wave_state values.
+# Use a simple switch instead of the 3-way select.
+_AIRJET_V02_BUBBLES_SWITCH = BestwaySwitchEntityDescription(
+    key="spa_wave_power",
+    name="Spa Bubbles",
+    icon=Icon.BUBBLES,
+    value_fn=lambda s: bool(s.attrs.get("wave")),
     turn_on_fn=lambda api, device_id: api.airjet_spa_set_bubbles(device_id, True),
     turn_off_fn=lambda api, device_id: api.airjet_spa_set_bubbles(device_id, False),
 )
@@ -172,6 +190,28 @@ async def async_setup_entry(
                         _AIRJET_V01_HYDROJET_SPA_FILTER_SWITCH,
                     ),
                 ]
+            )
+
+        # V02 Airjet bubbles: some models physically only have on/off,
+        # others have 3 levels (the product_id doesn't distinguish them).
+        # When the user has chosen the "on/off" mode in options, expose
+        # a switch here; otherwise the 3-way select in select.py handles it.
+        bubbles_mode = config_entry.options.get(CONF_BUBBLES_MODE, BUBBLES_MODE_DEFAULT)
+        if (
+            device.device_type
+            in [
+                BestwayDeviceType.AIRJET_V02,
+                BestwayDeviceType.ULTRAFIT_AIRJET_V02,
+            ]
+            and bubbles_mode == BUBBLES_MODE_ONOFF
+        ):
+            entities.append(
+                BestwaySwitch(
+                    coordinator,
+                    config_entry,
+                    device_id,
+                    _AIRJET_V02_BUBBLES_SWITCH,
+                )
             )
 
         # V01 and V02 Hydrojet devices (normalization provides consistent field names)

@@ -17,6 +17,14 @@ GIZWITS_APP_ID = "98754e684ec045528b073876c34c7348"
 BACKEND_GIZWITS = "gizwits"
 BACKEND_AWS_IOT = "aws_iot"
 
+# Bubble UI mode (Airjet V02). Some V02 hardware (e.g. T53NN8 batches)
+# only has on/off bubbles physically, while others support 3 levels.
+# The product_id doesn't distinguish them, so the user picks.
+CONF_BUBBLES_MODE = "bubbles_mode"
+BUBBLES_MODE_3WAY = "three_way"
+BUBBLES_MODE_ONOFF = "on_off"
+BUBBLES_MODE_DEFAULT = BUBBLES_MODE_3WAY
+
 
 class Icon(str, Enum):
     """Icon styles."""
