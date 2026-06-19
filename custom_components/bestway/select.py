@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from logging import getLogger
 
 from homeassistant.components.select import SelectEntity, SelectEntityDescription
 from homeassistant.config_entries import ConfigEntry
@@ -27,6 +28,8 @@ from .const import (
     Icon,
 )
 from .entity import BestwayEntity
+
+_LOGGER = getLogger(__name__)
 
 _BUBBLES_OPTIONS = {
     BubblesLevel.OFF: "OFF",
@@ -137,19 +140,38 @@ class ThreeWaySpaBubblesSelect(BestwayEntity, SelectEntity):
     def current_option(self) -> str | None:
         """Return the selected entity option."""
         if device := self.coordinator.data.devices.get(self.device_id):
-            bubbles_level = self.entity_description.get_fn(device.attrs["wave"])
-            return _BUBBLES_OPTIONS.get(bubbles_level)
+            wave_value = device.attrs.get("wave")
+            _LOGGER.debug("🔵 current_option: device.attrs['wave']=%s", wave_value)
+
+            # Ensure we pass an int to the mapping function (mypy-friendly).
+            try:
+                wave_int: int = int(wave_value) if wave_value is not None else 0
+            except Exception:
+                wave_int = 0
+
+            bubbles_level = self.entity_description.get_fn(wave_int)
+            _LOGGER.debug("🔵 current_option: mapped to BubblesLevel=%s", bubbles_level)
+
+            option = _BUBBLES_OPTIONS.get(bubbles_level)
+            _LOGGER.debug("🔵 current_option: final option=%s", option)
+            return option
         return None
 
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
+        _LOGGER.debug("🔵 async_select_option: user selected option=%s", option)
+
         bubbles_level = BubblesLevel.OFF
         if option == _BUBBLES_OPTIONS[BubblesLevel.MEDIUM]:
             bubbles_level = BubblesLevel.MEDIUM
         elif option == _BUBBLES_OPTIONS[BubblesLevel.MAX]:
             bubbles_level = BubblesLevel.MAX
 
+        _LOGGER.debug(
+            "🔵 async_select_option: mapped to BubblesLevel=%s", bubbles_level
+        )
         await self.entity_description.set_fn(
             self.coordinator.api, self.device_id, bubbles_level
         )
+        _LOGGER.debug("🔵 async_select_option: API call complete, requesting refresh")
         await self.coordinator.async_request_refresh()

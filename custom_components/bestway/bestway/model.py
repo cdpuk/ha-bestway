@@ -152,7 +152,8 @@ class BubblesMapping:
 
 BV = BubblesValues
 AIRJET_V01_BUBBLES_MAP = BubblesMapping(BV(0), BV(50, [40, 41, 50, 51]), BV(100))
-HYDROJET_BUBBLES_MAP = BubblesMapping(BV(0), BV(40), BV(100))
+# Hydrojet devices sometimes report MEDIUM as 40, 41 or (after normalization) 50 — accept all
+HYDROJET_BUBBLES_MAP = BubblesMapping(BV(0), BV(40, [40, 41, 50]), BV(100))
 
 
 @dataclass
