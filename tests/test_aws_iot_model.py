@@ -1,6 +1,25 @@
 """Tests for AWS IoT model extensions."""
 
-from custom_components.bestway.bestway.model import BestwayDevice, BestwayDeviceType
+from custom_components.bestway.bestway.model import (
+    HYDROJET_BUBBLES_MAP,
+    BestwayDevice,
+    BestwayDeviceType,
+    BubblesLevel,
+)
+
+
+def test_hydrojet_bubbles_map_reads_medium_band():
+    """Hydrojet V02 firmware reports MEDIUM as 42, not 40 (BUG-SPA-6).
+
+    Accept the 40-43 band as MEDIUM so the running state is recognised
+    instead of falling back to OFF, while the command value stays 40.
+    """
+    assert HYDROJET_BUBBLES_MAP.from_api_value(0) == BubblesLevel.OFF
+    for medium in (40, 41, 42, 43):
+        assert HYDROJET_BUBBLES_MAP.from_api_value(medium) == BubblesLevel.MEDIUM
+    assert HYDROJET_BUBBLES_MAP.from_api_value(100) == BubblesLevel.MAX
+    # The command sent to the device for MEDIUM is unchanged.
+    assert HYDROJET_BUBBLES_MAP.to_api_value(BubblesLevel.MEDIUM) == 40
 
 
 def test_from_aws_product_series_mappings():
