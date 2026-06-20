@@ -152,7 +152,12 @@ class BubblesMapping:
 
 BV = BubblesValues
 AIRJET_V01_BUBBLES_MAP = BubblesMapping(BV(0), BV(50, [40, 41, 50, 51]), BV(100))
-HYDROJET_BUBBLES_MAP = BubblesMapping(BV(0), BV(40), BV(100))
+# Hydrojet V02 (e.g. product T8HDVS) reports MEDIUM as 42, not 40 — the same
+# kind of per-firmware drift that PR #101 handled for Airjet (40/41/50/51).
+# Accept a 40-43 band for MEDIUM so the running state is recognised instead of
+# logging "Unexpected API value 42 - assuming OFF" and showing the tile as OFF.
+# Write value stays 40 (the device accepts 40 as the "go to medium" command).
+HYDROJET_BUBBLES_MAP = BubblesMapping(BV(0), BV(40, [40, 41, 42, 43]), BV(100))
 
 
 @dataclass
