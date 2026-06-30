@@ -340,3 +340,79 @@ async def test_do_get_handles_401(aws_api, mock_session):
 
     with pytest.raises(AwsIotAuthException):
         await aws_api._do_get("/test")
+
+
+def _make_aws_device(device_id="device1"):
+    """Build a real BestwayDevice for AWS IoT tests."""
+    from custom_components.bestway.bestway.model import BestwayDevice
+
+    return BestwayDevice(
+        protocol_version=2,
+        device_id=device_id,
+        product_name="AIRJET",
+        alias="Test Spa",
+        mcu_soft_version="unknown",
+        mcu_hard_version="unknown",
+        wifi_soft_version="unknown",
+        wifi_hard_version="unknown",
+        is_online=True,
+        backend="aws_iot",
+        product_id="T53NN8",
+    )
+
+
+@pytest.mark.asyncio
+async def test_fetch_data_raises_update_failed_when_all_devices_fail(aws_api):
+    """A total poll failure surfaces as UpdateFailed so entities go unavailable."""
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+
+    aws_api.devices = {"device1": _make_aws_device("device1")}
+    aws_api._do_post = AsyncMock(side_effect=Exception("network down"))
+
+    with pytest.raises(UpdateFailed):
+        await aws_api.fetch_data()
+
+
+@pytest.mark.asyncio
+async def test_fetch_data_reauths_once_and_recovers(aws_api, monkeypatch):
+    """An auth failure during a poll triggers one silent re-auth and recovers."""
+    aws_api.devices = {"device1": _make_aws_device("device1")}
+
+    shadow_ok = {"code": 0, "data": {"state": {"reported": {"power_state": 1}}}}
+    # First poll auth-fails; after re-auth the retry succeeds.
+    aws_api._do_post = AsyncMock(
+        side_effect=[AwsIotAuthException("token expired"), shadow_ok]
+    )
+    monkeypatch.setattr(
+        AwsIotApi, "authenticate", AsyncMock(return_value="fresh_token")
+    )
+
+    results = await aws_api.fetch_data()
+
+    assert results.devices["device1"].attrs["power"] is True
+    assert aws_api._token == "fresh_token"
+
+
+@pytest.mark.asyncio
+async def test_fetch_data_raises_auth_failed_when_reauth_fails(aws_api, monkeypatch):
+    """If the re-authentication itself fails, raise ConfigEntryAuthFailed."""
+    from homeassistant.exceptions import ConfigEntryAuthFailed
+
+    aws_api.devices = {"device1": _make_aws_device("device1")}
+    aws_api._do_post = AsyncMock(side_effect=AwsIotAuthException("token expired"))
+    monkeypatch.setattr(
+        AwsIotApi,
+        "authenticate",
+        AsyncMock(side_effect=AwsIotAuthException("bad visitor id")),
+    )
+
+    with pytest.raises(ConfigEntryAuthFailed):
+        await aws_api.fetch_data()
+
+
+@pytest.mark.asyncio
+async def test_fetch_data_no_devices_does_not_raise(aws_api):
+    """With no devices configured, fetch_data must not raise."""
+    aws_api.devices = {}
+    results = await aws_api.fetch_data()
+    assert hasattr(results, "devices")

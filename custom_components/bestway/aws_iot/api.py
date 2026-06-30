@@ -565,22 +565,14 @@ class AwsIotApi:
 
             self.devices[device_id] = device
 
-    async def fetch_data(self) -> Any:  # Returns BestwayApiResults
-        """Fetch latest state for all devices.
+    async def _poll_all_devices(self) -> tuple[int, bool]:
+        """Poll each device shadow once and update the cache.
 
-        Implements the same interface as Gizwits BestwayApi.fetch_data().
-
-        For each device:
-        1. POST /api/device/thing_shadow/ with device_id + product_id
-        2. Parse shadow.state.reported or shadow.state.desired
-        3. Return raw AWS field names (water_temperature, temperature_setting, etc.)
-        4. Store in state cache
-
-        Returns:
-            BestwayApiResults with devices dict
+        Returns (refreshed_count, auth_failed); auth failures are flagged
+        separately so the caller can re-auth and retry before failing.
         """
-        # Import here to avoid circular dependency
-        from ..bestway.api import BestwayApiResults
+        refreshed = 0
+        auth_failed = False
 
         for device_id in self.devices:
             try:
@@ -635,6 +627,7 @@ class AwsIotApi:
                 self._state_cache[device_id] = BestwayDeviceStatus(
                     timestamp=int(time()), attrs=mapped
                 )
+                refreshed += 1
 
                 _LOGGER.debug(
                     "Fetched state for device %s: %d fields",
@@ -642,15 +635,63 @@ class AwsIotApi:
                     len(mapped),
                 )
 
-            except Exception as err:
+            except AwsIotAuthException as err:
+                auth_failed = True
+                _LOGGER.warning(
+                    "Authentication failure fetching device %s: %s",
+                    device_id[:12],
+                    err,
+                )
+            except Exception as err:  # pylint: disable=broad-except
                 _LOGGER.warning(
                     "Failed to fetch state for device %s: %s", device_id[:12], err
                 )
-                # Keep existing cache or mark offline
+                # Seed an empty cache entry on first contact so the entity exists.
                 if device_id not in self._state_cache:
                     self._state_cache[device_id] = BestwayDeviceStatus(
                         timestamp=int(time()), attrs={}
                     )
+
+        return refreshed, auth_failed
+
+    async def fetch_data(self) -> Any:  # Returns BestwayApiResults
+        """Fetch latest state for all devices.
+
+        Implements the same interface as Gizwits BestwayApi.fetch_data().
+
+        Raises UpdateFailed if no device could be refreshed, so entities go
+        unavailable instead of showing stale data. On an auth error it
+        re-authenticates once and retries first.
+
+        Returns:
+            BestwayApiResults with devices dict
+
+        Raises:
+            ConfigEntryAuthFailed: re-authentication failed.
+            UpdateFailed: no device state could be refreshed.
+        """
+        # Imported here to avoid a circular import.
+        from ..bestway.api import BestwayApiResults
+        from homeassistant.exceptions import ConfigEntryAuthFailed
+        from homeassistant.helpers.update_coordinator import UpdateFailed
+
+        refreshed, auth_failed = await self._poll_all_devices()
+
+        # Token may have expired server-side; re-auth once and retry.
+        if self.devices and refreshed == 0 and auth_failed:
+            _LOGGER.info("Re-authenticating after auth failure during poll")
+            try:
+                self._token = await self.authenticate(
+                    self._session, self._visitor_id, self._location, self._api_base
+                )
+            except AwsIotAuthException as err:
+                raise ConfigEntryAuthFailed from err
+            refreshed, _ = await self._poll_all_devices()
+
+        # Nothing refreshed: fail the update so entities go unavailable
+        # instead of showing stale data.
+        if self.devices and refreshed == 0:
+            raise UpdateFailed("Unable to refresh any Bestway device state")
 
         return BestwayApiResults(devices=self._state_cache)
 
@@ -732,7 +773,11 @@ class AwsIotApi:
                 )
 
                 if result.get("code") == 0:
-                    _LOGGER.info("✓ v2 API command sent to device %s", device_id[:12])
+                    _LOGGER.info(
+                        "v2 command accepted by cloud for device %s "
+                        "(pending device confirmation)",
+                        device_id[:12],
+                    )
                     return True
                 else:
                     _LOGGER.warning(
@@ -761,7 +806,11 @@ class AwsIotApi:
             )
 
             if v1_result.get("code") == 0:
-                _LOGGER.info("✓ v1 API command sent to device %s", device_id[:12])
+                _LOGGER.info(
+                    "v1 command accepted by cloud for device %s "
+                    "(pending device confirmation)",
+                    device_id[:12],
+                )
                 return True
             else:
                 _LOGGER.error("v1 API also failed with code %s", v1_result.get("code"))
