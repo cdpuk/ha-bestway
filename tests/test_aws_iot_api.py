@@ -521,6 +521,30 @@ async def test_fetch_reported_shadow_returns_raw_reported(aws_api):
 
 
 @pytest.mark.asyncio
+async def test_fetch_reported_shadow_flat_format(aws_api):
+    """Some devices (the live Hydrojet V02) report fields flat under 'data', with
+    no nested state.reported. _fetch_reported_shadow must still return them."""
+    aws_api.devices = {"device1": _make_aws_device("device1")}
+    aws_api._do_post = AsyncMock(
+        return_value={
+            "code": 0,
+            "data": {
+                "power_state": 1,
+                "filter_state": 0,
+                "temperature_setting": 37,
+                "wifivertion": 121,
+            },
+        }
+    )
+
+    reported = await aws_api._fetch_reported_shadow("device1")
+
+    assert reported["filter_state"] == 0
+    assert reported["power_state"] == 1
+    assert reported["temperature_setting"] == 37
+
+
+@pytest.mark.asyncio
 async def test_fetch_reported_shadow_empty_when_missing(aws_api):
     """A shadow with no reported section yields {} (treated as non-converged)."""
     aws_api.devices = {"device1": _make_aws_device("device1")}

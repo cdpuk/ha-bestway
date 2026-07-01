@@ -923,10 +923,20 @@ class AwsIotApi:
                 "Convergence shadow fetch failed for %s: %s", device_id[:12], err
             )
             return {}
-        state = shadow_response.get("data", {}).get("state")
-        if isinstance(state, dict) and isinstance(state.get("reported"), dict):
-            return dict(state["reported"])
-        return {}
+        raw = shadow_response.get("data", {})
+        if not isinstance(raw, dict):
+            return {}
+        state = raw.get("state")
+        if isinstance(state, dict):
+            reported = state.get("reported")
+            if isinstance(reported, dict):
+                return dict(reported)
+            # 'state' dict without a 'reported' child: use it as-is, minus any
+            # 'desired' echo (Fix B compares against reported only).
+            return {k: v for k, v in state.items() if k != "desired"}
+        # Flat shadow: the device reports fields directly under 'data' (the live
+        # Hydrojet V02 does this). Mirrors _poll_all_devices' raw_data fallback.
+        return dict(raw)
 
     # Convenience methods matching Gizwits interface (with AWS field name translation)
     async def airjet_spa_set_power(self, device_id: str, state: bool) -> None:
