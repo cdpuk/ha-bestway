@@ -10,11 +10,12 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .aws_iot.api import AwsIotApi
+from .aws_iot.api import AwsIotApi, evaluate_convergence
 from .aws_iot.websocket import AwsIotWebSocket
 from .bestway.api import BestwayApi, BestwayApiResults
 from .bestway.model import BestwayDeviceStatus
 from .bestway.websocket import GizwitsWebSocket
+from .const import COMMAND_CONVERGENCE_DELAY_S, EVENT_COMMAND_UNCONVERGED
 
 _LOGGER = getLogger(__name__)
 
@@ -41,6 +42,10 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
         self.websocket: GizwitsWebSocket | None = None
         self.websockets: list[AwsIotWebSocket] = []
 
+        # Fix B: wire the post-command convergence check (AWS IoT backend only).
+        if isinstance(api, AwsIotApi):
+            api.command_verifier = self._schedule_convergence_check
+
     async def _async_update_data(self) -> BestwayApiResults:
         """Fetch data from API endpoint.
 
@@ -50,6 +55,62 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
         async with asyncio.timeout(10):
             await self.api.refresh_bindings()
             return await self.api.fetch_data()
+
+    def _schedule_convergence_check(
+        self, device_id: str, desired: dict[str, int]
+    ) -> None:
+        """Schedule a lifecycle-tied convergence check after a command (Fix B).
+
+        Called by AwsIotApi.set_device_state after a code:0 command. Uses
+        config_entry.async_create_background_task so the task is cancelled if the
+        entry unloads (no leaked tasks). Never blocks the calling command.
+        """
+        if self.config_entry is None:
+            return
+        self.config_entry.async_create_background_task(
+            self.hass,
+            self._async_verify_convergence(device_id, dict(desired)),
+            name=f"bestway_convergence_{device_id[:8]}",
+        )
+
+    async def _async_verify_convergence(
+        self, device_id: str, desired: dict[str, int]
+    ) -> None:
+        """Re-fetch the reported shadow and warn if the device did not converge.
+
+        Observability only - never raises and never changes entity state. A
+        warning here means the cloud accepted a command the physical unit did
+        not act on (typically powered off or offline).
+        """
+        await asyncio.sleep(COMMAND_CONVERGENCE_DELAY_S)
+        if not isinstance(self.api, AwsIotApi):
+            return
+        reported = await self.api._fetch_reported_shadow(device_id)
+        unconverged = evaluate_convergence(desired, reported)
+        if unconverged:
+            detail = {
+                field: {"commanded": want, "reported": reported.get(field)}
+                for field, want in unconverged.items()
+            }
+            _LOGGER.warning(
+                "Device %s did not confirm command within %ds; unconverged "
+                "fields %s. The unit may be powered off or offline despite the "
+                "cloud accepting the command.",
+                device_id[:12],
+                COMMAND_CONVERGENCE_DELAY_S,
+                detail,
+            )
+            # Automation-consumable signal (spa Tier C alerts on this).
+            self.hass.bus.async_fire(
+                EVENT_COMMAND_UNCONVERGED,
+                {"device_id": device_id, "unconverged": detail},
+            )
+        else:
+            _LOGGER.debug(
+                "Device %s converged on commanded fields %s",
+                device_id[:12],
+                list(desired),
+            )
 
     def handle_websocket_update(self, device_id: str, attrs: dict[str, Any]) -> None:
         """Handle real-time device update from WebSocket.
