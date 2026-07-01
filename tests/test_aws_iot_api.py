@@ -1,11 +1,13 @@
 """Tests for AWS IoT API client."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from custom_components.bestway.aws_iot.api import (
     AwsIotApi,
     AwsIotAuthException,
+    AwsIotException,
+    evaluate_convergence,
 )
 
 
@@ -416,3 +418,201 @@ async def test_fetch_data_no_devices_does_not_raise(aws_api):
     aws_api.devices = {}
     results = await aws_api.fetch_data()
     assert hasattr(results, "devices")
+
+
+# --- Fix B: command convergence verification ---------------------------------
+
+
+def test_evaluate_convergence_truth_table():
+    """Per-field convergence semantics: toggle=truthy, setpoint=exact."""
+    # Toggle commanded ON but reported OFF -> non-converged.
+    assert evaluate_convergence({"power_state": 1}, {"power_state": 0}) == {
+        "power_state": 1
+    }
+    # Toggle commanded OFF and reported OFF -> converged.
+    assert evaluate_convergence({"power_state": 0}, {"power_state": 0}) == {}
+    # heater_state commanded ON, reported progress value 3 -> converged (truthy).
+    assert evaluate_convergence({"heater_state": 1}, {"heater_state": 3}) == {}
+    # heater_state commanded OFF but still reporting 3 -> non-converged.
+    assert evaluate_convergence({"heater_state": 0}, {"heater_state": 3}) == {
+        "heater_state": 0
+    }
+    # wave_state echo (commanded 100, device echoes 40) -> converged (truthy).
+    assert evaluate_convergence({"wave_state": 100}, {"wave_state": 40}) == {}
+    # Setpoint exact mismatch -> non-converged.
+    assert evaluate_convergence(
+        {"temperature_setting": 39}, {"temperature_setting": 20}
+    ) == {"temperature_setting": 39}
+    # Setpoint exact match (int echoed as float) -> converged.
+    assert (
+        evaluate_convergence({"temperature_setting": 39}, {"temperature_setting": 39.0})
+        == {}
+    )
+    # Commanded field absent from reported shadow -> non-converged.
+    assert evaluate_convergence({"power_state": 1}, {}) == {"power_state": 1}
+    # Fully converged multi-field command -> empty.
+    assert (
+        evaluate_convergence(
+            {"power_state": 1, "heater_state": 1},
+            {"power_state": 1, "heater_state": 4},
+        )
+        == {}
+    )
+
+
+@pytest.mark.asyncio
+async def test_set_device_state_notifies_verifier_on_success(aws_api, mock_session):
+    """The command_verifier hook fires with the desired AWS fields on code:0."""
+    aws_api.devices = {"device1": _make_aws_device("device1")}
+    mock_session.post = MagicMock(return_value=create_mock_response(200, {"code": 0}))
+    verifier = MagicMock()
+    aws_api.command_verifier = verifier
+
+    ok = await aws_api.set_device_state("device1", {"power_state": True})
+
+    assert ok is True
+    verifier.assert_called_once_with("device1", {"power_state": 1})
+
+
+@pytest.mark.asyncio
+async def test_set_device_state_no_verifier_on_failure(aws_api, mock_session):
+    """The hook does NOT fire when both the v2 and v1 paths are rejected."""
+    aws_api.devices = {"device1": _make_aws_device("device1")}
+    mock_session.post = MagicMock(return_value=create_mock_response(200, {"code": 1}))
+    aws_api._do_post = AsyncMock(return_value={"code": 1})  # v1 fallback also fails
+    verifier = MagicMock()
+    aws_api.command_verifier = verifier
+
+    ok = await aws_api.set_device_state("device1", {"power_state": True})
+
+    assert ok is False
+    verifier.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_set_device_state_notifies_verifier_on_v1_fallback(aws_api, mock_session):
+    """The hook also fires when the v1 fallback path succeeds."""
+    aws_api.devices = {"device1": _make_aws_device("device1")}
+    mock_session.post = MagicMock(return_value=create_mock_response(200, {"code": 1}))
+    aws_api._do_post = AsyncMock(return_value={"code": 0})  # v1 fallback succeeds
+    verifier = MagicMock()
+    aws_api.command_verifier = verifier
+
+    ok = await aws_api.set_device_state("device1", {"temperature_setting": 39})
+
+    assert ok is True
+    verifier.assert_called_once_with("device1", {"temperature_setting": 39})
+
+
+@pytest.mark.asyncio
+async def test_fetch_reported_shadow_returns_raw_reported(aws_api):
+    """_fetch_reported_shadow returns the untouched reported dict (AWS names)."""
+    aws_api.devices = {"device1": _make_aws_device("device1")}
+    aws_api._do_post = AsyncMock(
+        return_value={
+            "code": 0,
+            "data": {"state": {"reported": {"power_state": 0, "heater_state": 3}}},
+        }
+    )
+
+    reported = await aws_api._fetch_reported_shadow("device1")
+
+    assert reported == {"power_state": 0, "heater_state": 3}
+
+
+@pytest.mark.asyncio
+async def test_fetch_reported_shadow_empty_when_missing(aws_api):
+    """A shadow with no reported section yields {} (treated as non-converged)."""
+    aws_api.devices = {"device1": _make_aws_device("device1")}
+    aws_api._do_post = AsyncMock(return_value={"code": 0, "data": {}})
+
+    assert await aws_api._fetch_reported_shadow("device1") == {}
+
+
+@pytest.mark.asyncio
+async def test_fetch_reported_shadow_empty_on_error(aws_api):
+    """A shadow fetch error yields {} rather than raising."""
+    aws_api.devices = {"device1": _make_aws_device("device1")}
+    aws_api._do_post = AsyncMock(side_effect=AwsIotException("boom"))
+
+    assert await aws_api._fetch_reported_shadow("device1") == {}
+
+
+@pytest.mark.asyncio
+async def test_coordinator_convergence_warns_and_fires_event(hass, aws_api):
+    """A non-converging device produces a warning AND a bus event for automations.
+
+    Also proves the check runs on a config-entry-lifecycle-tied task that
+    completes cleanly (no leaked task) under async_block_till_done.
+    """
+    from pytest_homeassistant_custom_component.common import (
+        MockConfigEntry,
+        async_capture_events,
+    )
+
+    from custom_components.bestway.coordinator import BestwayUpdateCoordinator
+
+    entry = MockConfigEntry(domain="bestway", data={"backend": "aws_iot"})
+    entry.add_to_hass(hass)
+    aws_api.devices = {"device1": _make_aws_device("device1")}
+
+    coordinator = BestwayUpdateCoordinator(hass, entry, aws_api)
+
+    # The API's post-command hook is wired to the coordinator.
+    assert aws_api.command_verifier == coordinator._schedule_convergence_check
+
+    # Reported shadow shows the device did NOT converge (still off).
+    aws_api._do_post = AsyncMock(
+        return_value={
+            "code": 0,
+            "data": {"state": {"reported": {"power_state": 0}}},
+        }
+    )
+    events = async_capture_events(hass, "bestway_command_unconverged")
+
+    with (
+        patch("custom_components.bestway.coordinator.COMMAND_CONVERGENCE_DELAY_S", 0),
+        patch("custom_components.bestway.coordinator._LOGGER") as mock_logger,
+    ):
+        coordinator._schedule_convergence_check("device1", {"power_state": 1})
+        await hass.async_block_till_done()
+
+    assert mock_logger.warning.called
+    assert len(events) == 1
+    assert events[0].data["device_id"] == "device1"
+    assert "power_state" in events[0].data["unconverged"]
+
+
+@pytest.mark.asyncio
+async def test_coordinator_convergence_silent_when_converged(hass, aws_api):
+    """A converging device produces no warning and no event."""
+    from pytest_homeassistant_custom_component.common import (
+        MockConfigEntry,
+        async_capture_events,
+    )
+
+    from custom_components.bestway.coordinator import BestwayUpdateCoordinator
+
+    entry = MockConfigEntry(domain="bestway", data={"backend": "aws_iot"})
+    entry.add_to_hass(hass)
+    aws_api.devices = {"device1": _make_aws_device("device1")}
+    coordinator = BestwayUpdateCoordinator(hass, entry, aws_api)
+
+    # Reported shadow confirms the command (power on).
+    aws_api._do_post = AsyncMock(
+        return_value={
+            "code": 0,
+            "data": {"state": {"reported": {"power_state": 1}}},
+        }
+    )
+    events = async_capture_events(hass, "bestway_command_unconverged")
+
+    with (
+        patch("custom_components.bestway.coordinator.COMMAND_CONVERGENCE_DELAY_S", 0),
+        patch("custom_components.bestway.coordinator._LOGGER") as mock_logger,
+    ):
+        coordinator._schedule_convergence_check("device1", {"power_state": 1})
+        await hass.async_block_till_done()
+
+    assert not mock_logger.warning.called
+    assert len(events) == 0
