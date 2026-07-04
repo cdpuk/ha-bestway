@@ -229,13 +229,18 @@ def test_normalize_state_partial_update_preserves_absent_fields():
 
 
 def test_normalize_state_wave_mapping():
-    """Test V02 wave_state value mapping to V01 format."""
-    # V02 MEDIUM (40) maps to V01 Airjet MEDIUM (50)
+    """Test V02 wave_state is passed through unchanged.
+
+    The normaliser used to rewrite 40 -> 50, which the Hydrojet bubble map
+    rejected, so Hydrojet MEDIUM always rendered as OFF (BUG-SPA-6). Both
+    bubble maps now recognise 40 as MEDIUM directly, so the raw device value
+    is passed straight through.
+    """
+    # MEDIUM (40) is no longer remapped to 50
     aws_state = {"wave_state": 40}
     normalized = AwsIotApi.normalize_aws_state(aws_state)
-    assert normalized["wave"] == 50
+    assert normalized["wave"] == 40
 
-    # 0 and 100 are the same in both versions
     aws_state = {"wave_state": 0}
     normalized = AwsIotApi.normalize_aws_state(aws_state)
     assert normalized["wave"] == 0
