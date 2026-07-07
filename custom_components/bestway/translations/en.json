@@ -10,7 +10,7 @@
       },
       "gizwits_auth": {
         "title": "Bestway V01 Login (Gizwits)",
-        "description": "Enter your Bestway Connect or Lay-Z-Spa WiFi app credentials",
+        "description": "Enter your Bestway Smart Hub app credentials",
         "data": {
           "username": "Username (e-mail address)",
           "password": "Password",
@@ -18,7 +18,7 @@
         }
       },
       "aws_iot_auth": {
-        "title": "Setup Bestway Spa",
+        "title": "Bestway V02 Login (AWS IoT)",
         "description": "Choose setup method: Use an existing visitor_id OR scan a QR code to create a new account. Provide ONE option only.",
         "data": {
           "region": "Region",

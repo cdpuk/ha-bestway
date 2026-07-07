@@ -116,11 +116,11 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
                                 options=[
                                     selector.SelectOptionDict(
                                         value=BACKEND_GIZWITS,
-                                        label="V01 - Bestway Connect / Lay-Z-Spa WiFi (Gizwits)",
+                                        label="V01 - Bestway Smart Hub (Gizwits)",
                                     ),
                                     selector.SelectOptionDict(
                                         value=BACKEND_AWS_IOT,
-                                        label="V02 - Bestway Smart Spa app (AWS IoT)",
+                                        label="V02 - Bestway Connect (AWS IoT)",
                                     ),
                                 ]
                             )
