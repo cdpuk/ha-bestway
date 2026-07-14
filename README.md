@@ -49,6 +49,8 @@ The process varies depending on model:
 
 All devices in your account will be automatically detected and added by the integration.
 
+**Region selection:** Users have reported that the actual region for accounts is not necessarily as expected. If your first guess doesn't work (either failing to log in, or no devices found), try another region.
+
 ## Contributing
 
 If you want to contribute to this please read the [Contribution Guidelines](CONTRIBUTING.md).
