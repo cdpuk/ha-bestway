@@ -15,6 +15,7 @@ import asyncio
 import hashlib
 import logging
 import secrets
+from collections.abc import Callable
 from time import time
 from typing import Any
 
@@ -43,6 +44,62 @@ API_ENDPOINTS = {
     "CN": "https://smarthub.bestwaycorp.cn",  # Note: .cn domain!
     # "DEV": "http://bestway.dev.mxchip.com.cn",  # Dev/Test only
 }
+
+# Fix B - command convergence field semantics.
+# Toggle/echo fields report progress or absolute values that differ from the
+# command value (heater_state commanded 0/1 but reported 0..4; wave_state
+# commanded 100 but echoed 40), so they are compared on on/off truthiness.
+# Setpoint fields echo the exact commanded target, so they are compared exactly.
+CONVERGENCE_TOGGLE_FIELDS = frozenset(
+    {
+        "power_state",
+        "filter_state",
+        "wave_state",
+        "heater_state",
+        "hydrojet_state",
+        "locked",
+    }
+)
+CONVERGENCE_EXACT_FIELDS = frozenset({"temperature_setting"})
+
+
+def _as_int(value: Any) -> int:
+    """Best-effort int coercion for shadow values (may be str/float/bool/None)."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return 0
+
+
+def evaluate_convergence(
+    desired: dict[str, int], reported: dict[str, Any]
+) -> dict[str, int]:
+    """Return the commanded fields that did NOT converge in the reported shadow.
+
+    An empty result means every commanded field converged. Rules (see
+    features/spa-automation/bestway-fix-b-command-convergence.md): setpoint
+    fields compare exactly, all other (toggle/echo) fields compare on/off
+    truthiness, and a field missing from the reported shadow counts as
+    non-converged.
+    """
+    unconverged: dict[str, int] = {}
+    for field, want in desired.items():
+        if field not in reported:
+            unconverged[field] = want
+            continue
+        have = reported[field]
+        if field in CONVERGENCE_TOGGLE_FIELDS:
+            # Echo/progress fields report values that differ from the command
+            # (heater_state 0..4, wave_state echoes 40/100), so compare on/off.
+            converged = bool(_as_int(have)) == bool(want)
+        elif field in CONVERGENCE_EXACT_FIELDS:
+            converged = _as_int(have) == want
+        else:
+            # Unknown field: be strict (exact) so a real miss is never hidden.
+            converged = _as_int(have) == want
+        if not converged:
+            unconverged[field] = want
+    return unconverged
 
 
 class AwsIotException(Exception):
@@ -94,6 +151,11 @@ class AwsIotApi:
 
         # State cache (matches Gizwits interface)
         self._state_cache: dict[str, BestwayDeviceStatus] = {}
+
+        # Fix B: optional post-command hook. The coordinator sets this to
+        # schedule a lifecycle-tied convergence check after a successful
+        # command. None => no-op (keeps this client standalone-usable).
+        self.command_verifier: Callable[[str, dict[str, int]], None] | None = None
 
     @staticmethod
     def generate_visitor_id() -> str:
@@ -569,22 +631,14 @@ class AwsIotApi:
 
             self.devices[device_id] = device
 
-    async def fetch_data(self) -> Any:  # Returns BestwayApiResults
-        """Fetch latest state for all devices.
+    async def _poll_all_devices(self) -> tuple[int, bool]:
+        """Poll each device shadow once and update the cache.
 
-        Implements the same interface as Gizwits BestwayApi.fetch_data().
-
-        For each device:
-        1. POST /api/device/thing_shadow/ with device_id + product_id
-        2. Parse shadow.state.reported or shadow.state.desired
-        3. Return raw AWS field names (water_temperature, temperature_setting, etc.)
-        4. Store in state cache
-
-        Returns:
-            BestwayApiResults with devices dict
+        Returns (refreshed_count, auth_failed); auth failures are flagged
+        separately so the caller can re-auth and retry before failing.
         """
-        # Import here to avoid circular dependency
-        from ..bestway.api import BestwayApiResults
+        refreshed = 0
+        auth_failed = False
 
         for device_id in self.devices:
             try:
@@ -639,6 +693,7 @@ class AwsIotApi:
                 self._state_cache[device_id] = BestwayDeviceStatus(
                     timestamp=int(time()), attrs=mapped
                 )
+                refreshed += 1
 
                 _LOGGER.debug(
                     "Fetched state for device %s: %d fields",
@@ -646,15 +701,63 @@ class AwsIotApi:
                     len(mapped),
                 )
 
-            except Exception as err:
+            except AwsIotAuthException as err:
+                auth_failed = True
+                _LOGGER.warning(
+                    "Authentication failure fetching device %s: %s",
+                    device_id[:12],
+                    err,
+                )
+            except Exception as err:  # pylint: disable=broad-except
                 _LOGGER.warning(
                     "Failed to fetch state for device %s: %s", device_id[:12], err
                 )
-                # Keep existing cache or mark offline
+                # Seed an empty cache entry on first contact so the entity exists.
                 if device_id not in self._state_cache:
                     self._state_cache[device_id] = BestwayDeviceStatus(
                         timestamp=int(time()), attrs={}
                     )
+
+        return refreshed, auth_failed
+
+    async def fetch_data(self) -> Any:  # Returns BestwayApiResults
+        """Fetch latest state for all devices.
+
+        Implements the same interface as Gizwits BestwayApi.fetch_data().
+
+        Raises UpdateFailed if no device could be refreshed, so entities go
+        unavailable instead of showing stale data. On an auth error it
+        re-authenticates once and retries first.
+
+        Returns:
+            BestwayApiResults with devices dict
+
+        Raises:
+            ConfigEntryAuthFailed: re-authentication failed.
+            UpdateFailed: no device state could be refreshed.
+        """
+        # Imported here to avoid a circular import.
+        from ..bestway.api import BestwayApiResults
+        from homeassistant.exceptions import ConfigEntryAuthFailed
+        from homeassistant.helpers.update_coordinator import UpdateFailed
+
+        refreshed, auth_failed = await self._poll_all_devices()
+
+        # Token may have expired server-side; re-auth once and retry.
+        if self.devices and refreshed == 0 and auth_failed:
+            _LOGGER.info("Re-authenticating after auth failure during poll")
+            try:
+                self._token = await self.authenticate(
+                    self._session, self._visitor_id, self._location, self._api_base
+                )
+            except AwsIotAuthException as err:
+                raise ConfigEntryAuthFailed from err
+            refreshed, _ = await self._poll_all_devices()
+
+        # Nothing refreshed: fail the update so entities go unavailable
+        # instead of showing stale data.
+        if self.devices and refreshed == 0:
+            raise UpdateFailed("Unable to refresh any Bestway device state")
 
         return BestwayApiResults(devices=self._state_cache)
 
@@ -736,7 +839,12 @@ class AwsIotApi:
                 )
 
                 if result.get("code") == 0:
-                    _LOGGER.info("✓ v2 API command sent to device %s", device_id[:12])
+                    _LOGGER.info(
+                        "v2 command accepted by cloud for device %s "
+                        "(pending device confirmation)",
+                        device_id[:12],
+                    )
+                    self._notify_command_verifier(device_id, aws_updates)
                     return True
                 else:
                     _LOGGER.warning(
@@ -765,7 +873,12 @@ class AwsIotApi:
             )
 
             if v1_result.get("code") == 0:
-                _LOGGER.info("✓ v1 API command sent to device %s", device_id[:12])
+                _LOGGER.info(
+                    "v1 command accepted by cloud for device %s "
+                    "(pending device confirmation)",
+                    device_id[:12],
+                )
+                self._notify_command_verifier(device_id, aws_updates)
                 return True
             else:
                 _LOGGER.error("v1 API also failed with code %s", v1_result.get("code"))
@@ -776,6 +889,58 @@ class AwsIotApi:
                 "Failed to send command to device %s: %s", device_id[:12], err
             )
             return False
+
+    def _notify_command_verifier(
+        self, device_id: str, aws_updates: dict[str, int]
+    ) -> None:
+        """Announce a successful command so convergence can be verified (Fix B).
+
+        No-op if no verifier is wired. Never raises into the command path - a
+        scheduling error must not fail an otherwise-accepted command.
+        """
+        if self.command_verifier is None:
+            return
+        try:
+            self.command_verifier(device_id, dict(aws_updates))
+        except Exception as err:  # pylint: disable=broad-except
+            _LOGGER.debug("command_verifier hook failed: %s", err)
+
+    async def _fetch_reported_shadow(self, device_id: str) -> dict[str, Any]:
+        """Fetch ONLY the raw reported shadow for a device (AWS field names).
+
+        Unlike _poll_all_devices, this does NOT merge the desired state or
+        normalize field names. Fix B needs the untouched reported values to tell
+        whether the device actually converged to a command. Returns {} on any
+        error so the caller logs a soft warning rather than crashing.
+        """
+        device = self.devices.get(device_id)
+        if device is None:
+            return {}
+        payload = {
+            "device_id": device_id,
+            "product_id": device.product_id or device.product_name,
+        }
+        try:
+            shadow_response = await self._do_post("/api/device/thing_shadow/", payload)
+        except Exception as err:  # pylint: disable=broad-except
+            _LOGGER.debug(
+                "Convergence shadow fetch failed for %s: %s", device_id[:12], err
+            )
+            return {}
+        raw = shadow_response.get("data", {})
+        if not isinstance(raw, dict):
+            return {}
+        state = raw.get("state")
+        if isinstance(state, dict):
+            reported = state.get("reported")
+            if isinstance(reported, dict):
+                return dict(reported)
+            # 'state' dict without a 'reported' child: use it as-is, minus any
+            # 'desired' echo (Fix B compares against reported only).
+            return {k: v for k, v in state.items() if k != "desired"}
+        # Flat shadow: the device reports fields directly under 'data' (the live
+        # Hydrojet V02 does this). Mirrors _poll_all_devices' raw_data fallback.
+        return dict(raw)
 
     # Convenience methods matching Gizwits interface (with AWS field name translation)
     async def airjet_spa_set_power(self, device_id: str, state: bool) -> None:
