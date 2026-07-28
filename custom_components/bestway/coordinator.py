@@ -20,6 +20,13 @@ from .bestway.websocket import GizwitsWebSocket
 
 _LOGGER = getLogger(__name__)
 
+# Wraps refresh_bindings() + fetch_data(), which makes one HTTP call per
+# device sequentially. Each individual call already has its own internal
+# timeout (see TIMEOUT/_TIMEOUT in the api modules); this outer budget just
+# needs enough headroom to cover a full multi-device cycle without being
+# the thing that fails first on a slow connection.
+_UPDATE_TIMEOUT = 30
+
 
 class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
     """Update coordinator that polls the device status for all devices in an account."""
@@ -60,7 +67,7 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
         so entities can quickly look up their data.
         """
         try:
-            async with asyncio.timeout(10):
+            async with asyncio.timeout(_UPDATE_TIMEOUT):
                 await self.api.refresh_bindings()
                 return await self.api.fetch_data()
         except (BestwayAuthException, AwsIotAuthException) as err:
@@ -92,7 +99,7 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
             raise ConfigEntryAuthFailed from reauth_err
 
         try:
-            async with asyncio.timeout(10):
+            async with asyncio.timeout(_UPDATE_TIMEOUT):
                 await self.api.refresh_bindings()
                 return await self.api.fetch_data()
         except (BestwayAuthException, AwsIotAuthException) as err:

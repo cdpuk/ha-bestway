@@ -29,7 +29,7 @@ _HEADERS = {
     "Content-type": "application/json; charset=UTF-8",
     "X-Gizwits-Application-Id": GIZWITS_APP_ID,
 }
-_TIMEOUT = 10
+_TIMEOUT = 20
 
 
 @dataclass
