@@ -106,7 +106,35 @@ async def _async_setup_gizwits(
         )
 
     api = BestwayApi(session, user_token, api_root)
-    coordinator = BestwayUpdateCoordinator(hass, entry, api)
+
+    async def _refresh_gizwits_token() -> str:
+        """Obtain a fresh token when the server rejects the current one.
+
+        Cloud tokens can be invalidated server-side without warning. This
+        re-authenticates with the stored credentials and updates the API
+        instance and config entry in place so the next poll/reconnect uses
+        the new token. Raises if the credentials themselves are no longer
+        valid (e.g. password changed), which the caller converts to
+        ConfigEntryAuthFailed to trigger HA's reauth flow.
+        """
+        new_token = await BestwayApi.get_user_token(
+            session, username, password, api_root
+        )
+        api._user_token = new_token.user_token
+        hass.config_entries.async_update_entry(
+            entry,
+            data={
+                **entry.data,
+                CONF_USER_TOKEN: new_token.user_token,
+                CONF_USER_TOKEN_EXPIRY: new_token.expiry,
+                CONF_UID: new_token.user_id,
+            },
+        )
+        return new_token.user_token
+
+    coordinator = BestwayUpdateCoordinator(
+        hass, entry, api, reauth_callback=_refresh_gizwits_token
+    )
     await coordinator.async_config_entry_first_refresh()
 
     # Initialize WebSocket for real-time updates
@@ -126,6 +154,7 @@ async def _async_setup_gizwits(
                     ws_port=first_device.ws_port,
                     update_callback=coordinator.handle_websocket_update,
                     disconnect_callback=coordinator.handle_websocket_disconnect,
+                    token_refresh_callback=_refresh_gizwits_token,
                 )
 
                 # Connect in background
@@ -198,8 +227,27 @@ async def _async_setup_aws_iot(
         _LOGGER.error("AWS IoT authentication failed: %s", ex)
         raise ConfigEntryAuthFailed from ex
 
+    async def _refresh_aws_token() -> str:
+        """Obtain a fresh token when the server rejects the current one.
+
+        Shared by the coordinator (for REST polling) and every per-device
+        WebSocket, so a single re-authentication call recovers all of them.
+        Raises AwsIotAuthException if the visitor_id itself is no longer
+        valid, which the coordinator converts to ConfigEntryAuthFailed.
+        """
+        new_token = await AwsIotApi.authenticate(
+            session, visitor_id, location, api_base
+        )
+        api._token = new_token
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, "token": new_token}
+        )
+        return new_token
+
     # Initialize coordinator
-    coordinator = BestwayUpdateCoordinator(hass, entry, api)
+    coordinator = BestwayUpdateCoordinator(
+        hass, entry, api, reauth_callback=_refresh_aws_token
+    )
     await coordinator.async_config_entry_first_refresh()
 
     # Initialize per-device WebSockets
@@ -207,24 +255,13 @@ async def _async_setup_aws_iot(
     if api.devices:
         for device_id, device in api.devices.items():
             try:
-                # Token refresh callback
-                async def token_refresh_callback() -> str:
-                    new_token = await AwsIotApi.authenticate(
-                        session, visitor_id, location, api_base
-                    )
-                    api._token = new_token
-                    hass.config_entries.async_update_entry(
-                        entry, data={**entry.data, "token": new_token}
-                    )
-                    return new_token
-
                 ws = AwsIotWebSocket(
                     device_id=device_id,
                     service_region=device.ws_host,  # Region stored in ws_host
                     token=token,
                     update_callback=coordinator.handle_websocket_update,
                     disconnect_callback=coordinator.handle_websocket_disconnect,
-                    token_refresh_callback=token_refresh_callback,
+                    token_refresh_callback=_refresh_aws_token,
                 )
 
                 # Connect in background

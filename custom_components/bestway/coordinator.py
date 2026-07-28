@@ -1,6 +1,7 @@
 """Data update coordinator for the Bestway API."""
 
 import asyncio
+from collections.abc import Awaitable, Callable
 from datetime import timedelta
 from logging import getLogger
 from time import time
@@ -8,11 +9,12 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .aws_iot.api import AwsIotApi
+from .aws_iot.api import AwsIotApi, AwsIotAuthException
 from .aws_iot.websocket import AwsIotWebSocket
-from .bestway.api import BestwayApi, BestwayApiResults
+from .bestway.api import BestwayApi, BestwayApiResults, BestwayAuthException
 from .bestway.model import BestwayDeviceStatus
 from .bestway.websocket import GizwitsWebSocket
 
@@ -27,8 +29,17 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
         hass: HomeAssistant,
         config_entry: ConfigEntry,
         api: BestwayApi | AwsIotApi,
+        reauth_callback: Callable[[], Awaitable[Any]] | None = None,
     ) -> None:
-        """Initialize my coordinator."""
+        """Initialize my coordinator.
+
+        Args:
+            reauth_callback: Called to obtain a fresh auth token when the API
+                reports the current one is invalid. Should update the API
+                instance and config entry in place, or raise if credentials
+                are no longer valid (e.g. password changed), which converts
+                to ConfigEntryAuthFailed and triggers HA's reauth flow.
+        """
         super().__init__(
             hass,
             _LOGGER,
@@ -37,6 +48,7 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
             update_interval=timedelta(seconds=30),
         )
         self.api = api
+        self._reauth_callback = reauth_callback
         self._ws_last_update: dict[str, float] = {}  # Track WebSocket update times
         self.websocket: GizwitsWebSocket | None = None
         self.websockets: list[AwsIotWebSocket] = []
@@ -47,9 +59,46 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
         This is the place to pre-process the data to lookup tables
         so entities can quickly look up their data.
         """
-        async with asyncio.timeout(10):
-            await self.api.refresh_bindings()
-            return await self.api.fetch_data()
+        try:
+            async with asyncio.timeout(10):
+                await self.api.refresh_bindings()
+                return await self.api.fetch_data()
+        except (BestwayAuthException, AwsIotAuthException) as err:
+            return await self._async_handle_auth_failure(err)
+
+    async def _async_handle_auth_failure(
+        self, original_err: Exception
+    ) -> BestwayApiResults:
+        """Attempt to recover from an auth token that the server has invalidated.
+
+        Cloud tokens can expire or be revoked server-side without warning
+        (observed after a couple of days of continuous use). Rather than
+        failing silently forever and leaving entities unavailable until the
+        user removes and re-adds the integration, try to obtain a fresh
+        token and retry once. Only genuine credential failures escalate to
+        ConfigEntryAuthFailed, which prompts HA's reauth flow. The retry
+        gets its own timeout budget, separate from the failed first attempt.
+        """
+        if self._reauth_callback is None:
+            raise ConfigEntryAuthFailed from original_err
+
+        _LOGGER.warning(
+            "Auth token rejected by server, attempting to refresh: %s", original_err
+        )
+        try:
+            await self._reauth_callback()
+        except Exception as reauth_err:  # pylint: disable=broad-except
+            _LOGGER.error("Failed to refresh auth token: %s", reauth_err)
+            raise ConfigEntryAuthFailed from reauth_err
+
+        try:
+            async with asyncio.timeout(10):
+                await self.api.refresh_bindings()
+                return await self.api.fetch_data()
+        except (BestwayAuthException, AwsIotAuthException) as err:
+            # Refreshed token was rejected again - credentials are stale
+            _LOGGER.error("Refreshed auth token was also rejected: %s", err)
+            raise ConfigEntryAuthFailed from err
 
     def handle_websocket_update(self, device_id: str, attrs: dict[str, Any]) -> None:
         """Handle real-time device update from WebSocket.
