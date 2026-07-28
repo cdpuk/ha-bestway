@@ -25,6 +25,21 @@
           "visitor_id": "Visitor ID (existing account, optional)",
           "qr_code": "QR Code (new account, optional)"
         }
+      },
+      "reauth_gizwits": {
+        "title": "Reauthenticate Bestway (V01)",
+        "description": "The Bestway server rejected your saved credentials for {username}. Enter your password to reconnect.",
+        "data": {
+          "password": "Password"
+        }
+      },
+      "reauth_aws_iot": {
+        "title": "Reauthenticate Bestway (V02)",
+        "description": "Automatic reconnection failed. Provide an existing visitor_id OR scan a new QR code to reconnect. Provide ONE option only.",
+        "data": {
+          "visitor_id": "Visitor ID (existing account, optional)",
+          "qr_code": "QR Code (new account, optional)"
+        }
       }
     },
     "error": {
@@ -41,6 +56,10 @@
       "no_devices_found": "No devices found. Please check your spa is powered on and connected.",
       "qr_code_required": "Either provide an existing visitor_id OR scan a QR code. One option is required.",
       "unknown": "Unknown error"
+    },
+    "abort": {
+      "reauth_successful": "Reauthentication was successful",
+      "reauth_entry_not_found": "The config entry being reauthenticated no longer exists"
     }
   },
   "options": {

@@ -646,6 +646,12 @@ class AwsIotApi:
                     len(mapped),
                 )
 
+            except AwsIotAuthException:
+                # Let auth failures propagate so the coordinator can refresh
+                # the token and retry, instead of silently leaving every
+                # device stuck on stale cached data until the token happens
+                # to be refreshed on the next HA restart.
+                raise
             except Exception as err:
                 _LOGGER.warning(
                     "Failed to fetch state for device %s: %s", device_id[:12], err
