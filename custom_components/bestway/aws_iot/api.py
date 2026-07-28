@@ -34,7 +34,7 @@ _LOGGER = logging.getLogger(__name__)
 DEFAULT_API_BASE = "https://smarthub-eu.bestwaycorp.com"  # EU endpoint
 APP_ID = "AhFLL54HnChhrxcl9ZUJL6QNfolTIB"
 APP_SECRET = "4ECvVs13enL5AiYSmscNjvlaisklQDz7vWPCCWXcEFjhWfTmLT"
-TIMEOUT = 10
+TIMEOUT = 20
 
 # Regional API endpoints (from ServiceConfig.java)
 API_ENDPOINTS = {

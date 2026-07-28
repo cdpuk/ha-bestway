@@ -231,7 +231,9 @@ async def _async_setup_aws_iot(
         # fully up) surface as TimeoutError/ClientConnectionError, not
         # AwsIotAuthException. Treat those as transient so HA retries setup
         # with backoff instead of failing the entry outright.
-        _LOGGER.warning("AWS IoT setup failed, will retry: %s", ex)
+        _LOGGER.warning(
+            "AWS IoT setup failed, will retry: %s: %s", type(ex).__name__, ex
+        )
         raise ConfigEntryNotReady from ex
 
     async def _refresh_aws_token() -> str:
