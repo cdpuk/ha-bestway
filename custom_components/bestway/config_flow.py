@@ -456,7 +456,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is None and visitor_id:
             # Retry with the existing visitor_id before asking the user for one
             try:
-                token = await AwsIotApi.authenticate(
+                retry_token = await AwsIotApi.authenticate(
                     session, visitor_id, location, api_base
                 )
             except Exception as ex:  # pylint: disable=broad-except
@@ -470,7 +470,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
                     return self.async_abort(reason="reauth_entry_not_found")
                 return self.async_update_reload_and_abort(
                     reauth_entry,
-                    data={**self._reauth_data, "token": token},
+                    data={**self._reauth_data, "token": retry_token},
                 )
 
         if user_input is not None:
