@@ -476,7 +476,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is not None:
             qr_code = user_input.get("qr_code", "").strip()
             visitor_id_input = user_input.get("visitor_id", "").strip()
-            token = None
+            token: str | None = None
 
             if not qr_code and not visitor_id_input:
                 errors["base"] = "qr_or_visitor_required"
