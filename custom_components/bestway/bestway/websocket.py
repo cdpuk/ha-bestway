@@ -3,7 +3,7 @@
 import asyncio
 import json
 from logging import getLogger
-from typing import Any, Callable
+from typing import Any, Awaitable, Callable
 
 import websockets
 
@@ -17,6 +17,10 @@ _RECONNECT_DELAYS = [3, 6, 12, 24, 48, 60]
 
 class GizwitsWebSocketException(Exception):
     """Base exception for WebSocket operations."""
+
+
+class GizwitsWebSocketAuthException(GizwitsWebSocketException):
+    """The server rejected the login attempt (invalid/expired token)."""
 
 
 class GizwitsWebSocket:
@@ -38,6 +42,7 @@ class GizwitsWebSocket:
         ws_port: int,
         update_callback: Callable[[str, dict[str, Any]], None],
         disconnect_callback: Callable[[], None] | None = None,
+        token_refresh_callback: Callable[[], Awaitable[str]] | None = None,
     ) -> None:
         """Initialize WebSocket client.
 
@@ -48,12 +53,15 @@ class GizwitsWebSocket:
             ws_port: WebSocket port (from device bindings response)
             update_callback: Called with (device_id, attrs) on device updates
             disconnect_callback: Called on connection loss (optional)
+            token_refresh_callback: Called to obtain a fresh token when the
+                server rejects login with the current one (optional)
         """
         self._uid = uid
         self._token = token
         self._ws_url = f"wss://{ws_host}:{ws_port}/ws/app/v1"
         self._update_callback = update_callback
         self._disconnect_callback = disconnect_callback
+        self._token_refresh_callback = token_refresh_callback
 
         self._websocket: Any = None
         self._listen_task: asyncio.Task[Any] | None = None
@@ -111,7 +119,7 @@ class GizwitsWebSocket:
 
             if not data.get("data", {}).get("success"):
                 error_msg = data.get("data", {}).get("msg", "Unknown error")
-                raise GizwitsWebSocketException(f"Login failed: {error_msg}")
+                raise GizwitsWebSocketAuthException(f"Login failed: {error_msg}")
 
             self._authenticated = True
             self._running = True
@@ -126,6 +134,23 @@ class GizwitsWebSocket:
         except Exception as ex:
             _LOGGER.error("Failed to connect to WebSocket: %s", ex)
             await self.disconnect()
+
+            # Handle a rejected login by refreshing the token and retrying
+            # immediately, rather than reconnecting forever with a token
+            # the server has already rejected.
+            if (
+                isinstance(ex, GizwitsWebSocketAuthException)
+                and self._token_refresh_callback is not None
+            ):
+                try:
+                    new_token = await self._token_refresh_callback()
+                    if new_token:
+                        self._token = new_token
+                        _LOGGER.info("Token refreshed, retrying WebSocket connection")
+                        await self.connect()
+                        return
+                except Exception as refresh_err:  # pylint: disable=broad-except
+                    _LOGGER.error("Token refresh failed: %s", refresh_err)
 
             # Schedule reconnection if still intended to be running
             if not isinstance(ex, asyncio.CancelledError):

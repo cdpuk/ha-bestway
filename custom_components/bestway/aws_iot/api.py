@@ -34,7 +34,7 @@ _LOGGER = logging.getLogger(__name__)
 DEFAULT_API_BASE = "https://smarthub-eu.bestwaycorp.com"  # EU endpoint
 APP_ID = "AhFLL54HnChhrxcl9ZUJL6QNfolTIB"
 APP_SECRET = "4ECvVs13enL5AiYSmscNjvlaisklQDz7vWPCCWXcEFjhWfTmLT"
-TIMEOUT = 10
+TIMEOUT = 20
 
 # Regional API endpoints (from ServiceConfig.java)
 API_ENDPOINTS = {
@@ -646,6 +646,12 @@ class AwsIotApi:
                     len(mapped),
                 )
 
+            except AwsIotAuthException:
+                # Let auth failures propagate so the coordinator can refresh
+                # the token and retry, instead of silently leaving every
+                # device stuck on stale cached data until the token happens
+                # to be refreshed on the next HA restart.
+                raise
             except Exception as err:
                 _LOGGER.warning(
                     "Failed to fetch state for device %s: %s", device_id[:12], err
