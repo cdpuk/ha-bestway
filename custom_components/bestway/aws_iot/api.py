@@ -684,7 +684,7 @@ class AwsIotApi:
 
         refreshed, auth_failed = await self._poll_all_devices()
 
-        if self.devices and refreshed == 0 and auth_failed:
+        if self.devices and auth_failed:
             _LOGGER.info("Re-authenticating after auth failure during poll")
             try:
                 token = await self.authenticate(

@@ -375,6 +375,33 @@ async def test_fetch_data_reauthenticates_and_propagates_token(aws_api):
 
 
 @pytest.mark.asyncio
+async def test_fetch_data_reauthenticates_after_partial_auth_failure(aws_api):
+    """Any auth rejection refreshes the shared account token."""
+    aws_api.devices = {
+        "device1": _make_aws_device("device1"),
+        "device2": _make_aws_device("device2"),
+    }
+    shadow = {"code": 0, "data": {"state": {"reported": {"power_state": 1}}}}
+    aws_api._do_post = AsyncMock(
+        side_effect=[
+            shadow,
+            AwsIotAuthException("expired"),
+            shadow,
+            shadow,
+        ]
+    )
+
+    with patch.object(
+        AwsIotApi, "authenticate", new=AsyncMock(return_value="fresh_token")
+    ) as authenticate:
+        results = await aws_api.fetch_data()
+
+    authenticate.assert_awaited_once()
+    assert set(results.devices) == {"device1", "device2"}
+    assert aws_api._do_post.await_count == 4
+
+
+@pytest.mark.asyncio
 async def test_fetch_data_raises_auth_failed_when_reauth_rejected(aws_api):
     """A rejected runtime reauth starts Home Assistant's reauth handling."""
     from homeassistant.exceptions import ConfigEntryAuthFailed
