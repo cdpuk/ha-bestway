@@ -1,11 +1,12 @@
 """Tests for AWS IoT API client."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from custom_components.bestway.aws_iot.api import (
     AwsIotApi,
     AwsIotAuthException,
+    AwsIotConnectionError,
 )
 
 
@@ -17,6 +18,39 @@ def create_mock_response(status: int, json_data: dict):
     response.__aenter__ = AsyncMock(return_value=response)
     response.__aexit__ = AsyncMock(return_value=None)
     return response
+
+
+@pytest.mark.asyncio
+async def test_authenticate_wraps_timeout_as_connection_error(mock_session):
+    """Authentication timeouts are classified as transient connection errors."""
+    mock_session.post = MagicMock(side_effect=TimeoutError)
+
+    with pytest.raises(AwsIotConnectionError):
+        await AwsIotApi.authenticate(mock_session, "test_visitor")
+
+
+@pytest.mark.asyncio
+async def test_authenticate_rejects_missing_token(mock_session):
+    """A successful response without a token is an authentication failure."""
+    mock_session.post = MagicMock(
+        return_value=create_mock_response(200, {"code": 1, "data": {}})
+    )
+
+    with pytest.raises(AwsIotAuthException):
+        await AwsIotApi.authenticate(mock_session, "test_visitor")
+
+
+@pytest.mark.asyncio
+async def test_authenticate_checks_rejection_before_parsing_body(mock_session):
+    """A non-JSON 401 remains an authentication failure."""
+    response = create_mock_response(401, {})
+    response.json.side_effect = Exception("not JSON")
+    mock_session.post = MagicMock(return_value=response)
+
+    with pytest.raises(AwsIotAuthException):
+        await AwsIotApi.authenticate(mock_session, "test_visitor")
+
+    response.json.assert_not_awaited()
 
 
 @pytest.fixture
@@ -302,6 +336,102 @@ async def test_fetch_data_returns_results(aws_api, mock_session):
     assert status.attrs["Tnow"] == 36
 
 
+def _make_aws_device(device_id="device1"):
+    """Build a real AWS IoT device for polling tests."""
+    from custom_components.bestway.bestway.model import BestwayDevice
+
+    return BestwayDevice(
+        protocol_version=2,
+        device_id=device_id,
+        product_name="AIRJET",
+        alias="Test Spa",
+        mcu_soft_version="unknown",
+        mcu_hard_version="unknown",
+        wifi_soft_version="unknown",
+        wifi_hard_version="unknown",
+        is_online=True,
+        backend="aws_iot",
+        product_id="T53NN8",
+    )
+
+
+@pytest.mark.asyncio
+async def test_fetch_data_reauthenticates_and_propagates_token(aws_api):
+    """A poll auth failure refreshes once and propagates the new token."""
+    aws_api.devices = {"device1": _make_aws_device()}
+    shadow = {"code": 0, "data": {"state": {"reported": {"power_state": 1}}}}
+    aws_api._do_post = AsyncMock(side_effect=[AwsIotAuthException("expired"), shadow])
+    token_updated = MagicMock()
+    aws_api.set_token_update_callback(token_updated)
+
+    with patch.object(
+        AwsIotApi, "authenticate", new=AsyncMock(return_value="fresh_token")
+    ):
+        results = await aws_api.fetch_data()
+
+    assert results.devices["device1"].attrs["power"] is True
+    assert aws_api._token == "fresh_token"
+    token_updated.assert_called_once_with("fresh_token")
+
+
+@pytest.mark.asyncio
+async def test_fetch_data_reauthenticates_after_partial_auth_failure(aws_api):
+    """Any auth rejection refreshes the shared account token."""
+    aws_api.devices = {
+        "device1": _make_aws_device("device1"),
+        "device2": _make_aws_device("device2"),
+    }
+    shadow = {"code": 0, "data": {"state": {"reported": {"power_state": 1}}}}
+    aws_api._do_post = AsyncMock(
+        side_effect=[
+            shadow,
+            AwsIotAuthException("expired"),
+            shadow,
+            shadow,
+        ]
+    )
+
+    with patch.object(
+        AwsIotApi, "authenticate", new=AsyncMock(return_value="fresh_token")
+    ) as authenticate:
+        results = await aws_api.fetch_data()
+
+    authenticate.assert_awaited_once()
+    assert set(results.devices) == {"device1", "device2"}
+    assert aws_api._do_post.await_count == 4
+
+
+@pytest.mark.asyncio
+async def test_fetch_data_raises_auth_failed_when_reauth_rejected(aws_api):
+    """A rejected runtime reauth starts Home Assistant's reauth handling."""
+    from homeassistant.exceptions import ConfigEntryAuthFailed
+
+    aws_api.devices = {"device1": _make_aws_device()}
+    aws_api._do_post = AsyncMock(side_effect=AwsIotAuthException("expired"))
+
+    with (
+        patch.object(
+            AwsIotApi,
+            "authenticate",
+            new=AsyncMock(side_effect=AwsIotAuthException("rejected")),
+        ),
+        pytest.raises(ConfigEntryAuthFailed),
+    ):
+        await aws_api.fetch_data()
+
+
+@pytest.mark.asyncio
+async def test_fetch_data_raises_update_failed_on_total_connection_failure(aws_api):
+    """A total poll failure makes entities unavailable instead of stale."""
+    from homeassistant.helpers.update_coordinator import UpdateFailed
+
+    aws_api.devices = {"device1": _make_aws_device()}
+    aws_api._do_post = AsyncMock(side_effect=ConnectionError("offline"))
+
+    with pytest.raises(UpdateFailed):
+        await aws_api.fetch_data()
+
+
 @pytest.mark.asyncio
 async def test_set_device_state_sends_command(aws_api, mock_session):
     """Test control command sends encrypted payload."""
@@ -345,3 +475,16 @@ async def test_do_get_handles_401(aws_api, mock_session):
 
     with pytest.raises(AwsIotAuthException):
         await aws_api._do_get("/test")
+
+
+@pytest.mark.asyncio
+async def test_do_post_checks_auth_status_before_parsing_body(aws_api, mock_session):
+    """A non-JSON auth rejection still triggers runtime reauthentication."""
+    response = create_mock_response(401, {})
+    response.json.side_effect = Exception("not JSON")
+    mock_session.post = MagicMock(return_value=response)
+
+    with pytest.raises(AwsIotAuthException):
+        await aws_api._do_post("/test", {})
+
+    response.json.assert_not_awaited()

@@ -1,14 +1,17 @@
 """Test bestway setup process."""
 
 from datetime import datetime, timedelta
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
-from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntryState
+from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+import pytest
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.bestway import (
     BestwayUpdateCoordinator,
+    _async_setup_aws_iot,
 )
 from custom_components.bestway.bestway.model import BestwayUserToken
 from custom_components.bestway.const import (
@@ -20,6 +23,10 @@ from custom_components.bestway.const import (
     CONF_USER_TOKEN_EXPIRY,
     CONF_USERNAME,
     DOMAIN,
+)
+from custom_components.bestway.aws_iot.api import (
+    AwsIotAuthException,
+    AwsIotConnectionError,
 )
 
 
@@ -129,3 +136,85 @@ async def test_setup_entry_exception(hass: HomeAssistant, error_on_get_data):
 
     await hass.async_block_till_done()
     assert config_entry.state is ConfigEntryState.SETUP_RETRY
+
+
+def _aws_iot_entry() -> MockConfigEntry:
+    """Create an AWS IoT config entry."""
+    return MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            "backend": "aws_iot",
+            "visitor_id": "test_visitor",
+            "region": "EU",
+            "api_base": "https://example.test",
+        },
+        version=2,
+        entry_id="aws-iot-test",
+    )
+
+
+async def test_aws_iot_setup_retries_connection_failure(hass: HomeAssistant):
+    """A transient startup auth failure is mapped to ConfigEntryNotReady."""
+    config_entry = _aws_iot_entry()
+
+    with patch(
+        "custom_components.bestway.aws_iot.api.AwsIotApi.authenticate",
+        side_effect=AwsIotConnectionError,
+    ):
+        with pytest.raises(ConfigEntryNotReady):
+            await _async_setup_aws_iot(hass, config_entry, AsyncMock())
+
+
+async def test_aws_iot_setup_maps_rejection_to_auth_failure(hass: HomeAssistant):
+    """A definitive startup auth rejection is mapped to an auth failure."""
+    config_entry = _aws_iot_entry()
+
+    with patch(
+        "custom_components.bestway.aws_iot.api.AwsIotApi.authenticate",
+        side_effect=AwsIotAuthException,
+    ):
+        with pytest.raises(ConfigEntryAuthFailed):
+            await _async_setup_aws_iot(hass, config_entry, AsyncMock())
+
+
+async def test_runtime_token_refresh_does_not_update_config_entry(
+    hass: HomeAssistant,
+):
+    """Runtime token refresh avoids triggering the entry reload listener."""
+    config_entry = _aws_iot_entry()
+    config_entry.add_to_hass(hass)
+
+    async def refresh_token_during_first_refresh(coordinator):
+        coordinator.api.update_token("runtime_token")
+
+    with (
+        patch(
+            "custom_components.bestway.aws_iot.api.AwsIotApi.authenticate",
+            return_value="startup_token",
+        ),
+        patch.object(
+            BestwayUpdateCoordinator,
+            "async_config_entry_first_refresh",
+            refresh_token_during_first_refresh,
+        ),
+        patch.object(
+            hass.config_entries,
+            "async_forward_entry_setups",
+            new=AsyncMock(),
+        ),
+        patch.object(
+            hass.config_entries,
+            "async_update_entry",
+            wraps=hass.config_entries.async_update_entry,
+        ) as update_entry,
+    ):
+        await _async_setup_aws_iot(hass, config_entry, AsyncMock())
+
+        coordinator = hass.data[DOMAIN][config_entry.entry_id]
+        websocket = MagicMock()
+        coordinator.websockets.append(websocket)
+        coordinator.api.update_token("later_runtime_token")
+
+    update_entry.assert_called_once()
+    assert config_entry.data["token"] == "startup_token"
+    websocket.update_token.assert_called_once_with("later_runtime_token")

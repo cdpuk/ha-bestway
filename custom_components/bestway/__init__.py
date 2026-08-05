@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 from logging import getLogger
 
-from aiohttp import ClientSession
+from aiohttp import ClientError, ClientSession
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -158,7 +158,11 @@ async def _async_setup_aws_iot(
     hass: HomeAssistant, entry: ConfigEntry, session: ClientSession
 ) -> bool:
     """Set up AWS IoT V02 backend."""
-    from .aws_iot.api import AwsIotApi, AwsIotAuthException
+    from .aws_iot.api import (
+        AwsIotApi,
+        AwsIotAuthException,
+        AwsIotConnectionError,
+    )
     from .aws_iot.websocket import AwsIotWebSocket
 
     visitor_id = entry.data["visitor_id"]
@@ -193,17 +197,28 @@ async def _async_setup_aws_iot(
         hass.config_entries.async_update_entry(
             entry, data={**entry.data, "token": token}
         )
-        api._token = token
+        api.update_token(token)
+    except (AwsIotConnectionError, TimeoutError, ClientError) as ex:
+        _LOGGER.warning("AWS IoT authentication service unavailable: %s", ex)
+        raise ConfigEntryNotReady from ex
     except AwsIotAuthException as ex:
         _LOGGER.error("AWS IoT authentication failed: %s", ex)
         raise ConfigEntryAuthFailed from ex
 
     # Initialize coordinator
     coordinator = BestwayUpdateCoordinator(hass, entry, api)
+
+    def token_updated(new_token: str) -> None:
+        nonlocal token
+        token = new_token
+        for websocket in coordinator.websockets:
+            websocket.update_token(new_token)
+
+    api.set_token_update_callback(token_updated)
     await coordinator.async_config_entry_first_refresh()
 
     # Initialize per-device WebSockets
-    websockets = []
+    websockets = coordinator.websockets
     if api.devices:
         for device_id, device in api.devices.items():
             try:
@@ -212,10 +227,7 @@ async def _async_setup_aws_iot(
                     new_token = await AwsIotApi.authenticate(
                         session, visitor_id, location, api_base
                     )
-                    api._token = new_token
-                    hass.config_entries.async_update_entry(
-                        entry, data={**entry.data, "token": new_token}
-                    )
+                    api.update_token(new_token)
                     return new_token
 
                 ws = AwsIotWebSocket(
@@ -248,8 +260,6 @@ async def _async_setup_aws_iot(
         _LOGGER.warning("No devices found, WebSocket not initialized")
 
     # Store WebSockets list on coordinator
-    coordinator.websockets = websockets
-
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
 

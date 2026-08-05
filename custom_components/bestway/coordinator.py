@@ -1,6 +1,5 @@
 """Data update coordinator for the Bestway API."""
 
-import asyncio
 from datetime import timedelta
 from logging import getLogger
 from time import time
@@ -47,9 +46,8 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
         This is the place to pre-process the data to lookup tables
         so entities can quickly look up their data.
         """
-        async with asyncio.timeout(10):
-            await self.api.refresh_bindings()
-            return await self.api.fetch_data()
+        await self.api.refresh_bindings()
+        return await self.api.fetch_data()
 
     def handle_websocket_update(self, device_id: str, attrs: dict[str, Any]) -> None:
         """Handle real-time device update from WebSocket.

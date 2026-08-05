@@ -27,6 +27,11 @@
         }
       }
     },
+    "abort": {
+      "cannot_connect": "Could not connect to the Bestway API. Try reloading the integration.",
+      "reauth_successful": "Authentication refreshed successfully.",
+      "reauth_unsuccessful": "Authentication could not be refreshed."
+    },
     "error": {
       "cannot_connect": "Could not connect to the Bestway API",
       "user_does_not_exist": "User account does not exist",

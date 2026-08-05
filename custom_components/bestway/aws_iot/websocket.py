@@ -93,6 +93,10 @@ class AwsIotWebSocket:
             )
         return endpoint
 
+    def update_token(self, token: str) -> None:
+        """Replace the token used by the next connection attempt."""
+        self._token = token
+
     async def connect(self) -> None:
         """Connect to region-specific WebSocket endpoint.
 

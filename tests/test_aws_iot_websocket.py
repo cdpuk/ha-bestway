@@ -224,6 +224,13 @@ async def test_region_fallback_to_eu(aws_websocket):
     assert "eu-central-1" in url
 
 
+def test_update_token_changes_next_connection_token(aws_websocket):
+    """Token updates are applied to subsequent WebSocket connections."""
+    aws_websocket.update_token("fresh_token")
+
+    assert aws_websocket._token == "fresh_token"
+
+
 @pytest.mark.asyncio
 async def test_heartbeat_loop_sends_messages(aws_websocket):
     """Test heartbeat loop sends JSON heartbeat and WebSocket ping."""

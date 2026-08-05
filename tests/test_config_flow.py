@@ -7,9 +7,11 @@ from unittest.mock import patch
 from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResultType
 import pytest
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.bestway.bestway.model import BestwayUserToken
 from custom_components.bestway.const import (
+    BACKEND_AWS_IOT,
     CONF_API_ROOT,
     CONF_API_ROOT_EU,
     CONF_PASSWORD,
@@ -210,3 +212,39 @@ async def test_backend_selection_shows_both_options(hass):
     # Schema should have backend field with options
     schema_keys = list(result["data_schema"].schema.keys())
     assert any("backend" in str(key) for key in schema_keys)
+
+
+async def test_aws_iot_reauth_refreshes_token(hass):
+    """AWS IoT reauth uses the stored visitor ID without user input."""
+    entry = MockConfigEntry(
+        version=2,
+        domain=DOMAIN,
+        title="Bestway Spa",
+        data={
+            "backend": BACKEND_AWS_IOT,
+            "visitor_id": "test_visitor",
+            "token": "old_token",
+            "region": "EU",
+            "api_base": "https://example.test",
+        },
+        source=config_entries.SOURCE_USER,
+    )
+    entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.bestway.config_flow.AwsIotApi.authenticate",
+        return_value="new_token",
+    ) as authenticate:
+        result = await hass.config_entries.flow.async_init(
+            DOMAIN,
+            context={
+                "source": config_entries.SOURCE_REAUTH,
+                "entry_id": entry.entry_id,
+            },
+            data=dict(entry.data),
+        )
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    assert entry.data["token"] == "new_token"
+    authenticate.assert_awaited_once()
