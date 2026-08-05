@@ -308,7 +308,7 @@ class AwsIotApi:
             self._token_update_callback(token)
 
     def set_token_update_callback(self, callback: Callable[[str], None] | None) -> None:
-        """Set a callback for persisting and propagating refreshed tokens."""
+        """Set a callback for propagating refreshed tokens."""
         self._token_update_callback = callback
 
     @staticmethod

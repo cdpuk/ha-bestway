@@ -211,9 +211,6 @@ async def _async_setup_aws_iot(
     def token_updated(new_token: str) -> None:
         nonlocal token
         token = new_token
-        hass.config_entries.async_update_entry(
-            entry, data={**entry.data, "token": new_token}
-        )
         for websocket in coordinator.websockets:
             websocket.update_token(new_token)
 
