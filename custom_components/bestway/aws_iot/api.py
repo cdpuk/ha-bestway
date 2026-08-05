@@ -15,6 +15,7 @@ import asyncio
 import hashlib
 import logging
 import secrets
+from collections.abc import Callable
 from time import time
 from typing import Any
 
@@ -98,6 +99,7 @@ class AwsIotApi:
 
         # State cache (matches Gizwits interface)
         self._state_cache: dict[str, BestwayDeviceStatus] = {}
+        self._token_update_callback: Callable[[str], None] | None = None
 
     @staticmethod
     def generate_visitor_id() -> str:
@@ -281,12 +283,12 @@ class AwsIotApi:
                 async with session.post(
                     url, headers=headers, json=payload, ssl=False
                 ) as resp:
+                    if resp.status in (401, 403):
+                        raise AwsIotAuthException("Authentication rejected")
+
                     data = await resp.json()
                     _LOGGER.debug("Auth response: %s", data)
                     _LOGGER.debug("Response status: %s", resp.status)
-
-                    if resp.status in (401, 403):
-                        raise AwsIotAuthException("Authentication rejected")
 
                     token = data.get("data", {}).get("token")
                     if not token:
@@ -302,6 +304,12 @@ class AwsIotApi:
     def update_token(self, token: str) -> None:
         """Replace the token used by subsequent API requests."""
         self._token = token
+        if self._token_update_callback is not None:
+            self._token_update_callback(token)
+
+    def set_token_update_callback(self, callback: Callable[[str], None] | None) -> None:
+        """Set a callback for persisting and propagating refreshed tokens."""
+        self._token_update_callback = callback
 
     @staticmethod
     async def bind_qr_code(
@@ -420,15 +428,14 @@ class AwsIotApi:
 
         async with asyncio.timeout(TIMEOUT):
             async with self._session.get(url, headers=headers, ssl=False) as response:
-                data = await response.json()
-
                 # Check for errors
-                if response.status in (400, 401):
+                if response.status in (400, 401, 403):
                     raise AwsIotAuthException("Token expired or invalid")
 
                 if response.status != 200:
                     raise AwsIotException(f"API error: {response.status}")
 
+                data = await response.json()
                 return dict(data)
 
     async def _do_post(self, path: str, data: dict[str, Any]) -> dict[str, Any]:
@@ -454,19 +461,17 @@ class AwsIotApi:
             async with self._session.post(
                 url, headers=headers, json=data, ssl=False
             ) as response:
-                result = await response.json()
-
-                _LOGGER.debug(
-                    "POST %s response (status=%d): %s", path, response.status, result
-                )
-
                 # Check for errors
-                if response.status in (400, 401):
+                if response.status in (400, 401, 403):
                     raise AwsIotAuthException("Token expired or invalid")
 
                 if response.status != 200:
                     raise AwsIotException(f"API error: {response.status}")
 
+                result = await response.json()
+                _LOGGER.debug(
+                    "POST %s response (status=%d): %s", path, response.status, result
+                )
                 return dict(result)
 
     async def refresh_bindings(self) -> None:
@@ -586,23 +591,10 @@ class AwsIotApi:
 
             self.devices[device_id] = device
 
-    async def fetch_data(self) -> Any:  # Returns BestwayApiResults
-        """Fetch latest state for all devices.
-
-        Implements the same interface as Gizwits BestwayApi.fetch_data().
-
-        For each device:
-        1. POST /api/device/thing_shadow/ with device_id + product_id
-        2. Parse shadow.state.reported or shadow.state.desired
-        3. Return raw AWS field names (water_temperature, temperature_setting, etc.)
-        4. Store in state cache
-
-        Returns:
-            BestwayApiResults with devices dict
-        """
-        # Import here to avoid circular dependency
-        from ..bestway.api import BestwayApiResults
-
+    async def _poll_all_devices(self) -> tuple[int, bool]:
+        """Poll every device once and return success and auth-failure status."""
+        refreshed = 0
+        auth_failed = False
         for device_id in self.devices:
             try:
                 # Get device metadata
@@ -656,6 +648,7 @@ class AwsIotApi:
                 self._state_cache[device_id] = BestwayDeviceStatus(
                     timestamp=int(time()), attrs=mapped
                 )
+                refreshed += 1
 
                 _LOGGER.debug(
                     "Fetched state for device %s: %d fields",
@@ -663,7 +656,14 @@ class AwsIotApi:
                     len(mapped),
                 )
 
-            except Exception as err:
+            except AwsIotAuthException as err:
+                auth_failed = True
+                _LOGGER.warning(
+                    "Authentication failure fetching device %s: %s",
+                    device_id[:12],
+                    err,
+                )
+            except Exception as err:  # pylint: disable=broad-except
                 _LOGGER.warning(
                     "Failed to fetch state for device %s: %s", device_id[:12], err
                 )
@@ -672,6 +672,36 @@ class AwsIotApi:
                     self._state_cache[device_id] = BestwayDeviceStatus(
                         timestamp=int(time()), attrs={}
                     )
+
+        return refreshed, auth_failed
+
+    async def fetch_data(self) -> Any:  # Returns BestwayApiResults
+        """Fetch state, refreshing an expired token once before failing."""
+        from homeassistant.exceptions import ConfigEntryAuthFailed
+        from homeassistant.helpers.update_coordinator import UpdateFailed
+
+        from ..bestway.api import BestwayApiResults
+
+        refreshed, auth_failed = await self._poll_all_devices()
+
+        if self.devices and refreshed == 0 and auth_failed:
+            _LOGGER.info("Re-authenticating after auth failure during poll")
+            try:
+                token = await self.authenticate(
+                    self._session, self._visitor_id, self._location, self._api_base
+                )
+            except AwsIotAuthException as err:
+                raise ConfigEntryAuthFailed from err
+            except AwsIotConnectionError as err:
+                raise UpdateFailed(
+                    "Unable to reach Bestway authentication service"
+                ) from err
+
+            self.update_token(token)
+            refreshed, _ = await self._poll_all_devices()
+
+        if self.devices and refreshed == 0:
+            raise UpdateFailed("Unable to refresh any Bestway device state")
 
         return BestwayApiResults(devices=self._state_cache)
 

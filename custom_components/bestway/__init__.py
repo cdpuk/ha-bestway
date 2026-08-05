@@ -207,10 +207,21 @@ async def _async_setup_aws_iot(
 
     # Initialize coordinator
     coordinator = BestwayUpdateCoordinator(hass, entry, api)
+
+    def token_updated(new_token: str) -> None:
+        nonlocal token
+        token = new_token
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, "token": new_token}
+        )
+        for websocket in coordinator.websockets:
+            websocket.update_token(new_token)
+
+    api.set_token_update_callback(token_updated)
     await coordinator.async_config_entry_first_refresh()
 
     # Initialize per-device WebSockets
-    websockets = []
+    websockets = coordinator.websockets
     if api.devices:
         for device_id, device in api.devices.items():
             try:
@@ -220,11 +231,6 @@ async def _async_setup_aws_iot(
                         session, visitor_id, location, api_base
                     )
                     api.update_token(new_token)
-                    hass.config_entries.async_update_entry(
-                        entry, data={**entry.data, "token": new_token}
-                    )
-                    for websocket in coordinator.websockets:
-                        websocket.update_token(new_token)
                     return new_token
 
                 ws = AwsIotWebSocket(
@@ -257,8 +263,6 @@ async def _async_setup_aws_iot(
         _LOGGER.warning("No devices found, WebSocket not initialized")
 
     # Store WebSockets list on coordinator
-    coordinator.websockets = websockets
-
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
 
