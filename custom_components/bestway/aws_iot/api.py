@@ -18,7 +18,7 @@ import secrets
 from time import time
 from typing import Any
 
-from aiohttp import ClientSession
+from aiohttp import ClientError, ClientSession
 
 from .encryption import encrypt_command_payload
 from ..bestway.model import (
@@ -34,7 +34,7 @@ _LOGGER = logging.getLogger(__name__)
 DEFAULT_API_BASE = "https://smarthub-eu.bestwaycorp.com"  # EU endpoint
 APP_ID = "AhFLL54HnChhrxcl9ZUJL6QNfolTIB"
 APP_SECRET = "4ECvVs13enL5AiYSmscNjvlaisklQDz7vWPCCWXcEFjhWfTmLT"
-TIMEOUT = 10
+TIMEOUT = 20
 
 # Regional API endpoints (from ServiceConfig.java)
 API_ENDPOINTS = {
@@ -51,6 +51,10 @@ class AwsIotException(Exception):
 
 class AwsIotAuthException(AwsIotException):
     """Authentication error."""
+
+
+class AwsIotConnectionError(AwsIotException):
+    """Transient connection error."""
 
 
 class AwsIotApi:
@@ -215,7 +219,8 @@ class AwsIotApi:
             Authentication token
 
         Raises:
-            AwsIotAuthException: If authentication fails
+            AwsIotAuthException: If authentication is rejected
+            AwsIotConnectionError: If the authentication service cannot be reached
         """
         import random
         import string
@@ -271,20 +276,32 @@ class AwsIotApi:
         _LOGGER.debug("Sign in headers: %s", "sign" in headers)
         _LOGGER.debug("All header keys: %s", list(headers.keys()))
 
-        async with asyncio.timeout(TIMEOUT):
-            async with session.post(
-                url, headers=headers, json=payload, ssl=False
-            ) as resp:
-                data = await resp.json()
-                _LOGGER.debug("Auth response: %s", data)
-                _LOGGER.debug("Response status: %s", resp.status)
-                token = data.get("data", {}).get("token")
+        try:
+            async with asyncio.timeout(TIMEOUT):
+                async with session.post(
+                    url, headers=headers, json=payload, ssl=False
+                ) as resp:
+                    data = await resp.json()
+                    _LOGGER.debug("Auth response: %s", data)
+                    _LOGGER.debug("Response status: %s", resp.status)
 
-                if not token:
-                    _LOGGER.error("No token in response. Full response: %s", data)
-                    raise AwsIotAuthException("No token in authentication response")
+                    if resp.status in (401, 403):
+                        raise AwsIotAuthException("Authentication rejected")
 
-                return str(token)
+                    token = data.get("data", {}).get("token")
+                    if not token:
+                        _LOGGER.error("No token in response. Full response: %s", data)
+                        raise AwsIotAuthException("No token in authentication response")
+
+                    return str(token)
+        except (TimeoutError, ClientError) as err:
+            raise AwsIotConnectionError(
+                "Unable to reach the authentication service"
+            ) from err
+
+    def update_token(self, token: str) -> None:
+        """Replace the token used by subsequent API requests."""
+        self._token = token
 
     @staticmethod
     async def bind_qr_code(

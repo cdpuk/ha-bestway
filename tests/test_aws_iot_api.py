@@ -6,6 +6,7 @@ import pytest
 from custom_components.bestway.aws_iot.api import (
     AwsIotApi,
     AwsIotAuthException,
+    AwsIotConnectionError,
 )
 
 
@@ -17,6 +18,26 @@ def create_mock_response(status: int, json_data: dict):
     response.__aenter__ = AsyncMock(return_value=response)
     response.__aexit__ = AsyncMock(return_value=None)
     return response
+
+
+@pytest.mark.asyncio
+async def test_authenticate_wraps_timeout_as_connection_error(mock_session):
+    """Authentication timeouts are classified as transient connection errors."""
+    mock_session.post = MagicMock(side_effect=TimeoutError)
+
+    with pytest.raises(AwsIotConnectionError):
+        await AwsIotApi.authenticate(mock_session, "test_visitor")
+
+
+@pytest.mark.asyncio
+async def test_authenticate_rejects_missing_token(mock_session):
+    """A successful response without a token is an authentication failure."""
+    mock_session.post = MagicMock(
+        return_value=create_mock_response(200, {"code": 1, "data": {}})
+    )
+
+    with pytest.raises(AwsIotAuthException):
+        await AwsIotApi.authenticate(mock_session, "test_visitor")
 
 
 @pytest.fixture
