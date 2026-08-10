@@ -28,6 +28,7 @@ from .bestway.api import (
 from .const import (
     BACKEND_AWS_IOT,
     BACKEND_GIZWITS,
+    BACKEND_SMART_HOME,
     BUBBLES_MODE_3WAY,
     BUBBLES_MODE_DEFAULT,
     BUBBLES_MODE_ONOFF,
@@ -238,6 +239,13 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors=errors,
             )
 
+        # Newer "Bestway Connect" devices (2025+ UltraFit) no longer produce an
+        # RW_Share_ code; their "Share device" QR is a smart-spa-*-app URL (or a
+        # bare share id). Route those to the Smart Home backend. The legacy
+        # RW_Share_ / visitor_id paths below are unchanged. (See issue #135.)
+        if qr_code and not qr_code.startswith("RW_Share_"):
+            return await self._async_step_smart_home_share(qr_code, region)
+
         try:
             from .aws_iot.api import AwsIotApi, API_ENDPOINTS
 
@@ -248,20 +256,6 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
 
             # Determine visitor_id
             if qr_code:
-                # Validate QR format
-                if not qr_code.startswith("RW_Share_"):
-                    errors["qr_code"] = "invalid_qr_format"
-                    return self.async_show_form(
-                        step_id="aws_iot_auth",
-                        data_schema=vol.Schema(
-                            {
-                                vol.Optional("qr_code"): str,
-                                vol.Optional("visitor_id"): str,
-                            }
-                        ),
-                        errors=errors,
-                    )
-
                 # Generate visitor_id for new account
                 visitor_id = AwsIotApi.generate_visitor_id()
 
@@ -364,6 +358,103 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
                 }
             ),
             errors=errors,
+        )
+
+    def _aws_iot_auth_form(
+        self, region: str, errors: dict[str, str]
+    ) -> ConfigFlowResult:
+        """Re-show the V02 auth form (shared by the AWS IoT and Smart Home paths)."""
+        return self.async_show_form(
+            step_id="aws_iot_auth",
+            data_schema=vol.Schema(
+                {
+                    vol.Required("region", default=region): selector.SelectSelector(
+                        selector.SelectSelectorConfig(
+                            options=[
+                                selector.SelectOptionDict(value="EU", label="Europe"),
+                                selector.SelectOptionDict(
+                                    value="US", label="United States"
+                                ),
+                                selector.SelectOptionDict(value="CN", label="China"),
+                            ]
+                        )
+                    ),
+                    vol.Optional("visitor_id"): str,
+                    vol.Optional("qr_code"): str,
+                }
+            ),
+            errors=errors,
+        )
+
+    async def _async_step_smart_home_share(
+        self, share_input: str, region: str
+    ) -> ConfigFlowResult:
+        """Set up the Smart Home (AEP) backend from a new-style share code.
+
+        Accepts the full share URL or a bare share id, creates an anonymous
+        session, redeems the invitation and verifies at least one device is
+        visible. The share id is never logged.
+        """
+        from .smart_home.api import (
+            API_ENDPOINTS,
+            SmartHomeApi,
+            SmartHomeAuthException,
+            SmartHomeException,
+            SmartHomeShareException,
+            parse_share_input,
+        )
+
+        errors: dict[str, str] = {}
+        try:
+            share_id, url_region = parse_share_input(share_input)
+        except SmartHomeShareException as err:
+            errors["qr_code"] = str(err)
+            return self._aws_iot_auth_form(region, errors)
+
+        # A region encoded in the share URL wins over the dropdown; otherwise
+        # fall back to the selected region (defaulting to EU if unsupported).
+        effective_region = url_region or region
+        api_base = API_ENDPOINTS.get(effective_region, API_ENDPOINTS["EU"])
+
+        session = async_get_clientsession(self.hass)
+        phone_id = SmartHomeApi.generate_phone_id()
+
+        try:
+            token = await SmartHomeApi.authenticate(
+                session, phone_id, api_base=api_base
+            )
+            await SmartHomeApi.accept_share(session, share_id, token, api_base=api_base)
+
+            api = SmartHomeApi(session, phone_id, token=token, api_base=api_base)
+            async with asyncio.timeout(15):
+                await api.refresh_bindings()
+        except SmartHomeShareException as err:
+            errors["qr_code"] = str(err)
+            return self._aws_iot_auth_form(region, errors)
+        except SmartHomeAuthException:
+            errors["base"] = "auth_failed"
+            return self._aws_iot_auth_form(region, errors)
+        except SmartHomeException:
+            errors["base"] = "cannot_connect"
+            return self._aws_iot_auth_form(region, errors)
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception("Smart Home setup failed")
+            errors["base"] = "unknown"
+            return self._aws_iot_auth_form(region, errors)
+
+        if not api.devices:
+            errors["base"] = "no_devices_found"
+            return self._aws_iot_auth_form(region, errors)
+
+        return self.async_create_entry(
+            title=f"Bestway Spa (Connect - {effective_region})",
+            data={
+                "backend": BACKEND_SMART_HOME,
+                "phone_id": phone_id,
+                "token": token,
+                "region": effective_region,
+                "api_base": api_base,
+            },
         )
 
 

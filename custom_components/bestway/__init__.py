@@ -17,6 +17,7 @@ from .bestway.websocket import GizwitsWebSocket
 from .const import (
     BACKEND_AWS_IOT,
     BACKEND_GIZWITS,
+    BACKEND_SMART_HOME,
     CONF_API_ROOT,
     CONF_API_ROOT_EU,
     CONF_PASSWORD,
@@ -52,6 +53,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if backend == BACKEND_AWS_IOT:
         # AWS IoT V02 backend
         return await _async_setup_aws_iot(hass, entry, session)
+    elif backend == BACKEND_SMART_HOME:
+        # Smart Home (Gizwits AEP) backend - newer Bestway Connect devices
+        return await _async_setup_smart_home(hass, entry, session)
     else:
         # Gizwits V01 backend (existing flow)
         return await _async_setup_gizwits(hass, entry, session)
@@ -249,6 +253,47 @@ async def _async_setup_aws_iot(
 
     # Store WebSockets list on coordinator
     coordinator.websockets = websockets
+
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+    await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
+
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+    return True
+
+
+async def _async_setup_smart_home(
+    hass: HomeAssistant, entry: ConfigEntry, session: ClientSession
+) -> bool:
+    """Set up Smart Home (Gizwits AEP) backend for newer Bestway Connect devices."""
+    from .smart_home.api import SmartHomeApi, SmartHomeAuthException
+
+    phone_id = entry.data["phone_id"]
+    token = entry.data.get("token")
+    api_base = entry.data.get("api_base")
+
+    if not api_base:
+        from .smart_home.api import API_ENDPOINTS
+
+        region = entry.data.get("region", "EU")
+        api_base = API_ENDPOINTS.get(region, API_ENDPOINTS["EU"])
+
+    api = SmartHomeApi(session, phone_id, token, api_base)
+
+    # Refresh the session on startup. Anonymous tokens are long-lived but can
+    # be invalidated server-side, and re-authenticating is a single cheap POST
+    # that avoids leaving all entities unavailable until the next restart.
+    try:
+        token = await SmartHomeApi.authenticate(session, phone_id, api_base)
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, "token": token}
+        )
+        api._token = token
+    except SmartHomeAuthException as ex:
+        _LOGGER.error("Smart Home authentication failed: %s", ex)
+        raise ConfigEntryAuthFailed from ex
+
+    coordinator = BestwayUpdateCoordinator(hass, entry, api)
+    await coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)

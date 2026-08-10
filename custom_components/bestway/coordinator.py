@@ -15,6 +15,7 @@ from .aws_iot.websocket import AwsIotWebSocket
 from .bestway.api import BestwayApi, BestwayApiResults
 from .bestway.model import BestwayDeviceStatus
 from .bestway.websocket import GizwitsWebSocket
+from .smart_home.api import SmartHomeApi
 
 _LOGGER = getLogger(__name__)
 
@@ -26,7 +27,7 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
         self,
         hass: HomeAssistant,
         config_entry: ConfigEntry,
-        api: BestwayApi | AwsIotApi,
+        api: BestwayApi | AwsIotApi | SmartHomeApi,
     ) -> None:
         """Initialize my coordinator."""
         super().__init__(

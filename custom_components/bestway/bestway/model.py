@@ -8,7 +8,7 @@ from logging import getLogger
 
 from typing import Any
 
-from ..const import BACKEND_AWS_IOT, BACKEND_GIZWITS
+from ..const import BACKEND_AWS_IOT, BACKEND_GIZWITS, BACKEND_SMART_HOME
 
 _LOGGER = getLogger(__name__)
 
@@ -182,7 +182,13 @@ class BestwayDevice:
     @property
     def device_type(self) -> BestwayDeviceType:
         """Get the derived device type based on backend."""
-        if self.backend == BACKEND_AWS_IOT and self.product_series:
+        # The AWS IoT and Smart Home (AEP) backends both describe a device by
+        # its product series, and expose the same normalised shadow fields, so
+        # they share the same device-type mapping and entity behaviour.
+        if (
+            self.backend in (BACKEND_AWS_IOT, BACKEND_SMART_HOME)
+            and self.product_series
+        ):
             return BestwayDeviceType.from_aws_product_series(self.product_series)
         return BestwayDeviceType.from_api_product_name(self.product_name)
 

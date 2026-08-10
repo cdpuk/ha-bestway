@@ -19,11 +19,11 @@
       },
       "aws_iot_auth": {
         "title": "Bestway V02 Login (AWS IoT)",
-        "description": "Choose setup method: Use an existing visitor_id OR scan a QR code to create a new account. Provide ONE option only.",
+        "description": "Paste the code or link from the app's Share device screen (both the older RW_Share_ code and the newer smart-spa share link are accepted), OR enter an existing visitor_id. Provide ONE option only.",
         "data": {
           "region": "Region",
           "visitor_id": "Visitor ID (existing account, optional)",
-          "qr_code": "QR Code (new account, optional)"
+          "qr_code": "Share code or link (optional)"
         }
       }
     },
@@ -40,6 +40,11 @@
       "binding_failed": "QR code binding failed. The code may be expired or already used. Generate a fresh QR code from your spa.",
       "no_devices_found": "No devices found. Please check your spa is powered on and connected.",
       "qr_code_required": "Either provide an existing visitor_id OR scan a QR code. One option is required.",
+      "missing_share_id": "No share id found in that link. Copy the full 'Share device' link (or the share id) from the Bestway Connect app.",
+      "invalid_share_id": "That share code doesn't look valid. Copy the full 'Share device' link from the Bestway Connect app and try again.",
+      "share_already_used": "This share is already linked to this account, or you scanned your own device's invitation. Generate a fresh share link and try again.",
+      "device_not_found": "The shared device could not be found. Make sure the spa is powered on and the share link is fresh, then try again.",
+      "share_failed": "Could not redeem the share link. It may have expired or already been used. Generate a fresh link from the Bestway Connect app.",
       "unknown": "Unknown error"
     }
   },

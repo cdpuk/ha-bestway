@@ -178,7 +178,11 @@ async def test_aws_iot_auth_requires_qr_or_visitor(hass):
 
 
 async def test_aws_iot_qr_validation(hass):
-    """Test QR code format validation."""
+    """Test that unrecognised share input is rejected with a clear error.
+
+    A code that is neither a legacy RW_Share_ token nor a valid new-style
+    share link/id is routed to the Smart Home path and rejected there.
+    """
     result = await hass.config_entries.flow.async_init(
         DOMAIN, context={"source": config_entries.SOURCE_USER}
     )
@@ -194,9 +198,132 @@ async def test_aws_iot_qr_validation(hass):
         user_input={"qr_code": "INVALID_QR_123"},
     )
 
-    # Should show QR format error
+    # Should show a clear share-id error (no network call is made)
     assert result["type"] == FlowResultType.FORM
-    assert result["errors"]["qr_code"] == "invalid_qr_format"
+    assert result["errors"]["qr_code"] == "invalid_share_id"
+
+
+async def test_smart_home_share_url_creates_entry(hass):
+    """A new-style share URL creates a Smart Home backend entry."""
+    from custom_components.bestway.bestway.model import BestwayDevice
+    from custom_components.bestway.const import BACKEND_SMART_HOME
+
+    share_url = (
+        "https://smart-spa-eu-app.bestwaycorp.com/app/appid/shareDevice/"
+        "index.html?shareId=0123456789abcdef0123456789abcdef"
+    )
+
+    async def fake_refresh(self):
+        self.devices = {
+            "aabbccddeeff": BestwayDevice(
+                protocol_version=2,
+                device_id="aabbccddeeff",
+                product_name="ULTRAFIT_AIRJET",
+                alias="Toronto",
+                mcu_soft_version="x",
+                mcu_hard_version="x",
+                wifi_soft_version="x",
+                wifi_hard_version="x",
+                is_online=True,
+                backend=BACKEND_SMART_HOME,
+                product_id="FTEW0E",
+                product_series="ULTRAFIT_AIRJET",
+            )
+        }
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={"backend": "aws_iot"}
+    )
+
+    with (
+        patch(
+            "custom_components.bestway.smart_home.api.SmartHomeApi.authenticate",
+            return_value="test-token",
+        ),
+        patch(
+            "custom_components.bestway.smart_home.api.SmartHomeApi.accept_share",
+        ),
+        patch(
+            "custom_components.bestway.smart_home.api.SmartHomeApi.refresh_bindings",
+            fake_refresh,
+        ),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], user_input={"region": "EU", "qr_code": share_url}
+        )
+
+    assert result["type"] == FlowResultType.CREATE_ENTRY
+    assert result["data"]["backend"] == BACKEND_SMART_HOME
+    assert result["data"]["region"] == "EU"
+    # The share id must never be persisted in the config entry.
+    assert "0123456789abcdef" not in str(result["data"])
+
+
+async def test_smart_home_url_without_share_id(hass):
+    """A share URL missing the shareId shows a clear error, makes no request."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={"backend": "aws_iot"}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={
+            "region": "EU",
+            "qr_code": (
+                "https://smart-spa-eu-app.bestwaycorp.com/app/x/shareDevice/index.html"
+            ),
+        },
+    )
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"]["qr_code"] == "missing_share_id"
+
+
+async def test_rw_share_still_uses_aws_backend(hass):
+    """A legacy RW_Share_ code is still handled by the AWS IoT backend."""
+    from custom_components.bestway.const import BACKEND_AWS_IOT
+
+    async def fake_refresh(self):
+        self.devices = {}  # no devices -> flow stops with no_devices_found
+
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={"backend": "aws_iot"}
+    )
+
+    with (
+        patch(
+            "custom_components.bestway.aws_iot.api.AwsIotApi.authenticate",
+            return_value="tok",
+        ),
+        patch(
+            "custom_components.bestway.aws_iot.api.AwsIotApi.bind_qr_code",
+            return_value={"device_id": "x"},
+        ),
+        patch(
+            "custom_components.bestway.aws_iot.api.AwsIotApi.refresh_bindings",
+            fake_refresh,
+        ),
+        patch(
+            "custom_components.bestway.smart_home.api.SmartHomeApi.authenticate",
+            side_effect=AssertionError("Smart Home path must not run for RW_Share_"),
+        ),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"],
+            user_input={"region": "EU", "qr_code": "RW_Share_deadbeef"},
+        )
+
+    # Reaches the AWS IoT device-discovery stage (no devices in this test).
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"]["base"] == "no_devices_found"
+    _ = BACKEND_AWS_IOT
 
 
 async def test_backend_selection_shows_both_options(hass):

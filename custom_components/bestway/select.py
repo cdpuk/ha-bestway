@@ -27,6 +27,7 @@ from .const import (
     Icon,
 )
 from .entity import BestwayEntity
+from .smart_home.api import SmartHomeApi
 
 _BUBBLES_OPTIONS = {
     BubblesLevel.OFF: "OFF",
@@ -39,7 +40,9 @@ _BUBBLES_OPTIONS = {
 class BubblesSelectEntityDescription(SelectEntityDescription):
     """Describes bubbles selection."""
 
-    set_fn: Callable[[BestwayApi | AwsIotApi, str, BubblesLevel], Awaitable[None]]
+    set_fn: Callable[
+        [BestwayApi | AwsIotApi | SmartHomeApi, str, BubblesLevel], Awaitable[None]
+    ]
     get_fn: Callable[[int], BubblesLevel]
 
 

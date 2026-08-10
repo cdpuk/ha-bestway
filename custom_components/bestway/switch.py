@@ -25,6 +25,7 @@ from .const import (
     Icon,
 )
 from .entity import BestwayEntity
+from .smart_home.api import SmartHomeApi
 
 # Maximum time an optimistic value is trusted before the entity falls back
 # to whatever the cloud last reported. Long enough to ride out a normal
@@ -38,8 +39,8 @@ class BestwaySwitchEntityDescription(SwitchEntityDescription):
     """Entity description for bestway spa switches."""
 
     value_fn: Callable[[BestwayDeviceStatus], bool]
-    turn_on_fn: Callable[[BestwayApi | AwsIotApi, str], Awaitable[None]]
-    turn_off_fn: Callable[[BestwayApi | AwsIotApi, str], Awaitable[None]]
+    turn_on_fn: Callable[[BestwayApi | AwsIotApi | SmartHomeApi, str], Awaitable[None]]
+    turn_off_fn: Callable[[BestwayApi | AwsIotApi | SmartHomeApi, str], Awaitable[None]]
 
 
 _AIRJET_SPA_POWER_SWITCH = BestwaySwitchEntityDescription(

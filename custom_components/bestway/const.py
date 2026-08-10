@@ -16,6 +16,10 @@ GIZWITS_APP_ID = "98754e684ec045528b073876c34c7348"
 # Backend types
 BACKEND_GIZWITS = "gizwits"
 BACKEND_AWS_IOT = "aws_iot"
+# Newer "Bestway Connect" app backed by the Gizwits AEP super-app gateway
+# (smart-spa-*-app.bestwaycorp.com). Used by 2025+ UltraFit models whose
+# "Share device" QR now yields a URL instead of an RW_Share_ code (issue #135).
+BACKEND_SMART_HOME = "smart_home"
 
 # Bubble UI mode (Airjet V02). Some V02 hardware (e.g. T53NN8 batches)
 # only has on/off bubbles physically, while others support 3 levels.
