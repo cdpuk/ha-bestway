@@ -47,7 +47,10 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
         This is the place to pre-process the data to lookup tables
         so entities can quickly look up their data.
         """
-        async with asyncio.timeout(10):
+        # 30s (was 10s): the SmartSpa backend may transparently re-login and
+        # retry inside a poll cycle, and 10s was already reported as too tight
+        # for slow paths to Bestway's cloud (upstream PR #137).
+        async with asyncio.timeout(30):
             await self.api.refresh_bindings()
             return await self.api.fetch_data()
 

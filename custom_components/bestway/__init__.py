@@ -17,6 +17,11 @@ from .bestway.websocket import GizwitsWebSocket
 from .const import (
     BACKEND_AWS_IOT,
     BACKEND_GIZWITS,
+    BACKEND_SMARTSPA,
+    CONF_SMARTSPA_ACCOUNT,
+    CONF_SMARTSPA_PASSWORD,
+    CONF_SMARTSPA_REGION,
+    CONF_SMARTSPA_TOKEN,
     CONF_API_ROOT,
     CONF_API_ROOT_EU,
     CONF_PASSWORD,
@@ -52,6 +57,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if backend == BACKEND_AWS_IOT:
         # AWS IoT V02 backend
         return await _async_setup_aws_iot(hass, entry, session)
+    elif backend == BACKEND_SMARTSPA:
+        # SmartSpa gateway (post-July-2026 Bestway Connect, account login)
+        return await _async_setup_smartspa(hass, entry, session)
     else:
         # Gizwits V01 backend (existing flow)
         return await _async_setup_gizwits(hass, entry, session)
@@ -249,6 +257,58 @@ async def _async_setup_aws_iot(
 
     # Store WebSockets list on coordinator
     coordinator.websockets = websockets
+
+    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
+    await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
+
+    entry.async_on_unload(entry.add_update_listener(async_reload_entry))
+    return True
+
+
+async def _async_setup_smartspa(
+    hass: HomeAssistant, entry: ConfigEntry, session: ClientSession
+) -> bool:
+    """Set up the SmartSpa gateway backend (account login, polling only).
+
+    No WebSocket path is known for this gateway yet; the 30-second polling
+    default of the coordinator applies. The API client transparently
+    re-authenticates when the gateway invalidates the token (code 505).
+    """
+    from .smartspa.api import (
+        SMARTSPA_ENDPOINTS,
+        SmartSpaApi,
+        SmartSpaAuthException,
+        SmartSpaException,
+    )
+
+    account = str(entry.data[CONF_SMARTSPA_ACCOUNT])
+    password = str(entry.data[CONF_SMARTSPA_PASSWORD])
+    region = str(entry.data.get(CONF_SMARTSPA_REGION, "EU"))
+    api_base = SMARTSPA_ENDPOINTS.get(region, SMARTSPA_ENDPOINTS["EU"])
+
+    _LOGGER.info("Initializing SmartSpa API for %s (%s)", account, api_base)
+
+    # Always start with a fresh login: tokens are invalidated server-side
+    # without warning and carry no client-checkable expiry.
+    try:
+        token = await SmartSpaApi.authenticate(session, account, password, api_base)
+    except SmartSpaAuthException as ex:
+        _LOGGER.error("SmartSpa authentication failed: %s", ex)
+        raise ConfigEntryAuthFailed from ex
+    except SmartSpaException as ex:
+        raise ConfigEntryNotReady from ex
+
+    hass.config_entries.async_update_entry(
+        entry, data={**entry.data, CONF_SMARTSPA_TOKEN: token}
+    )
+
+    api = SmartSpaApi(session, account, password, api_base, token)
+
+    coordinator = BestwayUpdateCoordinator(hass, entry, api)
+    await coordinator.async_config_entry_first_refresh()
+
+    if not api.devices:
+        _LOGGER.warning("SmartSpa account %s has no devices", account)
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
