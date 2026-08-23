@@ -14,6 +14,11 @@ _LOGGER = getLogger(__name__)
 # Reconnection delays (exponential backoff): 3s → 6s → 12s → 24s → 48s → 60s max
 _RECONNECT_DELAYS = [3, 6, 12, 24, 48, 60]
 
+# Time to allow for TCP connect + TLS + opening handshake before giving up.
+# Without this, a firewall that silently drops packets (rather than refusing
+# the connection) leaves connect() hanging on the OS-level TCP timeout.
+_OPEN_TIMEOUT = 10
+
 
 class GizwitsWebSocketException(Exception):
     """Base exception for WebSocket operations."""
@@ -38,6 +43,7 @@ class GizwitsWebSocket:
         ws_port: int,
         update_callback: Callable[[str, dict[str, Any]], None],
         disconnect_callback: Callable[[], None] | None = None,
+        connect_callback: Callable[[], None] | None = None,
     ) -> None:
         """Initialize WebSocket client.
 
@@ -47,13 +53,17 @@ class GizwitsWebSocket:
             ws_host: WebSocket hostname (from device bindings response)
             ws_port: WebSocket port (from device bindings response)
             update_callback: Called with (device_id, attrs) on device updates
-            disconnect_callback: Called on connection loss (optional)
+            disconnect_callback: Called on connection loss, including a failed
+                initial connection attempt (optional)
+            connect_callback: Called once a connection is established and
+                authenticated (optional)
         """
         self._uid = uid
         self._token = token
         self._ws_url = f"wss://{ws_host}:{ws_port}/ws/app/v1"
         self._update_callback = update_callback
         self._disconnect_callback = disconnect_callback
+        self._connect_callback = connect_callback
 
         self._websocket: Any = None
         self._listen_task: asyncio.Task[Any] | None = None
@@ -61,6 +71,9 @@ class GizwitsWebSocket:
         self._running = False
         self._authenticated = False
         self._reconnect_count = 0
+        # Ensures disconnect_callback fires once per disconnected period,
+        # rather than on every retry while backing off.
+        self._notified_disconnect = False
 
     async def connect(self) -> None:
         """Connect to WebSocket and authenticate.
@@ -90,6 +103,7 @@ class GizwitsWebSocket:
                 ssl=ssl_context,
                 ping_interval=30,  # Keep connection alive
                 ping_timeout=10,
+                open_timeout=_OPEN_TIMEOUT,
             )
 
             _LOGGER.debug("WebSocket connected, sending login")
@@ -118,6 +132,7 @@ class GizwitsWebSocket:
             self._reconnect_count = 0  # Reset on successful connection
 
             _LOGGER.info("WebSocket authenticated successfully")
+            self._notify_connected()
 
             # Start listening for messages and heartbeat
             self._listen_task = asyncio.create_task(self._listen_loop())
@@ -129,6 +144,7 @@ class GizwitsWebSocket:
 
             # Schedule reconnection if still intended to be running
             if not isinstance(ex, asyncio.CancelledError):
+                self._notify_disconnected()
                 await self._schedule_reconnect()
 
     async def disconnect(self) -> None:
@@ -304,15 +320,35 @@ class GizwitsWebSocket:
         self._running = False
         self._authenticated = False
 
-        # Notify disconnect callback
+        self._notify_disconnected()
+
+        # Schedule reconnection
+        await self._schedule_reconnect()
+
+    def _notify_connected(self) -> None:
+        """Invoke connect callback and re-arm the disconnect notification."""
+        self._notified_disconnect = False
+        if self._connect_callback:
+            try:
+                self._connect_callback()
+            except Exception as ex:
+                _LOGGER.error("Error in connect callback: %s", ex)
+
+    def _notify_disconnected(self) -> None:
+        """Invoke disconnect callback at most once per disconnected period.
+
+        connect() is retried repeatedly while backing off, so without this
+        guard a persistently unreachable endpoint would fire the callback
+        (and its log warning) on every attempt.
+        """
+        if self._notified_disconnect:
+            return
+        self._notified_disconnect = True
         if self._disconnect_callback:
             try:
                 self._disconnect_callback()
             except Exception as ex:
                 _LOGGER.error("Error in disconnect callback: %s", ex)
-
-        # Schedule reconnection
-        await self._schedule_reconnect()
 
     async def _schedule_reconnect(self) -> None:
         """Schedule reconnection attempt with exponential backoff.
