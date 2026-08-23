@@ -313,3 +313,122 @@ async def test_connection_closed_triggers_reconnect(aws_websocket):
 
         # Should have scheduled reconnect
         mock_reconnect.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_connect_callback_invoked_on_success(mock_callback):
+    """connect_callback fires once the WebSocket connection is established."""
+    connect_callback = MagicMock()
+    ws = AwsIotWebSocket(
+        device_id="test_device_123",
+        service_region="eu-central-1",
+        token="test_token",
+        update_callback=mock_callback,
+        connect_callback=connect_callback,
+    )
+
+    async def mock_connect_coro(*args, **kwargs):
+        return AsyncMock()
+
+    with (
+        patch(
+            "custom_components.bestway.aws_iot.websocket.websockets.connect",
+            side_effect=mock_connect_coro,
+        ),
+        patch("homeassistant.util.ssl.get_default_context"),
+        patch("custom_components.bestway.aws_iot.websocket.asyncio.create_task"),
+    ):
+        await ws.connect()
+
+    connect_callback.assert_called_once()
+    assert ws._running is True
+
+
+@pytest.mark.asyncio
+async def test_connect_callback_not_invoked_on_failure(mock_callback):
+    """connect_callback must not fire when the connection fails."""
+    connect_callback = MagicMock()
+    ws = AwsIotWebSocket(
+        device_id="test_device_123",
+        service_region="eu-central-1",
+        token="test_token",
+        update_callback=mock_callback,
+        connect_callback=connect_callback,
+    )
+
+    with patch(
+        "custom_components.bestway.aws_iot.websocket.websockets.connect"
+    ) as mock_connect:
+        mock_connect.side_effect = Exception("Connection refused")
+
+        await ws.connect()
+
+    connect_callback.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_disconnect_callback_fires_on_initial_failure(mock_callback):
+    """disconnect_callback fires on a failed initial connection attempt.
+
+    Regression coverage for #133: previously this callback was never wired
+    to a failed connect() attempt, so a firewalled install stayed on
+    5-minute polling with no push updates ever arriving.
+    """
+    disconnect_callback = MagicMock()
+    ws = AwsIotWebSocket(
+        device_id="test_device_123",
+        service_region="eu-central-1",
+        token="test_token",
+        update_callback=mock_callback,
+        disconnect_callback=disconnect_callback,
+    )
+
+    with patch(
+        "custom_components.bestway.aws_iot.websocket.websockets.connect"
+    ) as mock_connect:
+        mock_connect.side_effect = Exception("Connection refused")
+
+        await ws.connect()
+
+    disconnect_callback.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_disconnect_callback_not_repeated_across_retries(mock_callback):
+    """disconnect_callback fires once per disconnected period, not per retry."""
+    disconnect_callback = MagicMock()
+    ws = AwsIotWebSocket(
+        device_id="test_device_123",
+        service_region="eu-central-1",
+        token="test_token",
+        update_callback=mock_callback,
+        disconnect_callback=disconnect_callback,
+    )
+
+    with patch(
+        "custom_components.bestway.aws_iot.websocket.websockets.connect"
+    ) as mock_connect:
+        mock_connect.side_effect = Exception("Connection refused")
+
+        await ws.connect()
+        await ws.connect()
+
+    disconnect_callback.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_open_timeout_passed_to_connect(aws_websocket):
+    """websockets.connect must be given an open_timeout.
+
+    Otherwise a firewall that silently drops packets leaves connect()
+    hanging on the OS-level TCP timeout rather than failing fast.
+    """
+    with patch(
+        "custom_components.bestway.aws_iot.websocket.websockets.connect"
+    ) as mock_connect:
+        mock_connect.side_effect = Exception("Connection refused")
+
+        await aws_websocket.connect()
+
+    call_kwargs = mock_connect.call_args.kwargs
+    assert call_kwargs.get("open_timeout") is not None

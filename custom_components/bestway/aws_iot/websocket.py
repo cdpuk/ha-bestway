@@ -35,6 +35,11 @@ ENDPOINTS = {
 # Reconnection delays (exponential backoff)
 RECONNECT_DELAYS = [3, 6, 12, 24, 48, 60]  # seconds
 
+# Time to allow for TCP connect + TLS + opening handshake before giving up.
+# Without this, a firewall that silently drops packets (rather than refusing
+# the connection) leaves connect() hanging on the OS-level TCP timeout.
+OPEN_TIMEOUT = 10
+
 
 class AwsIotWebSocketException(Exception):
     """Base exception for AWS IoT WebSocket operations."""
@@ -56,6 +61,7 @@ class AwsIotWebSocket:
         update_callback: Callable[[str, dict[str, Any]], None],
         disconnect_callback: Callable[[], None] | None = None,
         token_refresh_callback: Callable[[], Awaitable[str]] | None = None,
+        connect_callback: Callable[[], None] | None = None,
     ) -> None:
         """Initialize per-device WebSocket client.
 
@@ -64,8 +70,10 @@ class AwsIotWebSocket:
             service_region: AWS region (e.g., "eu-central-1")
             token: JWT authentication token
             update_callback: Called with (device_id, normalized_attrs) on updates
-            disconnect_callback: Called on connection loss (optional)
+            disconnect_callback: Called on connection loss, including a failed
+                initial connection attempt (optional)
             token_refresh_callback: Called to refresh token on HTTP 400 (optional)
+            connect_callback: Called once a connection is established (optional)
         """
         self._device_id = device_id
         self._service_region = service_region
@@ -73,6 +81,7 @@ class AwsIotWebSocket:
         self._update_callback = update_callback
         self._disconnect_callback = disconnect_callback
         self._token_refresh_callback = token_refresh_callback
+        self._connect_callback = connect_callback
 
         self._websocket: ClientConnection | None = None
         self._listen_task: asyncio.Task[Any] | None = None
@@ -80,6 +89,9 @@ class AwsIotWebSocket:
         self._running = False
         self._reconnect_count = 0
         self._seq_id = int(time.time() * 1000)
+        # Ensures disconnect_callback fires once per disconnected period,
+        # rather than on every retry while backing off.
+        self._notified_disconnect = False
 
     @property
     def ws_url(self) -> str:
@@ -123,12 +135,14 @@ class AwsIotWebSocket:
                 additional_headers={"Authorization": self._token},
                 ssl=ssl_context,
                 ping_interval=None,  # Manual heartbeat
+                open_timeout=OPEN_TIMEOUT,
             )
 
             self._running = True
             self._reconnect_count = 0  # Reset on successful connection
 
             _LOGGER.info("✓ WebSocket connected for device %s", self._device_id[:12])
+            self._notify_connected()
 
             # Start background tasks
             self._listen_task = asyncio.create_task(self._listen_loop())
@@ -158,6 +172,7 @@ class AwsIotWebSocket:
 
             # Schedule reconnection with backoff
             if not isinstance(err, asyncio.CancelledError):
+                self._notify_disconnected()
                 await self._schedule_reconnect()
 
     async def disconnect(self) -> None:
@@ -339,3 +354,28 @@ class AwsIotWebSocket:
 
         if self._running:
             await self.connect()
+
+    def _notify_connected(self) -> None:
+        """Invoke connect callback and re-arm the disconnect notification."""
+        self._notified_disconnect = False
+        if self._connect_callback:
+            try:
+                self._connect_callback()
+            except Exception as err:
+                _LOGGER.error("Error in connect callback: %s", err)
+
+    def _notify_disconnected(self) -> None:
+        """Invoke disconnect callback at most once per disconnected period.
+
+        connect() is retried repeatedly while backing off, so without this
+        guard a persistently unreachable endpoint would fire the callback
+        (and its log warning) on every attempt.
+        """
+        if self._notified_disconnect:
+            return
+        self._notified_disconnect = True
+        if self._disconnect_callback:
+            try:
+                self._disconnect_callback()
+            except Exception as err:
+                _LOGGER.error("Error in disconnect callback: %s", err)
