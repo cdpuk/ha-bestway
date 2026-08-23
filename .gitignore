@@ -1,9 +1,16 @@
-__pycache__
+# Home Assistant
 config/*
 !config/configuration.yaml
-pythonenv*
 venv
 .venv
+
+# Python
+__pycache__
 .coverage
 .idea
-node_modules
+
+# IDEs
+.devcontainer-lock.json
+
+# pre-commit hooks
+node_modules/
