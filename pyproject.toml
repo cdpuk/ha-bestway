@@ -1,3 +1,23 @@
+[project]
+name = "ha-bestway"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = [
+  "pycryptodome>=3.20.0",
+  "websockets>=13.0",
+]
+
+[dependency-groups]
+dev = [
+  "pre-commit",
+  "mypy",
+  "homeassistant",
+  "pytest-homeassistant-custom-component",
+]
+
+[tool.uv]
+package = false
+
 [tool.ruff.lint]
 ignore = [
   # Broad `except Exception` is used deliberately at I/O boundaries (websocket

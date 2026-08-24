@@ -11,32 +11,32 @@ A Home Assistant custom component (HACS) that integrates with Bestway cloud APIs
 Install dependencies:
 
 ```bash
-pip install -r requirements.txt
+uv sync
 ```
 
 Run all tests:
 
 ```bash
-pytest -qq --timeout=10 --durations=10 -n auto --cov custom_components.bestway -o console_output_style=count -p no:sugar tests
+uv run pytest -qq --timeout=10 --durations=10 -n auto --cov custom_components.bestway -o console_output_style=count -p no:sugar tests
 ```
 
 Run a single test file:
 
 ```bash
-pytest tests/test_aws_iot_api.py
+uv run pytest tests/test_aws_iot_api.py
 ```
 
 Type check:
 
 ```bash
-mypy custom_components/
+uv run mypy custom_components/
 ```
 
-Lint and auto-fix with ruff (version is pinned in `.pre-commit-config.yaml`, not `requirements.txt`, so always run it via `pre-commit` rather than a separately-installed `ruff` binary):
+Lint and auto-fix with ruff (version is pinned in `.pre-commit-config.yaml`, not `pyproject.toml`, so always run it via `pre-commit` rather than a separately-installed `ruff` binary):
 
 ```bash
-pre-commit run ruff-check --all-files
-pre-commit run ruff-format --all-files
+uv run pre-commit run ruff-check --all-files
+uv run pre-commit run ruff-format --all-files
 ```
 
 `ruff-check` runs with `--fix` (see `.pre-commit-config.yaml`), so it rewrites files in place where it can; rule ignores live in `pyproject.toml` under `[tool.ruff.lint]`.
@@ -44,13 +44,13 @@ pre-commit run ruff-format --all-files
 Set up pre-commit hooks (required before contributing):
 
 ```bash
-pre-commit install
+uv run pre-commit install
 ```
 
 Run pre-commit manually:
 
 ```bash
-pre-commit run --all-files
+uv run pre-commit run --all-files
 ```
 
 ## Architecture
