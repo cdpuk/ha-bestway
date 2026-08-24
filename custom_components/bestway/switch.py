@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from time import monotonic
-
 from typing import Any
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription

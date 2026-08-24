@@ -1,12 +1,11 @@
 """Bestway API."""
 
 import asyncio
+import json
 from copy import deepcopy
 from dataclasses import dataclass
-import json
 from logging import getLogger
 from time import time
-
 from typing import Any
 
 from aiohttp import ClientResponse, ClientSession

@@ -2,8 +2,9 @@
 
 import asyncio
 import json
+from collections.abc import Callable
 from logging import getLogger
-from typing import Any, Callable
+from typing import Any
 
 import websockets
 

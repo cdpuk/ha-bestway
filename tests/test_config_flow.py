@@ -4,9 +4,9 @@ import threading
 from collections.abc import Generator
 from unittest.mock import patch
 
+import pytest
 from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResultType
-import pytest
 
 from custom_components.bestway.bestway.model import BestwayUserToken
 from custom_components.bestway.const import (

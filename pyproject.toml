@@ -1,0 +1,11 @@
+[tool.ruff.lint]
+ignore = [
+  # Broad `except Exception` is used deliberately at I/O boundaries (websocket
+  # loops, HTTP calls, callback invocation) to keep a single failure from
+  # crashing the integration.
+  "BLE001",
+  # False positive under Docker Desktop's WSL2 9p/DrvFs bind mount, which
+  # reports every file as mode 777 regardless of git's actual (non-executable)
+  # file mode. Not real in git or CI.
+  "EXE002",
+]

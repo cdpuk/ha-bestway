@@ -72,7 +72,7 @@ class AirjetSpaThermostat(BestwayEntity, ClimateEntity):
 
     _attr_name = "Spa Thermostat"
     _attr_supported_features = _CLIMATE_FEATURES
-    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
+    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]  # noqa: RUF012
     _attr_precision = PRECISION_WHOLE
     _attr_target_temperature_step = 1
 
@@ -179,7 +179,7 @@ class AirjetV01HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
 
     _attr_name = "Spa Thermostat"
     _attr_supported_features = _CLIMATE_FEATURES
-    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
+    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]  # noqa: RUF012
     _attr_precision = PRECISION_WHOLE
     _attr_target_temperature_step = 1
 

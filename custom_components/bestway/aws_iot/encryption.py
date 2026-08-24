@@ -63,7 +63,7 @@ def encrypt_command_payload(sign: str, app_secret: str, plaintext: str) -> str:
         )
 
     # Key derivation: SHA-256(f"{sign},{app_secret}")[:32] as UTF-8 bytes
-    key_material = f"{sign},{app_secret}".encode("utf-8")
+    key_material = f"{sign},{app_secret}".encode()
     key_hex = hashlib.sha256(key_material).hexdigest()[:32]
     key = key_hex.encode("utf-8")  # 32 bytes
 
@@ -101,7 +101,7 @@ def decrypt_command_payload(sign: str, app_secret: str, ciphertext: str) -> str:
         )
 
     # Derive key same way as encryption
-    key_material = f"{sign},{app_secret}".encode("utf-8")
+    key_material = f"{sign},{app_secret}".encode()
     key_hex = hashlib.sha256(key_material).hexdigest()[:32]
     key = key_hex.encode("utf-8")
 

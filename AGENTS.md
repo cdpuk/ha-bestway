@@ -32,6 +32,15 @@ Type check:
 mypy custom_components/
 ```
 
+Lint and auto-fix with ruff (version is pinned in `.pre-commit-config.yaml`, not `requirements.txt`, so always run it via `pre-commit` rather than a separately-installed `ruff` binary):
+
+```bash
+pre-commit run ruff-check --all-files
+pre-commit run ruff-format --all-files
+```
+
+`ruff-check` runs with `--fix` (see `.pre-commit-config.yaml`), so it rewrites files in place where it can; rule ignores live in `pyproject.toml` under `[tool.ruff.lint]`.
+
 Set up pre-commit hooks (required before contributing):
 
 ```bash

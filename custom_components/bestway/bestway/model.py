@@ -5,7 +5,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import Enum, IntEnum, auto
 from logging import getLogger
-
 from typing import Any
 
 from ..const import BACKEND_AWS_IOT, BACKEND_GIZWITS

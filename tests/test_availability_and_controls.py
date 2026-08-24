@@ -6,15 +6,14 @@ These tests cover the fixes in:
 - climate.py: safe .get() for Tunit key
 """
 
-from unittest.mock import MagicMock, AsyncMock, patch
 from typing import Any
+from unittest.mock import AsyncMock, MagicMock, patch
 
+from custom_components.bestway.bestway.api import BestwayApiResults
 from custom_components.bestway.bestway.model import (
     BestwayDevice,
     BestwayDeviceStatus,
 )
-from custom_components.bestway.bestway.api import BestwayApiResults
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -258,9 +257,9 @@ class TestSwitchOptimistic:
         the timeout self-heals the UI back to reality.
         """
         from custom_components.bestway.switch import (
+            _OPTIMISTIC_TIMEOUT_S,
             BestwaySwitch,
             BestwaySwitchEntityDescription,
-            _OPTIMISTIC_TIMEOUT_S,
         )
 
         desc = BestwaySwitchEntityDescription(
