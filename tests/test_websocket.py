@@ -596,27 +596,27 @@ async def test_websocket_connect_callback_invoked_on_success():
         connect_callback=connect_callback,
     )
 
-    with patch(
-        "custom_components.bestway.bestway.websocket.websockets.connect"
-    ) as mock_connect:
-        with patch("homeassistant.util.ssl.get_default_context") as mock_ssl:
-            with patch("asyncio.create_task"):
-                mock_ws = MagicMock()
-                mock_ws.send = AsyncMock()
-                mock_ws.close = AsyncMock()
-                mock_ssl.return_value = MagicMock()
+    with (
+        patch(
+            "custom_components.bestway.bestway.websocket.websockets.connect"
+        ) as mock_connect,
+        patch("homeassistant.util.ssl.get_default_context") as mock_ssl,
+        patch("asyncio.create_task"),
+    ):
+        mock_ws = MagicMock()
+        mock_ws.send = AsyncMock()
+        mock_ws.close = AsyncMock()
+        mock_ssl.return_value = MagicMock()
 
-                async def mock_connect_coro(*args, **kwargs):
-                    return mock_ws
+        async def mock_connect_coro(*args, **kwargs):
+            return mock_ws
 
-                mock_connect.side_effect = mock_connect_coro
-                mock_ws.recv = AsyncMock(
-                    return_value=json.dumps(
-                        {"cmd": "login_res", "data": {"success": True}}
-                    )
-                )
+        mock_connect.side_effect = mock_connect_coro
+        mock_ws.recv = AsyncMock(
+            return_value=json.dumps({"cmd": "login_res", "data": {"success": True}})
+        )
 
-                await ws.connect()
+        await ws.connect()
 
     connect_callback.assert_called_once()
 
@@ -636,18 +636,20 @@ async def test_websocket_connect_callback_not_invoked_on_failure():
         connect_callback=connect_callback,
     )
 
-    with patch(
-        "custom_components.bestway.bestway.websocket.websockets.connect"
-    ) as mock_connect:
-        with patch("homeassistant.util.ssl.get_default_context"):
-            with patch.object(ws, "_schedule_reconnect", new=AsyncMock()):
+    with (
+        patch(
+            "custom_components.bestway.bestway.websocket.websockets.connect"
+        ) as mock_connect,
+        patch("homeassistant.util.ssl.get_default_context"),
+        patch.object(ws, "_schedule_reconnect", new=AsyncMock()),
+    ):
 
-                async def mock_connect_error(*args, **kwargs):
-                    raise Exception("Connection refused")
+        async def mock_connect_error(*args, **kwargs):
+            raise ConnectionRefusedError("Connection refused")
 
-                mock_connect.side_effect = mock_connect_error
+        mock_connect.side_effect = mock_connect_error
 
-                await ws.connect()
+        await ws.connect()
 
     connect_callback.assert_not_called()
 
@@ -672,18 +674,20 @@ async def test_websocket_disconnect_callback_fires_on_initial_failure():
         disconnect_callback=disconnect_callback,
     )
 
-    with patch(
-        "custom_components.bestway.bestway.websocket.websockets.connect"
-    ) as mock_connect:
-        with patch("homeassistant.util.ssl.get_default_context"):
-            with patch.object(ws, "_schedule_reconnect", new=AsyncMock()):
+    with (
+        patch(
+            "custom_components.bestway.bestway.websocket.websockets.connect"
+        ) as mock_connect,
+        patch("homeassistant.util.ssl.get_default_context"),
+        patch.object(ws, "_schedule_reconnect", new=AsyncMock()),
+    ):
 
-                async def mock_connect_error(*args, **kwargs):
-                    raise Exception("Connection refused")
+        async def mock_connect_error(*args, **kwargs):
+            raise ConnectionRefusedError("Connection refused")
 
-                mock_connect.side_effect = mock_connect_error
+        mock_connect.side_effect = mock_connect_error
 
-                await ws.connect()
+        await ws.connect()
 
     disconnect_callback.assert_called_once()
 
@@ -707,19 +711,21 @@ async def test_websocket_disconnect_callback_not_repeated_across_retries():
         disconnect_callback=disconnect_callback,
     )
 
-    with patch(
-        "custom_components.bestway.bestway.websocket.websockets.connect"
-    ) as mock_connect:
-        with patch("homeassistant.util.ssl.get_default_context"):
-            with patch.object(ws, "_schedule_reconnect", new=AsyncMock()):
+    with (
+        patch(
+            "custom_components.bestway.bestway.websocket.websockets.connect"
+        ) as mock_connect,
+        patch("homeassistant.util.ssl.get_default_context"),
+        patch.object(ws, "_schedule_reconnect", new=AsyncMock()),
+    ):
 
-                async def mock_connect_error(*args, **kwargs):
-                    raise Exception("Connection refused")
+        async def mock_connect_error(*args, **kwargs):
+            raise ConnectionRefusedError("Connection refused")
 
-                mock_connect.side_effect = mock_connect_error
+        mock_connect.side_effect = mock_connect_error
 
-                await ws.connect()
-                await ws.connect()
+        await ws.connect()
+        await ws.connect()
 
     disconnect_callback.assert_called_once()
 
@@ -741,18 +747,20 @@ async def test_websocket_open_timeout_passed_to_connect():
         update_callback=update_callback,
     )
 
-    with patch(
-        "custom_components.bestway.bestway.websocket.websockets.connect"
-    ) as mock_connect:
-        with patch("homeassistant.util.ssl.get_default_context"):
-            with patch.object(ws, "_schedule_reconnect", new=AsyncMock()):
+    with (
+        patch(
+            "custom_components.bestway.bestway.websocket.websockets.connect"
+        ) as mock_connect,
+        patch("homeassistant.util.ssl.get_default_context"),
+        patch.object(ws, "_schedule_reconnect", new=AsyncMock()),
+    ):
 
-                async def mock_connect_error(*args, **kwargs):
-                    raise Exception("Connection refused")
+        async def mock_connect_error(*args, **kwargs):
+            raise ConnectionRefusedError("Connection refused")
 
-                mock_connect.side_effect = mock_connect_error
+        mock_connect.side_effect = mock_connect_error
 
-                await ws.connect()
+        await ws.connect()
 
     _, kwargs = mock_connect.call_args
     assert kwargs.get("open_timeout") is not None

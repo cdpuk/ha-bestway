@@ -143,7 +143,7 @@ async def test_websocket_connect_failure_does_not_block_startup(
     during startup wrap-up, combined with a `connect()` implementation that
     never returns on failure (it recurses into an unbounded reconnect loop).
     """
-    future = (datetime.now() + timedelta(days=31)).timestamp()
+    future = (datetime.now(UTC) + timedelta(days=31)).timestamp()
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -219,7 +219,7 @@ async def test_websocket_uses_background_task(hass: HomeAssistant):
     excluded from Home Assistant's startup wrap-up wait, unlike tasks
     created with `hass.async_create_task`.
     """
-    future = (datetime.now() + timedelta(days=31)).timestamp()
+    future = (datetime.now(UTC) + timedelta(days=31)).timestamp()
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -263,7 +263,6 @@ async def test_websocket_uses_background_task(hass: HomeAssistant):
         # that it actually runs.
         captured_coros.append(coro)
         coro.close()
-        return None
 
     with (
         patch(

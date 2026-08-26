@@ -227,7 +227,7 @@ class AirjetV01HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
                 timed_out = now - self._optimistic_tset_set_at >= _OPTIMISTIC_TIMEOUT_S
                 try:
                     matched = int(attrs.get("Tset", -1)) == self._optimistic_tset
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     matched = False
                 if matched or timed_out:
                     self._optimistic_tset = None
