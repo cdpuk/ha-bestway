@@ -1,5 +1,6 @@
 """Integration tests for WebSocket coordinator callbacks."""
 
+import asyncio
 from datetime import timedelta
 from time import time
 from unittest.mock import MagicMock
@@ -179,9 +180,7 @@ async def test_coordinator_tracks_websocket_update_times(hass: HomeAssistant):
     assert update_time > 0
 
     # Update again
-    import time as time_module
-
-    time_module.sleep(0.01)  # Small delay
+    await asyncio.sleep(0.01)  # Small delay
     coordinator.handle_websocket_update("device1", {"power": 0})
 
     # Verify time updated

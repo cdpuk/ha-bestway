@@ -17,8 +17,8 @@ import asyncio
 import json
 import logging
 import time
-from collections.abc import Awaitable
-from typing import Any, Callable
+from collections.abc import Awaitable, Callable
+from typing import Any
 
 import websockets
 from websockets.asyncio.client import ClientConnection

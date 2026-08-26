@@ -1,11 +1,11 @@
 """Test bestway setup process."""
 
 import asyncio
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
-from homeassistant.core import HomeAssistant
 from homeassistant.config_entries import ConfigEntryState
+from homeassistant.core import HomeAssistant
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.bestway import (
@@ -29,7 +29,7 @@ async def test_setup_unload_and_reload_entry(hass: HomeAssistant, bypass_get_dat
 
     # This config entry has an auth token that expires far enough in
     # the future that no auth attempt should be made
-    future = (datetime.now() + timedelta(days=31)).timestamp()
+    future = (datetime.now(UTC) + timedelta(days=31)).timestamp()
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -79,7 +79,7 @@ async def test_setup_entry_expired_token(hass: HomeAssistant, bypass_get_data):
     """Test what happens when the auth token needs to be refreshed."""
 
     # This config entry has an auth token that needs renewal (<30 days)
-    future = (datetime.now() + timedelta(days=15)).timestamp()
+    future = (datetime.now(UTC) + timedelta(days=15)).timestamp()
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -111,7 +111,7 @@ async def test_setup_entry_exception(hass: HomeAssistant, error_on_get_data):
     """Test ConfigEntryNotReady when API raises an exception during entry setup."""
 
     # This config entry has an auth token that expires in the future
-    future = (datetime.now() + timedelta(days=31)).timestamp()
+    future = (datetime.now(UTC) + timedelta(days=31)).timestamp()
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -143,7 +143,7 @@ async def test_websocket_connect_failure_does_not_block_startup(
     during startup wrap-up, combined with a `connect()` implementation that
     never returns on failure (it recurses into an unbounded reconnect loop).
     """
-    future = (datetime.now() + timedelta(days=31)).timestamp()
+    future = (datetime.now(UTC) + timedelta(days=31)).timestamp()
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -219,7 +219,7 @@ async def test_websocket_uses_background_task(hass: HomeAssistant):
     excluded from Home Assistant's startup wrap-up wait, unlike tasks
     created with `hass.async_create_task`.
     """
-    future = (datetime.now() + timedelta(days=31)).timestamp()
+    future = (datetime.now(UTC) + timedelta(days=31)).timestamp()
     config_entry = MockConfigEntry(
         domain=DOMAIN,
         data={
@@ -263,7 +263,6 @@ async def test_websocket_uses_background_task(hass: HomeAssistant):
         # that it actually runs.
         captured_coros.append(coro)
         coro.close()
-        return None
 
     with (
         patch(

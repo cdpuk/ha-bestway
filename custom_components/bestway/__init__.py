@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from logging import getLogger
 
 from aiohttp import ClientSession
@@ -73,7 +73,7 @@ async def _async_setup_gizwits(
     # Check for an auth token
     # If we have one that expires within 30 days, refresh it
     # Also refresh if UID is missing (for WebSocket support)
-    expiry_cutoff = (datetime.now() + timedelta(days=30)).timestamp()
+    expiry_cutoff = (datetime.now(UTC) + timedelta(days=30)).timestamp()
     uid = entry.data.get(CONF_UID)
 
     if user_token and expiry_cutoff < user_token_expiry and uid:

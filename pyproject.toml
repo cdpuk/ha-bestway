@@ -1,0 +1,31 @@
+[project]
+name = "ha-bestway"
+version = "0.1.0"
+requires-python = ">=3.14"
+dependencies = [
+  "pycryptodome>=3.20.0",
+  "websockets>=13.0",
+]
+
+[dependency-groups]
+dev = [
+  "pre-commit",
+  "mypy",
+  "homeassistant",
+  "pytest-homeassistant-custom-component",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff.lint]
+ignore = [
+  # Broad `except Exception` is used deliberately at I/O boundaries (websocket
+  # loops, HTTP calls, callback invocation) to keep a single failure from
+  # crashing the integration.
+  "BLE001",
+  # False positive under Docker Desktop's WSL2 9p/DrvFs bind mount, which
+  # reports every file as mode 777 regardless of git's actual (non-executable)
+  # file mode. Not real in git or CI.
+  "EXE002",
+]

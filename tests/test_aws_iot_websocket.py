@@ -3,6 +3,7 @@
 import asyncio
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
 
 from custom_components.bestway.aws_iot.websocket import AwsIotWebSocket

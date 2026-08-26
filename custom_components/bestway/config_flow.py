@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import asyncio
 from logging import getLogger
-
 from typing import Any
 
+import voluptuous as vol
 from aiohttp import ClientConnectionError
 from homeassistant.config_entries import (
     ConfigEntry,
@@ -17,7 +17,6 @@ from homeassistant.config_entries import (
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
-import voluptuous as vol
 
 from .aws_iot.api import AwsIotAuthException
 from .bestway.api import (
@@ -239,7 +238,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
             )
 
         try:
-            from .aws_iot.api import AwsIotApi, API_ENDPOINTS
+            from .aws_iot.api import API_ENDPOINTS, AwsIotApi
 
             session = async_get_clientsession(self.hass)
 

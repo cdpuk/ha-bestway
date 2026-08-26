@@ -39,6 +39,10 @@
   },
   "remoteUser": "vscode",
   "features": {
+    "ghcr.io/anthropics/devcontainer-features/claude-code:1.0": {},
     "ghcr.io/devcontainers/features/github-cli:1": {}
-  }
+  },
+  "mounts": [
+    "source=claude-code-config,target=/home/vscode/.claude,type=volume"
+  ]
 }
