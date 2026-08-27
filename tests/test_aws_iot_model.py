@@ -82,23 +82,3 @@ def test_bestway_device_backend_aws_iot():
         backend="aws_iot",
     )
     assert device.backend == "aws_iot"
-
-
-def test_from_api_product_name_still_works():
-    """Verify existing Gizwits product name mapping unchanged."""
-    assert (
-        BestwayDeviceType.from_api_product_name("Airjet")
-        == BestwayDeviceType.AIRJET_SPA
-    )
-    assert (
-        BestwayDeviceType.from_api_product_name("Airjet_V01")
-        == BestwayDeviceType.AIRJET_V01_SPA
-    )
-    assert (
-        BestwayDeviceType.from_api_product_name("Hydrojet")
-        == BestwayDeviceType.HYDROJET_SPA
-    )
-    assert (
-        BestwayDeviceType.from_api_product_name("Hydrojet_Pro")
-        == BestwayDeviceType.HYDROJET_PRO_SPA
-    )

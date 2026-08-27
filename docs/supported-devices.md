@@ -12,5 +12,6 @@ Raise an issue or log a pull request to update this list. Please do not suggest 
 | Lay-Z-Spa Maldives HydroJet Pro       | V01 (Gitwitz) | Hydrojet_Pro  |
 | Lay-Z-Spa Milan AirJet Plus           | V01 (Gitwitz) | Airjet        |
 | SaluSpa Coronado EnergySense          | V01 (Gitwitz) | Airjet_V01    |
+| SaluSpa Paris UltraFit                | V01 (Gitwitz) | UltraFit      |
 | Bestway Smart Touch Wi-Fi Filter Pump | V01 (Gitwitz) | Pool Filter   |
 | UltraFit AirJet Pump Models           | V02 (AWS IoT) |               |

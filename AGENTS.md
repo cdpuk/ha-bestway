@@ -60,7 +60,7 @@ uv run pre-commit run --all-files
 The integration supports two completely separate cloud backends, selected at config flow time:
 
 - **Gizwits** (`BACKEND_GIZWITS`) — V1 devices (up to ~2024). Uses `custom_components/bestway/bestway/` subpackage. Auth via username/password. WebSocket via `GizwitsWebSocket`.
-- **AWS IoT** (`BACKEND_AWS_IOT`) — V2 devices (2025+, UltraFit pumps). Uses `custom_components/bestway/aws_iot/` subpackage. Auth via QR code scan (visitor ID). WebSocket via `AwsIotWebSocket`.
+- **AWS IoT** (`BACKEND_AWS_IOT`) — V2 devices (2025+). Uses `custom_components/bestway/aws_iot/` subpackage. Auth via QR code scan (visitor ID). WebSocket via `AwsIotWebSocket`. Note: "UltraFit" is a pump name Bestway uses on both V1 and V2 hardware, so it does not imply this backend — see `docs/supported-devices.md`.
 
 `__init__.py` branches on `entry.data["backend"]` to call `_async_setup_gizwits` or `_async_setup_aws_iot`. Both paths create a `BestwayUpdateCoordinator`, which accepts either `BestwayApi` or `AwsIotApi` — these share the same interface so entities are backend-agnostic.
 

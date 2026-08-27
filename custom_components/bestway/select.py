@@ -81,7 +81,10 @@ async def async_setup_entry(
         # product_id doesn't tell them apart, so we honour the user's choice
         # from the options flow. Default (3-way) is the safe pre-existing
         # behaviour; on/off mode shows a switch in switch.py instead.
-        if device.device_type == BestwayDeviceType.AIRJET_V01_SPA or (
+        if device.device_type in (
+            BestwayDeviceType.AIRJET_V01_SPA,
+            BestwayDeviceType.ULTRAFIT_SPA,
+        ) or (
             device.device_type
             in (
                 BestwayDeviceType.AIRJET_V02,
