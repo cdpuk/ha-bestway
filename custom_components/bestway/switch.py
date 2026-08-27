@@ -171,6 +171,7 @@ async def async_setup_entry(
         # V01 and V02 Airjet devices (normalization provides consistent field names)
         if device.device_type in [
             BestwayDeviceType.AIRJET_V01_SPA,
+            BestwayDeviceType.ULTRAFIT_SPA,
             BestwayDeviceType.AIRJET_V02,
             BestwayDeviceType.ULTRAFIT_AIRJET_V02,
         ]:
