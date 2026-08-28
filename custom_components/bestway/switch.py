@@ -5,7 +5,6 @@ from __future__ import annotations
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from time import monotonic
-
 from typing import Any
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
@@ -172,6 +171,7 @@ async def async_setup_entry(
         # V01 and V02 Airjet devices (normalization provides consistent field names)
         if device.device_type in [
             BestwayDeviceType.AIRJET_V01_SPA,
+            BestwayDeviceType.ULTRAFIT_SPA,
             BestwayDeviceType.AIRJET_V02,
             BestwayDeviceType.ULTRAFIT_AIRJET_V02,
         ]:
@@ -305,7 +305,7 @@ class BestwaySwitch(BestwayEntity, SwitchEntity):
         if self._optimistic_state is not None and self.status is not None:
             try:
                 actual = self.entity_description.value_fn(self.status)
-            except (KeyError, TypeError):
+            except KeyError, TypeError:
                 actual = None
             confirmed = actual == self._optimistic_state
             timed_out = monotonic() - self._optimistic_set_at >= _OPTIMISTIC_TIMEOUT_S

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from logging import getLogger
 
 from aiohttp import ClientSession
@@ -81,7 +81,7 @@ async def _async_setup_gizwits(
     # Check for an auth token
     # If we have one that expires within 30 days, refresh it
     # Also refresh if UID is missing (for WebSocket support)
-    expiry_cutoff = (datetime.now() + timedelta(days=30)).timestamp()
+    expiry_cutoff = (datetime.now(UTC) + timedelta(days=30)).timestamp()
     uid = entry.data.get(CONF_UID)
 
     if user_token and expiry_cutoff < user_token_expiry and uid:
@@ -134,13 +134,20 @@ async def _async_setup_gizwits(
                     ws_port=first_device.ws_port,
                     update_callback=coordinator.handle_websocket_update,
                     disconnect_callback=coordinator.handle_websocket_disconnect,
+                    # Only drop to 5-minute polling once the socket actually
+                    # connects; if it never does (e.g. blocked by a firewall),
+                    # the coordinator keeps polling every 30 seconds.
+                    connect_callback=coordinator.set_websocket_active,
                 )
 
-                # Connect in background
-                hass.async_create_task(ws_client.connect())
-
-                # Reduce polling now that WebSocket will provide real-time updates
-                coordinator.set_websocket_active()
+                # Connect as a background task. Unlike hass.async_create_task,
+                # this is not awaited during HA's startup wrap-up, so a
+                # connection that hangs or retries indefinitely (e.g. because
+                # the device is unreachable) cannot block startup. It is
+                # cancelled automatically when the config entry unloads.
+                entry.async_create_background_task(
+                    hass, ws_client.connect(), name=f"{DOMAIN}-websocket"
+                )
 
                 _LOGGER.info("WebSocket client initialized")
             else:
@@ -233,10 +240,20 @@ async def _async_setup_aws_iot(
                     update_callback=coordinator.handle_websocket_update,
                     disconnect_callback=coordinator.handle_websocket_disconnect,
                     token_refresh_callback=token_refresh_callback,
+                    # Only drop to 5-minute polling once a socket actually
+                    # connects; if none do (e.g. blocked by a firewall), the
+                    # coordinator keeps polling every 30 seconds.
+                    connect_callback=coordinator.set_websocket_active,
                 )
 
-                # Connect in background
-                hass.async_create_task(ws.connect())
+                # Connect as a background task. Unlike hass.async_create_task,
+                # this is not awaited during HA's startup wrap-up, so a
+                # connection that hangs or retries indefinitely (e.g. because
+                # the device is unreachable) cannot block startup. It is
+                # cancelled automatically when the config entry unloads.
+                entry.async_create_background_task(
+                    hass, ws.connect(), name=f"{DOMAIN}-websocket-{device_id[:12]}"
+                )
                 websockets.append(ws)
 
                 _LOGGER.info(
@@ -249,9 +266,6 @@ async def _async_setup_aws_iot(
                 _LOGGER.warning(
                     "Failed to setup WebSocket for device %s: %s", device_id[:12], ex
                 )
-
-        # Reduce polling with WebSocket active
-        coordinator.set_websocket_active()
     else:
         _LOGGER.warning("No devices found, WebSocket not initialized")
 

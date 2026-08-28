@@ -2,9 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
 import re
-
+from collections.abc import Mapping
 from typing import Any
 
 from homeassistant.components.binary_sensor import (
@@ -68,6 +67,7 @@ async def async_setup_entry(
         if device.device_type in [
             BestwayDeviceType.AIRJET_SPA,
             BestwayDeviceType.AIRJET_V01_SPA,
+            BestwayDeviceType.ULTRAFIT_SPA,
             BestwayDeviceType.HYDROJET_SPA,
             BestwayDeviceType.HYDROJET_PRO_SPA,
             BestwayDeviceType.AIRJET_V02,

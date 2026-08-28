@@ -20,13 +20,13 @@ from typing import Any
 
 from aiohttp import ClientSession
 
-from .encryption import encrypt_command_payload
 from ..bestway.model import (
     BestwayDevice,
     BestwayDeviceStatus,
     BubblesLevel,
 )
 from ..const import BACKEND_AWS_IOT
+from .encryption import encrypt_command_payload
 
 _LOGGER = logging.getLogger(__name__)
 

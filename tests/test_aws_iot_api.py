@@ -1,6 +1,7 @@
 """Tests for AWS IoT API client."""
 
 from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
 from custom_components.bestway.aws_iot.api import (

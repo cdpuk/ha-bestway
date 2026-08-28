@@ -46,6 +46,7 @@ async def async_setup_entry(
 
         if device.device_type in [
             BestwayDeviceType.AIRJET_V01_SPA,
+            BestwayDeviceType.ULTRAFIT_SPA,
             BestwayDeviceType.HYDROJET_SPA,
             BestwayDeviceType.HYDROJET_PRO_SPA,
         ]:
@@ -72,7 +73,7 @@ class AirjetSpaThermostat(BestwayEntity, ClimateEntity):
 
     _attr_name = "Spa Thermostat"
     _attr_supported_features = _CLIMATE_FEATURES
-    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
+    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]  # noqa: RUF012
     _attr_precision = PRECISION_WHOLE
     _attr_target_temperature_step = 1
 
@@ -179,7 +180,7 @@ class AirjetV01HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
 
     _attr_name = "Spa Thermostat"
     _attr_supported_features = _CLIMATE_FEATURES
-    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]
+    _attr_hvac_modes = [HVACMode.OFF, HVACMode.HEAT]  # noqa: RUF012
     _attr_precision = PRECISION_WHOLE
     _attr_target_temperature_step = 1
 
@@ -227,7 +228,7 @@ class AirjetV01HydrojetSpaThermostat(BestwayEntity, ClimateEntity):
                 timed_out = now - self._optimistic_tset_set_at >= _OPTIMISTIC_TIMEOUT_S
                 try:
                     matched = int(attrs.get("Tset", -1)) == self._optimistic_tset
-                except (TypeError, ValueError):
+                except TypeError, ValueError:
                     matched = False
                 if matched or timed_out:
                     self._optimistic_tset = None

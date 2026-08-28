@@ -1,3 +1,0 @@
-homeassistant
-pre-commit
-mypy

@@ -1,6 +1,7 @@
 """Tests for AWS IoT encryption module."""
 
 import json
+
 import pytest
 
 from custom_components.bestway.aws_iot.encryption import (
@@ -128,7 +129,7 @@ def test_decrypt_with_wrong_sign_fails():
     encrypted = encrypt_command_payload(sign, app_secret, plaintext)
 
     # Try to decrypt with different sign
-    with pytest.raises(Exception):  # ValueError or padding error
+    with pytest.raises(ValueError):  # padding error
         decrypt_command_payload("WRONG" * 6, app_secret, encrypted)
 
 
@@ -142,7 +143,7 @@ def test_decrypt_with_wrong_secret_fails():
     encrypted = encrypt_command_payload(sign, app_secret, plaintext)
 
     # Try to decrypt with different secret
-    with pytest.raises(Exception):  # ValueError or padding error
+    with pytest.raises(ValueError):  # padding error
         decrypt_command_payload(sign, "wrong_secret", encrypted)
 
 
@@ -151,7 +152,7 @@ def test_decrypt_invalid_base64_fails():
     sign = "H" * 32
     app_secret = "secret"
 
-    with pytest.raises(Exception):  # Base64 decode error
+    with pytest.raises(ValueError):  # base64 decode error
         decrypt_command_payload(sign, app_secret, "not-valid-base64!!!")
 
 

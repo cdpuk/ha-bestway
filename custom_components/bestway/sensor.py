@@ -39,6 +39,7 @@ async def async_setup_entry(
         name_prefix = "Bestway"
         if device_info.device_type in [
             BestwayDeviceType.AIRJET_SPA,
+            BestwayDeviceType.ULTRAFIT_SPA,
             BestwayDeviceType.HYDROJET_SPA,
             BestwayDeviceType.HYDROJET_PRO_SPA,
             BestwayDeviceType.AIRJET_V02,

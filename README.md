@@ -20,9 +20,9 @@ A Wi-Fi enabled model is required. No custom hardware is required.
 This integration supports two main generations of devices (V1 and V2), which must be selected when adding your device to Home Assistant. Broadly speaking:
 
 - V1 covers older models up to around 2024.
-- V2 covers newer models with UltraFit pumps from 2025 onwards.
+- V2 covers newer models from 2025 onwards.
 
-See the [supported devices](docs/supported-devices.md) list for more details.
+See the [supported devices](docs/supported-devices.md) list for confirmed examples of each.
 
 ## Installation
 
