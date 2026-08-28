@@ -372,7 +372,7 @@ class SmartSpaApi:
                     "SmartSpa state for %s: %s", device_id, list(mapped.keys())
                 )
 
-            except Exception as err:  # noqa: BLE001 — keep other devices alive
+            except Exception as err:
                 _LOGGER.warning(
                     "Failed to fetch SmartSpa state for %s: %s", device_id, err
                 )

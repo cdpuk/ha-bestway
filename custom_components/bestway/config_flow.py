@@ -28,10 +28,6 @@ from .const import (
     BACKEND_AWS_IOT,
     BACKEND_GIZWITS,
     BACKEND_SMARTSPA,
-    CONF_SMARTSPA_ACCOUNT,
-    CONF_SMARTSPA_PASSWORD,
-    CONF_SMARTSPA_REGION,
-    CONF_SMARTSPA_TOKEN,
     BUBBLES_MODE_3WAY,
     BUBBLES_MODE_DEFAULT,
     BUBBLES_MODE_ONOFF,
@@ -40,6 +36,10 @@ from .const import (
     CONF_API_ROOT_US,
     CONF_BUBBLES_MODE,
     CONF_PASSWORD,
+    CONF_SMARTSPA_ACCOUNT,
+    CONF_SMARTSPA_PASSWORD,
+    CONF_SMARTSPA_REGION,
+    CONF_SMARTSPA_TOKEN,
     CONF_UID,
     CONF_USER_TOKEN,
     CONF_USER_TOKEN_EXPIRY,
@@ -432,7 +432,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
             _LOGGER.warning("SmartSpa login failed: %s", ex)
             # Regions are frequently misassigned server-side; nudge the user.
             errors["base"] = "auth_failed"
-        except (SmartSpaException, ClientConnectionError, asyncio.TimeoutError) as ex:
+        except (TimeoutError, SmartSpaException, ClientConnectionError) as ex:
             _LOGGER.warning("SmartSpa connection failed: %s", ex)
             errors["base"] = "cannot_connect"
         except Exception:  # pylint: disable=broad-except

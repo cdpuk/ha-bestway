@@ -13,9 +13,9 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from .aws_iot.api import AwsIotApi
 from .aws_iot.websocket import AwsIotWebSocket
 from .bestway.api import BestwayApi, BestwayApiResults
-from .smartspa.api import SmartSpaApi
 from .bestway.model import BestwayDeviceStatus
 from .bestway.websocket import GizwitsWebSocket
+from .smartspa.api import SmartSpaApi
 
 _LOGGER = getLogger(__name__)
 

@@ -15,7 +15,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import BestwayUpdateCoordinator
 from .aws_iot.api import AwsIotApi
 from .bestway.api import BestwayApi
-from .smartspa.api import SmartSpaApi
 from .bestway.model import BestwayDeviceStatus, BestwayDeviceType, HydrojetFilter
 from .const import (
     BUBBLES_MODE_DEFAULT,
@@ -25,6 +24,7 @@ from .const import (
     Icon,
 )
 from .entity import BestwayEntity
+from .smartspa.api import SmartSpaApi
 
 # Maximum time an optimistic value is trusted before the entity falls back
 # to whatever the cloud last reported. Long enough to ride out a normal

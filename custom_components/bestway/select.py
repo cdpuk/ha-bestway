@@ -13,7 +13,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import BestwayUpdateCoordinator
 from .aws_iot.api import AwsIotApi
 from .bestway.api import BestwayApi
-from .smartspa.api import SmartSpaApi
 from .bestway.model import (
     AIRJET_V01_BUBBLES_MAP,
     HYDROJET_BUBBLES_MAP,
@@ -28,6 +27,7 @@ from .const import (
     Icon,
 )
 from .entity import BestwayEntity
+from .smartspa.api import SmartSpaApi
 
 _BUBBLES_OPTIONS = {
     BubblesLevel.OFF: "OFF",
