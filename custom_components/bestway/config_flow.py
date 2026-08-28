@@ -379,7 +379,6 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
             errors=errors,
         )
 
-
     async def async_step_smartspa_auth(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -426,9 +425,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
 
         session = async_get_clientsession(self.hass)
         try:
-            token = await SmartSpaApi.authenticate(
-                session, account, password, api_base
-            )
+            token = await SmartSpaApi.authenticate(session, account, password, api_base)
             api = SmartSpaApi(session, account, password, api_base, token)
             await api.refresh_bindings()
         except SmartSpaAuthException as ex:

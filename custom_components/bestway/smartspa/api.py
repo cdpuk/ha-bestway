@@ -278,9 +278,7 @@ class SmartSpaApi:
                 continue
             _LOGGER.debug("SmartSpa device entry keys: %s", list(entry.keys()))
 
-            product_key = self._first(
-                entry, "productKey", "product_key", "productkey"
-            )
+            product_key = self._first(entry, "productKey", "product_key", "productkey")
             mac = self._first(entry, "mac", "deviceMac", "device_mac", "did")
             if not product_key or not mac:
                 _LOGGER.warning(
@@ -328,7 +326,9 @@ class SmartSpaApi:
                 is_online=is_online,
                 backend=BACKEND_SMARTSPA,
                 product_id=str(product_key),
-                product_series=_pk_series.get(str(product_key), self._series_from_name(product_name)),
+                product_series=_pk_series.get(
+                    str(product_key), self._series_from_name(product_name)
+                ),
             )
 
         _LOGGER.info("SmartSpa discovered %d device(s)", len(self.devices))
@@ -396,11 +396,11 @@ class SmartSpaApi:
         temperature_setting passes through unchanged.
         """
         if isinstance(value, bool):
-            value = 1 if value else 0
+            numeric: int = 1 if value else 0
         elif hasattr(value, "value"):  # IntEnum
-            value = int(value.value)
+            numeric = int(value.value)
         else:
-            value = int(value)
+            numeric = int(value)
 
         if key in (
             "filter_state",
@@ -412,8 +412,8 @@ class SmartSpaApi:
         ):
             # NOTE: if a 3-level-bubbles model ever shows up on this backend,
             # wave_state may need 0/40/100 passthrough — only 1/0 is confirmed.
-            return 1 if value else 0
-        return value
+            return 1 if numeric else 0
+        return numeric
 
     async def set_device_state(
         self, device_id: str, state_updates: dict[str, Any]

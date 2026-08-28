@@ -13,6 +13,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import BestwayUpdateCoordinator
 from .aws_iot.api import AwsIotApi
 from .bestway.api import BestwayApi
+from .smartspa.api import SmartSpaApi
 from .bestway.model import (
     AIRJET_V01_BUBBLES_MAP,
     HYDROJET_BUBBLES_MAP,
@@ -39,7 +40,9 @@ _BUBBLES_OPTIONS = {
 class BubblesSelectEntityDescription(SelectEntityDescription):
     """Describes bubbles selection."""
 
-    set_fn: Callable[[BestwayApi | AwsIotApi, str, BubblesLevel], Awaitable[None]]
+    set_fn: Callable[
+        [BestwayApi | AwsIotApi | SmartSpaApi, str, BubblesLevel], Awaitable[None]
+    ]
     get_fn: Callable[[int], BubblesLevel]
 
 

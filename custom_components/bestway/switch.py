@@ -15,6 +15,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import BestwayUpdateCoordinator
 from .aws_iot.api import AwsIotApi
 from .bestway.api import BestwayApi
+from .smartspa.api import SmartSpaApi
 from .bestway.model import BestwayDeviceStatus, BestwayDeviceType, HydrojetFilter
 from .const import (
     BUBBLES_MODE_DEFAULT,
@@ -37,8 +38,8 @@ class BestwaySwitchEntityDescription(SwitchEntityDescription):
     """Entity description for bestway spa switches."""
 
     value_fn: Callable[[BestwayDeviceStatus], bool]
-    turn_on_fn: Callable[[BestwayApi | AwsIotApi, str], Awaitable[None]]
-    turn_off_fn: Callable[[BestwayApi | AwsIotApi, str], Awaitable[None]]
+    turn_on_fn: Callable[[BestwayApi | AwsIotApi | SmartSpaApi, str], Awaitable[None]]
+    turn_off_fn: Callable[[BestwayApi | AwsIotApi | SmartSpaApi, str], Awaitable[None]]
 
 
 _AIRJET_SPA_POWER_SWITCH = BestwaySwitchEntityDescription(
