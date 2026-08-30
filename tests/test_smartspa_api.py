@@ -256,6 +256,26 @@ async def test_fetch_data_normalizes_shadow(api):
     assert attrs["is_online"] is True
 
 
+async def test_fetch_data_binary_wave_maps_to_max(api):
+    """Binary wave_state read-back maps to 100 for the 3-way select.
+
+    On/off bubble hardware (F12D9Q HydroJet Pro, UltraFit) reads back
+    wave_state 1 while running. The 3-way select renders unknown values
+    as OFF, which makes OFF unselectable while bubbles physically run.
+    Mapping binary "on" to 100 shows MAX and keeps OFF selectable.
+    """
+    api._request = AsyncMock(
+        return_value={
+            "code": "200",
+            "data": {"wave_state": 1, "ConnectType": "online"},
+        }
+    )
+
+    results = await api.fetch_data()
+
+    assert results.devices["6879c4d585ab"].attrs["wave"] == 100
+
+
 async def test_fetch_data_heater_readback_two_maps_to_heating(api):
     """heater_state reads 2 while heating; climate knows 3 (HEATING)."""
     api._request = AsyncMock(

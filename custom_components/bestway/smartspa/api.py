@@ -369,6 +369,18 @@ class SmartSpaApi:
                 if mapped.get("heat") == 2:
                     mapped["heat"] = 3
 
+                # Same family of quirk for bubbles: this gateway reads
+                # wave_state back as binary (1, sometimes 2) while running,
+                # but the 3-way bubbles select expects 0/40/100 and renders
+                # an unrecognized value as OFF - making OFF unselectable
+                # (no state change) while bubbles physically run. Map any
+                # binary "on" to 100 so the select shows MAX and OFF becomes
+                # a real change. Writes are unaffected (non-zero -> 1).
+                # Verified live on F12D9Q (HydroJet Pro, EU); explains the
+                # "bubbles turn on but not off" reports on on/off hardware.
+                if mapped.get("wave") in (1, 2):
+                    mapped["wave"] = 100
+
                 self._state_cache[device_id] = BestwayDeviceStatus(
                     timestamp=int(time()), attrs=mapped
                 )
