@@ -308,8 +308,12 @@ class SmartSpaApi:
             #   F12D9Q = Lay-Z-Spa San Francisco HydroJet Pro (EU)
             #   FTEW0E = Airjet / UltraFit (EU + US, from issue #135 reports)
             _pk_series = {"F12D9Q": "HYDROJET_PRO", "FTEW0E": "ULTRAFIT_AIRJET"}
+            # The EU gateway reports availability as `onlineStatus` (1/0) in the
+            # device list; `isOnline`/`is_online`/`online` are never present.
+            # Aliases kept in case other regions differ.
             is_online = bool(
-                self._first(entry, "isOnline", "is_online", "online") or False
+                self._first(entry, "onlineStatus", "isOnline", "is_online", "online")
+                or False
             )
 
             device_id = mac
@@ -372,14 +376,19 @@ class SmartSpaApi:
                     "SmartSpa state for %s: %s", device_id, list(mapped.keys())
                 )
 
+            except SmartSpaAuthException:
+                # Authentication is not a per-device problem: re-login already
+                # failed inside _request(). Let it reach the coordinator, which
+                # maps it to ConfigEntryAuthFailed.
+                raise
             except Exception as err:
                 _LOGGER.warning(
                     "Failed to fetch SmartSpa state for %s: %s", device_id, err
                 )
-                if device_id not in self._state_cache:
-                    self._state_cache[device_id] = BestwayDeviceStatus(
-                        timestamp=int(time()), attrs={}
-                    )
+                # Deliberately no placeholder entry here: a BestwayDeviceStatus
+                # with empty attrs is truthy, so it passes `if not device.status`
+                # guards and then raises KeyError downstream. Leaving the cache
+                # untouched keeps the last known state, or no state at all.
 
         return BestwayApiResults(devices=self._state_cache)
 
@@ -436,22 +445,24 @@ class SmartSpaApi:
         #   returns 200/data:true and silently does nothing.
 
         try:
-            result = await self._request(
-                "POST", f"app/device/control/{product_key}/{mac}", body
-            )
+            await self._request("POST", f"app/device/control/{product_key}/{mac}", body)
         except SmartSpaException as err:
             _LOGGER.error("Control write to %s failed: %s", device_id, err)
             return False
 
-        ok = result.get("data") is True or str(result.get("code")) == "200"
+        # Reaching this point only means the gateway accepted the *envelope*:
+        # _request() raises on any non-200 code. It is NOT a guarantee that the
+        # payload was applied. Measured on the EU gateway: an unknown field, a
+        # nonsensical value and an empty payload all return code 200/data:true
+        # and are silently discarded. Only reading the shadow back after the
+        # settle window proves a write took effect.
         _LOGGER.info(
-            "SmartSpa control %s -> %s (accepted=%s; note: writes settle in ~5-10s "
-            "and filter/heater read back 2 while running)",
+            "SmartSpa control %s -> %s sent (writes settle in ~5-10s; "
+            "filter/heater read back 2 while running)",
             datapoints,
             device_id,
-            ok,
         )
-        return ok
+        return True
 
     # ------------------------------------------- entity convenience interface
 

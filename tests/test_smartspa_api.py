@@ -184,6 +184,8 @@ async def test_refresh_bindings_real_world_shape(api):
     assert device.product_series == "HYDROJET_PRO"
     # mac is lowercased for API paths
     assert api._routing["6879c4d585ab"] == ("F12D9Q", "6879c4d585ab")
+    # The live gateway reports availability as `onlineStatus`
+    assert device.is_online is True
 
 
 async def test_refresh_bindings_wrapped_list_shapes(api):
@@ -281,9 +283,26 @@ async def test_fetch_data_survives_one_failing_device(api):
 
     results = await api.fetch_data()
 
-    # Failing device gets an empty status; healthy device has data
-    assert results.devices["6879c4d585ab"].attrs == {}
+    # The failing device gets no entry at all. A placeholder with empty attrs
+    # would be truthy, pass `if not device.status` guards, and then raise
+    # KeyError downstream; absence makes its entities unavailable instead.
+    assert "6879c4d585ab" not in results.devices
     assert results.devices["aabbccddeeff"].attrs["Tnow"] == 30
+
+
+async def test_fetch_data_propagates_auth_failure(api):
+    """An auth failure must not be swallowed as a per-device error.
+
+    _request() only raises SmartSpaAuthException once its own re-login has
+    already failed, so the stored credentials are genuinely bad. Treating that
+    like a transient per-device glitch would hide it behind a warning and leave
+    the integration silently returning stale data forever. The coordinator maps
+    it to ConfigEntryAuthFailed instead.
+    """
+    api._request = AsyncMock(side_effect=SmartSpaAuthException("no session"))
+
+    with pytest.raises(SmartSpaAuthException):
+        await api.fetch_data()
 
 
 # ------------------------------------------------------------------- control
