@@ -1,0 +1,13 @@
+{
+  "domain": "bestway",
+  "name": "Bestway",
+  "codeowners": ["@cdpuk"],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/cdpuk/ha-bestway",
+  "integration_type": "device",
+  "iot_class": "cloud_push",
+  "issue_tracker": "https://github.com/cdpuk/ha-bestway/issues",
+  "requirements": ["pycryptodome>=3.20.0", "websockets>=13.0"],
+  "version": "1.8.1"
+}

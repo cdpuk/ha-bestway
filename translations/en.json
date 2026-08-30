@@ -1,0 +1,69 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Select Bestway App Type",
+        "description": "Choose which Bestway app you use to control your spa",
+        "data": {
+          "backend": "App Type"
+        }
+      },
+      "gizwits_auth": {
+        "title": "Bestway V01 Login (Gizwits)",
+        "description": "Enter your Bestway Smart Hub app credentials",
+        "data": {
+          "username": "Username (e-mail address)",
+          "password": "Password",
+          "apiroot": "API location"
+        }
+      },
+      "aws_iot_auth": {
+        "title": "Bestway V02 Login (AWS IoT)",
+        "description": "Choose setup method: Use an existing visitor_id OR scan a QR code to create a new account. Provide ONE option only.",
+        "data": {
+          "region": "Region",
+          "visitor_id": "Visitor ID (existing account, optional)",
+          "qr_code": "QR Code (new account, optional)"
+        }
+      },
+      "smartspa_auth": {
+        "title": "Bestway Connect account login (2026+ app)",
+        "description": "Log in with the account you use in the current Bestway Connect app. This replaces the share-QR flow, which Bestway removed in the July 2026 app update. If login succeeds but no devices are found, try a different region — accounts are frequently assigned to an unexpected region server-side.",
+        "data": {
+          "smartspa_account": "Account email",
+          "smartspa_password": "Password",
+          "smartspa_region": "Region"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not connect to the Bestway API",
+      "user_does_not_exist": "User account does not exist",
+      "incorrect_password": "Incorrect password",
+      "unknown_connection_error": "Unexpected connector error - check logs for details",
+      "invalid_auth": "Invalid authentication",
+      "auth_failed": "Authentication failed. Please try again.",
+      "qr_or_visitor_required": "Either provide an existing visitor_id OR scan a QR code. One option is required.",
+      "invalid_qr_format": "Invalid QR code format. QR code must start with 'RW_Share_'.",
+      "invalid_format": "Invalid QR code format. QR code must start with 'RW_Share_'.",
+      "binding_failed": "QR code binding failed. The code may be expired or already used. Generate a fresh QR code from your spa.",
+      "no_devices_found": "No devices found. Please check your spa is powered on and connected.",
+      "qr_code_required": "Either provide an existing visitor_id OR scan a QR code. One option is required.",
+      "unknown": "Unknown error"
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Bestway options",
+        "description": "Adjust how the integration represents your spa in Home Assistant.",
+        "data": {
+          "bubbles_mode": "Airjet V02 bubble control"
+        },
+        "data_description": {
+          "bubbles_mode": "Some Airjet V02 hot tubs only have on/off bubbles physically, even though the cloud accepts a 3-level value. Pick the option that matches your hardware. Changes apply after the integration reloads."
+        }
+      }
+    }
+  }
+}
