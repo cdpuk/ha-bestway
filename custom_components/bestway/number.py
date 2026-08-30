@@ -9,9 +9,9 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import BestwayUpdateCoordinator
-from .bestway.model import BestwayDeviceType
 from .const import DOMAIN
 from .entity import BestwayEntity
+from .features import features_for
 
 _POOL_FILTER_TIME = NumberEntityDescription(
     key="pool_filter_time",
@@ -32,7 +32,8 @@ async def async_setup_entry(
     entities: list[BestwayEntity] = []
 
     for device_id, device in coordinator.api.devices.items():
-        if device.device_type == BestwayDeviceType.POOL_FILTER:
+        features = features_for(device, config_entry.options)
+        if features.pool_filter_timer:
             entities.append(
                 PoolFilterTimeNumber(
                     coordinator, config_entry, device_id, _POOL_FILTER_TIME

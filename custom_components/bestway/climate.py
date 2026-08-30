@@ -13,9 +13,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import BestwayUpdateCoordinator
-from .bestway.model import BestwayDeviceType, HydrojetHeat
+from .bestway.model import HydrojetHeat
 from .const import DOMAIN
 from .entity import BestwayEntity
+from .features import ControlFamily, features_for
 
 _OPTIMISTIC_TIMEOUT_S = 8.0
 
@@ -41,26 +42,13 @@ async def async_setup_entry(
     entities: list[BestwayEntity] = []
 
     for device_id, device in coordinator.api.devices.items():
-        if device.device_type == BestwayDeviceType.AIRJET_SPA:
+        features = features_for(device, config_entry.options)
+        if not features.climate:
+            continue
+
+        if features.control_family == ControlFamily.RAW_AIRJET:
             entities.append(AirjetSpaThermostat(coordinator, config_entry, device_id))
-
-        if device.device_type in [
-            BestwayDeviceType.AIRJET_V01_SPA,
-            BestwayDeviceType.ULTRAFIT_SPA,
-            BestwayDeviceType.HYDROJET_SPA,
-            BestwayDeviceType.HYDROJET_PRO_SPA,
-        ]:
-            entities.append(
-                AirjetV01HydrojetSpaThermostat(coordinator, config_entry, device_id)
-            )
-
-        # V02 AWS IoT devices (use same entities - normalization handles field names)
-        if device.device_type in [
-            BestwayDeviceType.AIRJET_V02,
-            BestwayDeviceType.ULTRAFIT_AIRJET_V02,
-            BestwayDeviceType.HYDROJET_V02,
-            BestwayDeviceType.HYDROJET_PRO_V02,
-        ]:
+        else:
             entities.append(
                 AirjetV01HydrojetSpaThermostat(coordinator, config_entry, device_id)
             )

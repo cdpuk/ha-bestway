@@ -12,20 +12,10 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import BestwayUpdateCoordinator
 from .backend import BackendApi
-from .bestway.model import (
-    AIRJET_V01_BUBBLES_MAP,
-    HYDROJET_BUBBLES_MAP,
-    BestwayDeviceType,
-    BubblesLevel,
-)
-from .const import (
-    BUBBLES_MODE_3WAY,
-    BUBBLES_MODE_DEFAULT,
-    CONF_BUBBLES_MODE,
-    DOMAIN,
-    Icon,
-)
+from .bestway.model import AIRJET_V01_BUBBLES_MAP, HYDROJET_BUBBLES_MAP, BubblesLevel
+from .const import DOMAIN, Icon
 from .entity import BestwayEntity
+from .features import BubblesStyle, features_for
 
 _BUBBLES_OPTIONS = {
     BubblesLevel.OFF: "OFF",
@@ -63,6 +53,12 @@ _HYDROJET_BUBBLES_SELECT_DESCRIPTION = BubblesSelectEntityDescription(
 )
 
 
+_BUBBLES_SELECT_BY_STYLE = {
+    BubblesStyle.THREE_WAY_AIRJET: _AIRJET_V01_BUBBLES_SELECT_DESCRIPTION,
+    BubblesStyle.THREE_WAY_HYDROJET: _HYDROJET_BUBBLES_SELECT_DESCRIPTION,
+}
+
+
 async def async_setup_entry(
     hass: HomeAssistant,
     config_entry: ConfigEntry,
@@ -72,55 +68,12 @@ async def async_setup_entry(
     coordinator: BestwayUpdateCoordinator = hass.data[DOMAIN][config_entry.entry_id]
     entities: list[BestwayEntity] = []
 
-    bubbles_mode = config_entry.options.get(CONF_BUBBLES_MODE, BUBBLES_MODE_DEFAULT)
-
     for device_id, device in coordinator.api.devices.items():
-        # V01 Airjet has 3 physical levels (OFF/MEDIUM/MAX) and always uses the select.
-        # V02 Airjet hardware varies: some have 3 levels, some only on/off. The
-        # product_id doesn't tell them apart, so we honour the user's choice
-        # from the options flow. Default (3-way) is the safe pre-existing
-        # behaviour; on/off mode shows a switch in switch.py instead.
-        if device.device_type in (
-            BestwayDeviceType.AIRJET_V01_SPA,
-            BestwayDeviceType.ULTRAFIT_SPA,
-        ) or (
-            device.device_type
-            in (
-                BestwayDeviceType.AIRJET_V02,
-                BestwayDeviceType.ULTRAFIT_AIRJET_V02,
-            )
-            and bubbles_mode == BUBBLES_MODE_3WAY
-        ):
+        features = features_for(device, config_entry.options)
+        if description := _BUBBLES_SELECT_BY_STYLE.get(features.bubbles):
             entities.append(
                 ThreeWaySpaBubblesSelect(
-                    coordinator,
-                    config_entry,
-                    device_id,
-                    _AIRJET_V01_BUBBLES_SELECT_DESCRIPTION,
-                )
-            )
-
-        # V01 Hydrojets always have 3 levels. V02 Hydrojet hardware varies
-        # (F12D9Q San Francisco HydroJet Pro is on/off only), so V02 honours
-        # the same bubbles-mode option as the Airjet V02 family; on/off mode
-        # shows a switch from switch.py instead.
-        if device.device_type in [
-            BestwayDeviceType.HYDROJET_SPA,
-            BestwayDeviceType.HYDROJET_PRO_SPA,
-        ] or (
-            device.device_type
-            in [
-                BestwayDeviceType.HYDROJET_V02,
-                BestwayDeviceType.HYDROJET_PRO_V02,
-            ]
-            and bubbles_mode == BUBBLES_MODE_3WAY
-        ):
-            entities.append(
-                ThreeWaySpaBubblesSelect(
-                    coordinator,
-                    config_entry,
-                    device_id,
-                    _HYDROJET_BUBBLES_SELECT_DESCRIPTION,
+                    coordinator, config_entry, device_id, description
                 )
             )
 

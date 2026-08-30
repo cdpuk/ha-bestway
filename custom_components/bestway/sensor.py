@@ -13,9 +13,10 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
 from . import BestwayUpdateCoordinator
-from .bestway.model import BestwayDevice, BestwayDeviceType
-from .const import BACKEND_GIZWITS, DOMAIN, Icon
+from .bestway.model import BestwayDevice
+from .const import DOMAIN, Icon
 from .entity import BestwayEntity
+from .features import VersionSensorSet, features_for
 
 
 @dataclass
@@ -36,23 +37,11 @@ async def async_setup_entry(
     entities: list[BestwayEntity] = []
 
     for device_id, device_info in coordinator.api.devices.items():
-        name_prefix = "Bestway"
-        if device_info.device_type in [
-            BestwayDeviceType.AIRJET_SPA,
-            BestwayDeviceType.ULTRAFIT_SPA,
-            BestwayDeviceType.HYDROJET_SPA,
-            BestwayDeviceType.HYDROJET_PRO_SPA,
-            BestwayDeviceType.AIRJET_V02,
-            BestwayDeviceType.ULTRAFIT_AIRJET_V02,
-            BestwayDeviceType.HYDROJET_V02,
-            BestwayDeviceType.HYDROJET_PRO_V02,
-        ]:
-            name_prefix = "Spa"
-        elif device_info.device_type == BestwayDeviceType.POOL_FILTER:
-            name_prefix = "Pool Filter"
+        features = features_for(device_info, config_entry.options)
+        name_prefix = features.name_prefix
 
         # Version sensors - different for V01 vs V02
-        if device_info.backend == BACKEND_GIZWITS:
+        if features.version_sensors == VersionSensorSet.GIZWITS:
             # V01 Gizwits devices: Show MCU and WiFi versions from device object
             entities.extend(
                 [
