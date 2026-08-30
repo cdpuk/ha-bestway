@@ -45,13 +45,22 @@ import hashlib
 import json
 import logging
 from time import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from aiohttp import ClientSession
 
 from ..aws_iot.api import AwsIotApi  # reuse normalize_aws_state (same field names)
-from ..bestway.model import BestwayDevice, BestwayDeviceStatus
+from ..bestway.model import (
+    BestwayDevice,
+    BestwayDeviceStatus,
+    BubblesLevel,
+    HydrojetFilter,
+    HydrojetHeat,
+)
 from ..const import BACKEND_SMARTSPA
+
+if TYPE_CHECKING:
+    from ..bestway.api import BestwayApiResults
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -339,7 +348,7 @@ class SmartSpaApi:
 
     # ------------------------------------------------------------------ state
 
-    async def fetch_data(self) -> Any:  # Returns BestwayApiResults
+    async def fetch_data(self) -> BestwayApiResults:
         """Fetch the shadow for every device and normalize field names."""
         from ..bestway.api import BestwayApiResults
 
@@ -478,64 +487,74 @@ class SmartSpaApi:
 
     # ------------------------------------------- entity convenience interface
 
-    async def airjet_spa_set_power(self, device_id: str, state: bool) -> None:
+    async def airjet_spa_set_power(self, device_id: str, power: bool) -> None:
         """Set power state."""
-        await self.set_device_state(device_id, {"power_state": state})
+        await self.set_device_state(device_id, {"power_state": power})
 
-    async def airjet_spa_set_filter(self, device_id: str, state: bool) -> None:
+    async def airjet_spa_set_filter(self, device_id: str, filtering: bool) -> None:
         """Set filter state."""
-        await self.set_device_state(device_id, {"filter_state": state})
+        await self.set_device_state(device_id, {"filter_state": filtering})
 
-    async def airjet_spa_set_bubbles(self, device_id: str, state: bool) -> None:
+    async def airjet_spa_set_bubbles(self, device_id: str, bubbles: bool) -> None:
         """Set bubbles state."""
-        await self.set_device_state(device_id, {"wave_state": state})
+        await self.set_device_state(device_id, {"wave_state": bubbles})
 
     async def airjet_spa_set_heat(self, device_id: str, heat: bool) -> None:
         """Set heater state."""
         await self.set_device_state(device_id, {"heater_state": heat})
 
-    async def airjet_spa_set_locked(self, device_id: str, state: bool) -> None:
+    async def airjet_spa_set_locked(self, device_id: str, locked: bool) -> None:
         """Set panel lock."""
-        await self.set_device_state(device_id, {"locked": state})
+        await self.set_device_state(device_id, {"locked": locked})
 
-    async def airjet_spa_set_target_temp(self, device_id: str, temp: int) -> None:
+    async def airjet_spa_set_target_temp(
+        self, device_id: str, target_temp: int
+    ) -> None:
         """Set target temperature (device-native unit)."""
-        await self.set_device_state(device_id, {"temperature_setting": int(temp)})
-
-    async def hydrojet_spa_set_power(self, device_id: str, state: bool) -> None:
-        """Set power state."""
-        await self.set_device_state(device_id, {"power_state": state})
-
-    async def hydrojet_spa_set_filter(self, device_id: str, filter_state: int) -> None:
-        """Set filter state (legacy value 2 is translated to a 1 write)."""
-        await self.set_device_state(device_id, {"filter_state": filter_state})
-
-    async def hydrojet_spa_set_jets(self, device_id: str, state: bool) -> None:
-        """Set hydrojets."""
-        await self.set_device_state(device_id, {"hydrojet_state": state})
-
-    async def hydrojet_spa_set_heat(self, device_id: str, heat_state: int) -> None:
-        """Set heater (legacy value 3 is translated to a 1 write)."""
-        await self.set_device_state(device_id, {"heater_state": heat_state})
-
-    async def hydrojet_spa_set_target_temp(self, device_id: str, temp: int) -> None:
-        """Set target temperature (device-native unit)."""
-        await self.set_device_state(device_id, {"temperature_setting": int(temp)})
-
-    async def airjet_v01_spa_set_bubbles(self, device_id: str, level: Any) -> None:
-        """Set bubbles from a BubblesLevel (any non-OFF becomes on)."""
-        from ..bestway.model import BubblesLevel
-
         await self.set_device_state(
-            device_id, {"wave_state": level != BubblesLevel.OFF}
+            device_id, {"temperature_setting": int(target_temp)}
         )
 
-    async def hydrojet_spa_set_bubbles(self, device_id: str, level: Any) -> None:
-        """Set bubbles from a BubblesLevel (any non-OFF becomes on)."""
-        from ..bestway.model import BubblesLevel
+    async def hydrojet_spa_set_power(self, device_id: str, power: bool) -> None:
+        """Set power state."""
+        await self.set_device_state(device_id, {"power_state": power})
 
+    async def hydrojet_spa_set_filter(
+        self, device_id: str, filtering: HydrojetFilter
+    ) -> None:
+        """Set filter state (legacy value 2 is translated to a 1 write)."""
+        await self.set_device_state(device_id, {"filter_state": filtering})
+
+    async def hydrojet_spa_set_jets(self, device_id: str, jets: bool) -> None:
+        """Set hydrojets."""
+        await self.set_device_state(device_id, {"hydrojet_state": jets})
+
+    async def hydrojet_spa_set_heat(self, device_id: str, heat: HydrojetHeat) -> None:
+        """Set heater (legacy value 3 is translated to a 1 write)."""
+        await self.set_device_state(device_id, {"heater_state": heat})
+
+    async def hydrojet_spa_set_target_temp(
+        self, device_id: str, target_temp: int
+    ) -> None:
+        """Set target temperature (device-native unit)."""
         await self.set_device_state(
-            device_id, {"wave_state": level != BubblesLevel.OFF}
+            device_id, {"temperature_setting": int(target_temp)}
+        )
+
+    async def airjet_v01_spa_set_bubbles(
+        self, device_id: str, bubbles: BubblesLevel
+    ) -> None:
+        """Set bubbles from a BubblesLevel (any non-OFF becomes on)."""
+        await self.set_device_state(
+            device_id, {"wave_state": bubbles != BubblesLevel.OFF}
+        )
+
+    async def hydrojet_spa_set_bubbles(
+        self, device_id: str, bubbles: BubblesLevel
+    ) -> None:
+        """Set bubbles from a BubblesLevel (any non-OFF becomes on)."""
+        await self.set_device_state(
+            device_id, {"wave_state": bubbles != BubblesLevel.OFF}
         )
 
     async def pool_filter_set_power(self, device_id: str, power: bool) -> None:

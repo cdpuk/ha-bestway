@@ -13,8 +13,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import BestwayUpdateCoordinator
-from .aws_iot.api import AwsIotApi
-from .bestway.api import BestwayApi
+from .backend import BackendApi
 from .bestway.model import (
     BestwayDeviceStatus,
     BestwayDeviceType,
@@ -29,7 +28,6 @@ from .const import (
     Icon,
 )
 from .entity import BestwayEntity
-from .smartspa.api import SmartSpaApi
 
 # Maximum time an optimistic value is trusted before the entity falls back
 # to whatever the cloud last reported. Long enough to ride out a normal
@@ -43,8 +41,8 @@ class BestwaySwitchEntityDescription(SwitchEntityDescription):
     """Entity description for bestway spa switches."""
 
     value_fn: Callable[[BestwayDeviceStatus], bool]
-    turn_on_fn: Callable[[BestwayApi | AwsIotApi | SmartSpaApi, str], Awaitable[None]]
-    turn_off_fn: Callable[[BestwayApi | AwsIotApi | SmartSpaApi, str], Awaitable[None]]
+    turn_on_fn: Callable[[BackendApi, str], Awaitable[None]]
+    turn_off_fn: Callable[[BackendApi, str], Awaitable[None]]
 
 
 _AIRJET_SPA_POWER_SWITCH = BestwaySwitchEntityDescription(

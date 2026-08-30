@@ -14,6 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from custom_components.bestway.bestway.model import HydrojetFilter, HydrojetHeat
 from custom_components.bestway.smartspa.api import (
     SMARTSPA_APP_ID,
     SmartSpaApi,
@@ -351,8 +352,8 @@ async def test_control_translates_legacy_write_values(api):
     api._request = AsyncMock(return_value={"code": "200", "data": True})
 
     # HydrojetFilter.ON == 2, HydrojetHeat.ON == 3, bubbles max == 100
-    await api.hydrojet_spa_set_filter("6879c4d585ab", 2)
-    await api.hydrojet_spa_set_heat("6879c4d585ab", 3)
+    await api.hydrojet_spa_set_filter("6879c4d585ab", HydrojetFilter.ON)
+    await api.hydrojet_spa_set_heat("6879c4d585ab", HydrojetHeat.ON)
     await api.airjet_spa_set_bubbles("6879c4d585ab", True)
     await api.hydrojet_spa_set_target_temp("6879c4d585ab", 39)
 
@@ -369,7 +370,7 @@ async def test_control_off_values(api):
     api._request = AsyncMock(return_value={"code": "200", "data": True})
 
     await api.airjet_spa_set_bubbles("6879c4d585ab", False)
-    await api.hydrojet_spa_set_filter("6879c4d585ab", 0)
+    await api.hydrojet_spa_set_filter("6879c4d585ab", HydrojetFilter.OFF)
 
     sent = [json.loads(call[0][2]["data"]) for call in api._request.call_args_list]
     assert sent[0] == {"wave_state": 0}

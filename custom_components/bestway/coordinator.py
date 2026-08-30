@@ -11,12 +11,12 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .aws_iot.api import AwsIotApi
 from .aws_iot.websocket import AwsIotWebSocket
-from .bestway.api import BestwayApi, BestwayApiResults
+from .backend import BackendApi
+from .bestway.api import BestwayApiResults
 from .bestway.model import BestwayDeviceStatus
 from .bestway.websocket import GizwitsWebSocket
-from .smartspa.api import SmartSpaApi, SmartSpaAuthException
+from .smartspa.api import SmartSpaAuthException
 
 _LOGGER = getLogger(__name__)
 
@@ -28,7 +28,7 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
         self,
         hass: HomeAssistant,
         config_entry: ConfigEntry,
-        api: BestwayApi | AwsIotApi | SmartSpaApi,
+        api: BackendApi,
     ) -> None:
         """Initialize my coordinator."""
         super().__init__(

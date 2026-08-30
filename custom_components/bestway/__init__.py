@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from logging import getLogger
-from typing import TYPE_CHECKING
 
 from aiohttp import ClientSession
 from homeassistant.config_entries import ConfigEntry
@@ -14,6 +13,7 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from .backend import BackendApi
 from .bestway.api import BestwayApi
 from .bestway.model import BestwayDeviceType
 from .bestway.websocket import GizwitsWebSocket
@@ -39,10 +39,6 @@ from .const import (
 )
 from .coordinator import BestwayUpdateCoordinator
 
-if TYPE_CHECKING:
-    from .aws_iot.api import AwsIotApi
-    from .smartspa.api import SmartSpaApi
-
 _LOGGER = getLogger(__name__)
 _PLATFORMS: list[Platform] = [
     Platform.BINARY_SENSOR,
@@ -65,7 +61,7 @@ _MODE_DEPENDENT_BUBBLE_TYPES = (
 def _async_remove_orphaned_bubbles_entities(
     hass: HomeAssistant,
     entry: ConfigEntry,
-    api: BestwayApi | AwsIotApi | SmartSpaApi,
+    api: BackendApi,
 ) -> None:
     """Remove the bubbles control left over from the other bubbles mode.
 
