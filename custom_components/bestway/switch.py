@@ -15,7 +15,12 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import BestwayUpdateCoordinator
 from .aws_iot.api import AwsIotApi
 from .bestway.api import BestwayApi
-from .bestway.model import BestwayDeviceStatus, BestwayDeviceType, HydrojetFilter
+from .bestway.model import (
+    BestwayDeviceStatus,
+    BestwayDeviceType,
+    BubblesLevel,
+    HydrojetFilter,
+)
 from .const import (
     BUBBLES_MODE_DEFAULT,
     BUBBLES_MODE_ONOFF,
@@ -79,6 +84,22 @@ _AIRJET_V02_BUBBLES_SWITCH = BestwaySwitchEntityDescription(
     value_fn=lambda s: bool(s.attrs.get("wave")),
     turn_on_fn=lambda api, device_id: api.airjet_spa_set_bubbles(device_id, True),
     turn_off_fn=lambda api, device_id: api.airjet_spa_set_bubbles(device_id, False),
+)
+
+# V02 Hydrojet hardware also varies: some spas (e.g. F12D9Q San Francisco
+# HydroJet Pro) only have on/off bubbles physically. Honour the same
+# bubbles-mode option as the Airjet V02 family.
+_HYDROJET_BUBBLES_ONOFF_SWITCH = BestwaySwitchEntityDescription(
+    key="spa_wave_power",
+    name="Spa Bubbles",
+    icon=Icon.BUBBLES,
+    value_fn=lambda s: bool(s.attrs.get("wave")),
+    turn_on_fn=lambda api, device_id: api.hydrojet_spa_set_bubbles(
+        device_id, BubblesLevel.MAX
+    ),
+    turn_off_fn=lambda api, device_id: api.hydrojet_spa_set_bubbles(
+        device_id, BubblesLevel.OFF
+    ),
 )
 
 _AIRJET_SPA_LOCK_SWITCH = BestwaySwitchEntityDescription(
@@ -212,6 +233,23 @@ async def async_setup_entry(
                     config_entry,
                     device_id,
                     _AIRJET_V02_BUBBLES_SWITCH,
+                )
+            )
+
+        if (
+            device.device_type
+            in [
+                BestwayDeviceType.HYDROJET_V02,
+                BestwayDeviceType.HYDROJET_PRO_V02,
+            ]
+            and bubbles_mode == BUBBLES_MODE_ONOFF
+        ):
+            entities.append(
+                BestwaySwitch(
+                    coordinator,
+                    config_entry,
+                    device_id,
+                    _HYDROJET_BUBBLES_ONOFF_SWITCH,
                 )
             )
 

@@ -10,16 +10,21 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .bestway.api import BestwayApi
+from .bestway.model import BestwayDeviceType
 from .bestway.websocket import GizwitsWebSocket
 from .const import (
     BACKEND_AWS_IOT,
     BACKEND_GIZWITS,
     BACKEND_SMARTSPA,
+    BUBBLES_MODE_3WAY,
+    BUBBLES_MODE_DEFAULT,
     CONF_API_ROOT,
     CONF_API_ROOT_EU,
+    CONF_BUBBLES_MODE,
     CONF_PASSWORD,
     CONF_SMARTSPA_ACCOUNT,
     CONF_SMARTSPA_PASSWORD,
@@ -42,6 +47,44 @@ _PLATFORMS: list[Platform] = [
     Platform.SENSOR,
     Platform.SWITCH,
 ]
+
+
+_MODE_DEPENDENT_BUBBLE_TYPES = (
+    BestwayDeviceType.AIRJET_V02,
+    BestwayDeviceType.ULTRAFIT_AIRJET_V02,
+    BestwayDeviceType.HYDROJET_V02,
+    BestwayDeviceType.HYDROJET_PRO_V02,
+)
+
+
+def _async_remove_orphaned_bubbles_entities(
+    hass: HomeAssistant, entry: ConfigEntry, api
+) -> None:
+    """Remove the bubbles control left over from the other bubbles mode.
+
+    The bubbles-mode option swaps between a 3-way select
+    (unique_id ``<device>_bubbles``) and an on/off switch
+    (``<device>_spa_wave_power``). Whichever one the current mode does not
+    create would otherwise linger in the entity registry as a dead
+    "restored" entity after every mode change. Only the V02 device types
+    whose control is mode-dependent are touched; V01 devices always keep
+    their select.
+    """
+    registry = er.async_get(hass)
+    mode = entry.options.get(CONF_BUBBLES_MODE, BUBBLES_MODE_DEFAULT)
+    stale_suffix = "_spa_wave_power" if mode == BUBBLES_MODE_3WAY else "_bubbles"
+    stale_ids = {
+        f"{device_id}{stale_suffix}"
+        for device_id, device in api.devices.items()
+        if device.device_type in _MODE_DEPENDENT_BUBBLE_TYPES
+    }
+    for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
+        if entity.unique_id in stale_ids:
+            _LOGGER.debug(
+                "Removing orphaned bubbles entity %s (mode change)",
+                entity.entity_id,
+            )
+            registry.async_remove(entity.entity_id)
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -162,6 +205,8 @@ async def _async_setup_gizwits(
     # Store WebSocket on coordinator to avoid data structure change
     coordinator.websocket = ws_client
 
+    _async_remove_orphaned_bubbles_entities(hass, entry, api)
+
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
 
@@ -272,6 +317,8 @@ async def _async_setup_aws_iot(
     # Store WebSockets list on coordinator
     coordinator.websockets = websockets
 
+    _async_remove_orphaned_bubbles_entities(hass, entry, api)
+
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
 
@@ -302,19 +349,22 @@ async def _async_setup_smartspa(
 
     _LOGGER.info("Initializing SmartSpa API for %s (%s)", account, api_base)
 
-    # Always start with a fresh login: tokens are invalidated server-side
-    # without warning and carry no client-checkable expiry.
-    try:
-        token = await SmartSpaApi.authenticate(session, account, password, api_base)
-    except SmartSpaAuthException as ex:
-        _LOGGER.error("SmartSpa authentication failed: %s", ex)
-        raise ConfigEntryAuthFailed from ex
-    except SmartSpaException as ex:
-        raise ConfigEntryNotReady from ex
-
-    hass.config_entries.async_update_entry(
-        entry, data={**entry.data, CONF_SMARTSPA_TOKEN: token}
-    )
+    # Reuse the stored token when there is one: the client re-authenticates
+    # transparently on code 505, so a stale token costs one retried request
+    # rather than a failed setup, and reloads/restarts avoid a redundant
+    # login round-trip.
+    token = entry.data.get(CONF_SMARTSPA_TOKEN)
+    if not token:
+        try:
+            token = await SmartSpaApi.authenticate(session, account, password, api_base)
+        except SmartSpaAuthException as ex:
+            _LOGGER.error("SmartSpa authentication failed: %s", ex)
+            raise ConfigEntryAuthFailed from ex
+        except SmartSpaException as ex:
+            raise ConfigEntryNotReady from ex
+        hass.config_entries.async_update_entry(
+            entry, data={**entry.data, CONF_SMARTSPA_TOKEN: token}
+        )
 
     api = SmartSpaApi(session, account, password, api_base, token)
 
@@ -323,6 +373,8 @@ async def _async_setup_smartspa(
 
     if not api.devices:
         _LOGGER.warning("SmartSpa account %s has no devices", account)
+
+    _async_remove_orphaned_bubbles_entities(hass, entry, api)
 
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, _PLATFORMS)
@@ -363,9 +415,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Reload config entry."""
-    await async_unload_entry(hass, entry)
-    await async_setup_entry(hass, entry)
+    """Reload config entry.
+
+    Delegate to the config-entries framework rather than calling
+    unload/setup directly: the framework tracks entry state and retries
+    ConfigEntryNotReady with backoff, so a transient failure during an
+    options reload recovers by itself instead of leaving every entity
+    unavailable until the next restart.
+    """
+    await hass.config_entries.async_reload(entry.entry_id)
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
