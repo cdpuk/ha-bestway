@@ -55,14 +55,15 @@ uv run pre-commit run --all-files
 
 ## Architecture
 
-### Two backends, one coordinator
+### Multiple backends, one coordinator
 
-The integration supports two completely separate cloud backends, selected at config flow time:
+The integration supports three completely separate cloud backends, selected at config flow time:
 
 - **Gizwits** (`BACKEND_GIZWITS`) — V1 devices (up to ~2024). Uses `custom_components/bestway/bestway/` subpackage. Auth via username/password. WebSocket via `GizwitsWebSocket`.
 - **AWS IoT** (`BACKEND_AWS_IOT`) — V2 devices (2025+). Uses `custom_components/bestway/aws_iot/` subpackage. Auth via QR code scan (visitor ID). WebSocket via `AwsIotWebSocket`. Note: "UltraFit" is a pump name Bestway uses on both V1 and V2 hardware, so it does not imply this backend — see `docs/supported-devices.md`.
+- **SmartSpa** (`BACKEND_SMARTSPA`) — post-July-2026 Bestway Connect app. Uses `custom_components/bestway/smartspa/` subpackage. Auth via account/password. No WebSocket.
 
-`__init__.py` branches on `entry.data["backend"]` to call `_async_setup_gizwits` or `_async_setup_aws_iot`. Both paths create a `BestwayUpdateCoordinator`, which accepts either `BestwayApi` or `AwsIotApi` — these share the same interface so entities are backend-agnostic.
+`__init__.py` branches on `entry.data["backend"]` to call `_async_setup_gizwits`, `_async_setup_aws_iot` or `_async_setup_smartspa`. Every path creates a `BestwayUpdateCoordinator`, which accepts any `BackendApi` (`backend.py`) — the structural `Protocol` all three API classes satisfy, so entities are backend-agnostic. Add a fourth backend by implementing that `Protocol`, not by widening a union.
 
 ### Update flow
 
@@ -70,7 +71,7 @@ The coordinator polls every 30 seconds by default. When a WebSocket connects suc
 
 ### State cache pattern
 
-Both API classes maintain `_state_cache: dict[str, BestwayDeviceStatus]`. After sending a control command (e.g. `airjet_spa_set_power`), the API immediately updates the cache with the new value and a fresh timestamp. On the next poll, if the API response timestamp is older than the local cache, the poll result is discarded. This works around the Gizwits API's latency in reflecting POSTed changes.
+Each API class maintains `_state_cache: dict[str, BestwayDeviceStatus]`. After sending a control command (e.g. `airjet_spa_set_power`), the API immediately updates the cache with the new value and a fresh timestamp. On the next poll, if the API response timestamp is older than the local cache, the poll result is discarded. This works around the Gizwits API's latency in reflecting POSTed changes.
 
 ### Entity structure
 
@@ -85,3 +86,7 @@ Platform files (`switch.py`, `climate.py`, `sensor.py`, etc.) each define entiti
 ### Linting
 
 Pre-commit runs: `ruff` (lint + format), `mypy`, `codespell`, `yamllint`, `prettier`, `actionlint`. Ruff replaces black/flake8/isort. mypy is strict for `custom_components/` but relaxed for `tests/`.
+
+### Comments
+
+Don't write comments that just restate what an IDE derives on demand — lists of a type's implementers or subclasses, a function's callers, "used by X/Y/Z", "see also <module>". They rot silently when code moves. Comment the _why_ and any non-obvious contract, not the _where-used_.
