@@ -25,6 +25,15 @@
           "visitor_id": "Visitor ID (existing account, optional)",
           "qr_code": "QR Code (new account, optional)"
         }
+      },
+      "smartspa_auth": {
+        "title": "Bestway Connect account login (2026+ app)",
+        "description": "Log in with the account you use in the current Bestway Connect app. This replaces the share-QR flow, which Bestway removed in the July 2026 app update. If login succeeds but no devices are found, try a different region — accounts are frequently assigned to an unexpected region server-side.",
+        "data": {
+          "smartspa_account": "Account email",
+          "smartspa_password": "Password",
+          "smartspa_region": "Region"
+        }
       }
     },
     "error": {
@@ -49,7 +58,7 @@
         "title": "Bestway options",
         "description": "Adjust how the integration represents your spa in Home Assistant.",
         "data": {
-          "bubbles_mode": "Airjet V02 bubble control"
+          "bubbles_mode": "Bubble control (Airjet V02 / Hydrojet V02)"
         },
         "data_description": {
           "bubbles_mode": "Some Airjet V02 hot tubs only have on/off bubbles physically, even though the cloud accepts a 3-level value. Pick the option that matches your hardware. Changes apply after the integration reloads."

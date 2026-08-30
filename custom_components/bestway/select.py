@@ -27,6 +27,7 @@ from .const import (
     Icon,
 )
 from .entity import BestwayEntity
+from .smartspa.api import SmartSpaApi
 
 _BUBBLES_OPTIONS = {
     BubblesLevel.OFF: "OFF",
@@ -39,7 +40,9 @@ _BUBBLES_OPTIONS = {
 class BubblesSelectEntityDescription(SelectEntityDescription):
     """Describes bubbles selection."""
 
-    set_fn: Callable[[BestwayApi | AwsIotApi, str, BubblesLevel], Awaitable[None]]
+    set_fn: Callable[
+        [BestwayApi | AwsIotApi | SmartSpaApi, str, BubblesLevel], Awaitable[None]
+    ]
     get_fn: Callable[[int], BubblesLevel]
 
 
@@ -101,12 +104,21 @@ async def async_setup_entry(
                 )
             )
 
+        # V01 Hydrojets always have 3 levels. V02 Hydrojet hardware varies
+        # (F12D9Q San Francisco HydroJet Pro is on/off only), so V02 honours
+        # the same bubbles-mode option as the Airjet V02 family; on/off mode
+        # shows a switch from switch.py instead.
         if device.device_type in [
             BestwayDeviceType.HYDROJET_SPA,
             BestwayDeviceType.HYDROJET_PRO_SPA,
-            BestwayDeviceType.HYDROJET_V02,
-            BestwayDeviceType.HYDROJET_PRO_V02,
-        ]:
+        ] or (
+            device.device_type
+            in [
+                BestwayDeviceType.HYDROJET_V02,
+                BestwayDeviceType.HYDROJET_PRO_V02,
+            ]
+            and bubbles_mode == BUBBLES_MODE_3WAY
+        ):
             entities.append(
                 ThreeWaySpaBubblesSelect(
                     coordinator,

@@ -27,6 +27,7 @@ from .bestway.api import (
 from .const import (
     BACKEND_AWS_IOT,
     BACKEND_GIZWITS,
+    BACKEND_SMARTSPA,
     BUBBLES_MODE_3WAY,
     BUBBLES_MODE_DEFAULT,
     BUBBLES_MODE_ONOFF,
@@ -35,6 +36,10 @@ from .const import (
     CONF_API_ROOT_US,
     CONF_BUBBLES_MODE,
     CONF_PASSWORD,
+    CONF_SMARTSPA_ACCOUNT,
+    CONF_SMARTSPA_PASSWORD,
+    CONF_SMARTSPA_REGION,
+    CONF_SMARTSPA_TOKEN,
     CONF_UID,
     CONF_USER_TOKEN,
     CONF_USER_TOKEN_EXPIRY,
@@ -121,6 +126,13 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
                                         value=BACKEND_AWS_IOT,
                                         label="V02 - Bestway Connect (AWS IoT)",
                                     ),
+                                    selector.SelectOptionDict(
+                                        value=BACKEND_SMARTSPA,
+                                        label=(
+                                            "V02 - Bestway Connect account login "
+                                            "(app updated July 2026+, SmartSpa gateway)"
+                                        ),
+                                    ),
                                 ]
                             )
                         ),
@@ -133,6 +145,8 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
 
         if self._backend == BACKEND_GIZWITS:
             return await self.async_step_gizwits_auth()
+        elif self._backend == BACKEND_SMARTSPA:
+            return await self.async_step_smartspa_auth()
         else:
             return await self.async_step_aws_iot_auth()
 
@@ -363,6 +377,88 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
                 }
             ),
             errors=errors,
+        )
+
+    async def async_step_smartspa_auth(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Handle SmartSpa gateway auth (post-July-2026 Bestway Connect).
+
+        Uses plain account login against smart-spa-{region}-app.bestwaycorp.com,
+        which sidesteps the broken share-QR flow entirely (issue #135).
+        """
+        from .smartspa.api import (
+            SMARTSPA_ENDPOINTS,
+            SmartSpaApi,
+            SmartSpaAuthException,
+            SmartSpaException,
+        )
+
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_SMARTSPA_ACCOUNT): str,
+                vol.Required(CONF_SMARTSPA_PASSWORD): str,
+                vol.Required(
+                    CONF_SMARTSPA_REGION, default="EU"
+                ): selector.SelectSelector(
+                    selector.SelectSelectorConfig(
+                        options=[
+                            selector.SelectOptionDict(value="EU", label="Europe"),
+                            selector.SelectOptionDict(
+                                value="US", label="United States"
+                            ),
+                            selector.SelectOptionDict(value="CN", label="China"),
+                        ]
+                    )
+                ),
+            }
+        )
+
+        if user_input is None:
+            return self.async_show_form(step_id="smartspa_auth", data_schema=schema)
+
+        errors: dict[str, str] = {}
+        account = user_input[CONF_SMARTSPA_ACCOUNT]
+        password = user_input[CONF_SMARTSPA_PASSWORD]
+        region = user_input[CONF_SMARTSPA_REGION]
+        api_base = SMARTSPA_ENDPOINTS.get(region, SMARTSPA_ENDPOINTS["EU"])
+
+        session = async_get_clientsession(self.hass)
+        try:
+            token = await SmartSpaApi.authenticate(session, account, password, api_base)
+            api = SmartSpaApi(session, account, password, api_base, token)
+            await api.refresh_bindings()
+        except SmartSpaAuthException as ex:
+            _LOGGER.warning("SmartSpa login failed: %s", ex)
+            # Regions are frequently misassigned server-side; nudge the user.
+            errors["base"] = "auth_failed"
+        except (TimeoutError, SmartSpaException, ClientConnectionError) as ex:
+            _LOGGER.warning("SmartSpa connection failed: %s", ex)
+            errors["base"] = "cannot_connect"
+        except Exception:  # pylint: disable=broad-except
+            _LOGGER.exception("Unexpected exception during SmartSpa setup")
+            errors["base"] = "unknown"
+        else:
+            if not api.devices:
+                # Same server quirk as V02: wrong region logs in fine but
+                # reports zero devices. Ask the user to try another region.
+                errors["base"] = "no_devices_found"
+            else:
+                await self.async_set_unique_id(f"smartspa_{account.lower()}")
+                self._abort_if_unique_id_configured()
+                return self.async_create_entry(
+                    title=f"Bestway ({account})",
+                    data={
+                        "backend": BACKEND_SMARTSPA,
+                        CONF_SMARTSPA_ACCOUNT: account,
+                        CONF_SMARTSPA_PASSWORD: password,
+                        CONF_SMARTSPA_REGION: region,
+                        CONF_SMARTSPA_TOKEN: token,
+                    },
+                )
+
+        return self.async_show_form(
+            step_id="smartspa_auth", data_schema=schema, errors=errors
         )
 
 

@@ -8,6 +8,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .aws_iot.api import AwsIotApi
@@ -15,6 +16,7 @@ from .aws_iot.websocket import AwsIotWebSocket
 from .bestway.api import BestwayApi, BestwayApiResults
 from .bestway.model import BestwayDeviceStatus
 from .bestway.websocket import GizwitsWebSocket
+from .smartspa.api import SmartSpaApi, SmartSpaAuthException
 
 _LOGGER = getLogger(__name__)
 
@@ -26,7 +28,7 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
         self,
         hass: HomeAssistant,
         config_entry: ConfigEntry,
-        api: BestwayApi | AwsIotApi,
+        api: BestwayApi | AwsIotApi | SmartSpaApi,
     ) -> None:
         """Initialize my coordinator."""
         super().__init__(
@@ -47,9 +49,19 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
         This is the place to pre-process the data to lookup tables
         so entities can quickly look up their data.
         """
-        async with asyncio.timeout(10):
-            await self.api.refresh_bindings()
-            return await self.api.fetch_data()
+        # 30s (was 10s): the SmartSpa backend may transparently re-login and
+        # retry inside a poll cycle, and 10s was already reported as too tight
+        # for slow paths to Bestway's cloud (upstream PR #137).
+        try:
+            async with asyncio.timeout(30):
+                await self.api.refresh_bindings()
+                return await self.api.fetch_data()
+        except SmartSpaAuthException as err:
+            # Re-login already failed inside the API; the stored credentials no
+            # longer work. A re-auth config flow is out of scope for now, but HA
+            # should at least surface this as an auth problem rather than a
+            # generic update failure.
+            raise ConfigEntryAuthFailed(str(err)) from err
 
     def handle_websocket_update(self, device_id: str, attrs: dict[str, Any]) -> None:
         """Handle real-time device update from WebSocket.

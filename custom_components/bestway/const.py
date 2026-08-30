@@ -16,6 +16,13 @@ GIZWITS_APP_ID = "98754e684ec045528b073876c34c7348"
 # Backend types
 BACKEND_GIZWITS = "gizwits"
 BACKEND_AWS_IOT = "aws_iot"
+# Post-July-2026 Bestway Connect gateway (account login, no share QR) — issue #135
+BACKEND_SMARTSPA = "smartspa"
+
+CONF_SMARTSPA_ACCOUNT = "smartspa_account"
+CONF_SMARTSPA_PASSWORD = "smartspa_password"
+CONF_SMARTSPA_REGION = "smartspa_region"
+CONF_SMARTSPA_TOKEN = "smartspa_token"
 
 # Bubble UI mode (Airjet V02). Some V02 hardware (e.g. T53NN8 batches)
 # only has on/off bubbles physically, while others support 3 levels.
