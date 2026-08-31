@@ -1,0 +1,20 @@
+# Runs a real Home Assistant instance with this integration mounted live, for
+# manual dev testing.
+#
+#   docker compose up                        # test against latest HA
+#   HA_VERSION=2026.3 docker compose up      # test against another HA version
+#
+# HA is served on http://localhost:9125. debugpy listens on 5678.
+
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:${HA_VERSION:-stable}
+    container_name: bestway-dev
+    ports:
+      - "9125:8123"
+      - "5678:5678"
+    environment:
+      TZ: ${TZ:-Etc/UTC}
+    volumes:
+      - ./config:/config:rw
+      - ./custom_components/bestway:/config/custom_components/bestway:ro
