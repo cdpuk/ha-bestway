@@ -225,6 +225,12 @@ def test_normalize_state_partial_update_preserves_absent_fields():
     # warning/error also absent, should not be set
     assert "warning" not in normalized
     assert "error" not in normalized
+    # wave_state was not in the delta either - regression test for a bug
+    # where a missing wave_state silently injected wave=0 into every delta
+    # lacking it, stomping bubbles to OFF on every unrelated WS update.
+    assert "wave" not in normalized
+    # word3 was always injected but never read anywhere; dropped.
+    assert "word3" not in normalized
     # The field that was present should be set
     assert normalized["Tnow"] == 30
 

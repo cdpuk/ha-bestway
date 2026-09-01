@@ -126,19 +126,6 @@ class AwsIotApi:
         error_code = device_state.get("error_code")
         power_state = device_state.get("power_state")
         temperature_unit = device_state.get("temperature_unit", 1)
-        wave_state = device_state.get("wave_state", 0)
-
-        # V02 wave_state actual values: 0=OFF, 40=MEDIUM, 100=HIGH.
-        # Pass the raw device value straight through. Both bubble maps already
-        # recognise 40 as MEDIUM: HYDROJET_BUBBLES_MAP natively, and
-        # AIRJET_V01_BUBBLES_MAP since PR #101 widened its MEDIUM read_values to
-        # [40, 41, 50, 51]. The previous code rewrote 40 -> 50, which Hydrojet's
-        # map rejected ("Unexpected API value 50 - assuming OFF"), so Hydrojet
-        # MEDIUM always fell back to displaying OFF (BUG-SPA-6).
-        wave_normalized = wave_state
-        _LOGGER.debug(
-            "normalize wave_state: raw=%s -> wave=%s", wave_state, wave_normalized
-        )
 
         # Build normalized dict, only including fields with actual values
         # This prevents None values from overwriting existing data during merges
@@ -166,8 +153,13 @@ class AwsIotApi:
             # 3 = HEATING (actively heating toward target)
             # 4 = TARGET_REACHED (at target temperature, maintaining)
             normalized["heat"] = device_state["heater_state"]
-        if wave_state is not None:
-            normalized["wave"] = wave_normalized
+        if "wave_state" in device_state:
+            # V02 wave_state actual values: 0=OFF, 40=MEDIUM, 100=HIGH. Pass
+            # the raw device value straight through. Both bubble maps
+            # already recognise 40 as MEDIUM: HYDROJET_BUBBLES_MAP natively,
+            # and AIRJET_V01_BUBBLES_MAP since PR #101 widened its MEDIUM
+            # read_values to [40, 41, 50, 51].
+            normalized["wave"] = device_state["wave_state"]
         if device_state.get("filter_state") is not None:
             normalized["filter"] = device_state["filter_state"]
         if device_state.get("hydrojet_state") is not None:
@@ -192,9 +184,6 @@ class AwsIotApi:
         # Status
         if device_state.get("is_online") is not None:
             normalized["is_online"] = device_state["is_online"]
-
-        # V01-specific fields for compatibility
-        normalized["word3"] = 0  # Target reached flag (unknown for V02)
 
         return normalized
 
