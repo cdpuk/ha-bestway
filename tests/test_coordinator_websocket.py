@@ -11,10 +11,10 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 
 from custom_components.bestway.bestway.api import BestwayApi
 from custom_components.bestway.const import (
-    BACKEND_GIZWITS,
     CONF_API_ROOT,
     CONF_API_ROOT_EU,
     DOMAIN,
+    Backend,
 )
 from custom_components.bestway.coordinator import BestwayUpdateCoordinator
 from custom_components.bestway.model import BestwayDevice, BestwayDeviceType
@@ -82,7 +82,7 @@ async def test_coordinator_websocket_update_produces_typed_status(hass: HomeAssi
         wifi_soft_version="1.0",
         wifi_hard_version="1.0",
         is_online=True,
-        backend=BACKEND_GIZWITS,
+        backend=Backend.GIZWITS,
     )
     assert api.devices["device123"].device_type == BestwayDeviceType.AIRJET_V01_SPA
 

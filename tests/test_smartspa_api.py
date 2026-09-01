@@ -14,7 +14,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from custom_components.bestway.const import BACKEND_SMARTSPA
+from custom_components.bestway.const import Backend
 from custom_components.bestway.model import BestwayDevice, BubblesLevel, HeaterState
 from custom_components.bestway.smartspa.api import (
     SMARTSPA_APP_ID,
@@ -43,7 +43,7 @@ def _device(device_id: str, product_key: str, product_series: str) -> BestwayDev
         wifi_soft_version="",
         wifi_hard_version="",
         is_online=True,
-        backend=BACKEND_SMARTSPA,
+        backend=Backend.SMARTSPA,
         product_id=product_key,
         product_series=product_series,
     )

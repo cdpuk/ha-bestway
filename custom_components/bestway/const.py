@@ -19,14 +19,8 @@ class Backend(StrEnum):
 
     GIZWITS = "gizwits"
     AWS_IOT = "aws_iot"
-    # Post-July-2026 Bestway Connect gateway (account login, no share QR) — issue #135
     SMARTSPA = "smartspa"
 
-
-# Aliases kept importable for call sites that use these names directly.
-BACKEND_GIZWITS = Backend.GIZWITS
-BACKEND_AWS_IOT = Backend.AWS_IOT
-BACKEND_SMARTSPA = Backend.SMARTSPA
 
 CONF_SMARTSPA_ACCOUNT = "smartspa_account"
 CONF_SMARTSPA_PASSWORD = "smartspa_password"
