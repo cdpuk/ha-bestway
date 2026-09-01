@@ -17,19 +17,18 @@ import pytest
 
 from custom_components.bestway import binary_sensor, climate, number, select, sensor
 from custom_components.bestway import switch as switch_platform
-from custom_components.bestway.bestway.api import BestwayApiResults
-from custom_components.bestway.bestway.model import (
-    BestwayDevice,
-    BestwayDeviceStatus,
-    BestwayDeviceType,
-)
 from custom_components.bestway.const import (
-    BACKEND_AWS_IOT,
-    BACKEND_GIZWITS,
     BUBBLES_MODE_3WAY,
     BUBBLES_MODE_ONOFF,
     CONF_BUBBLES_MODE,
     DOMAIN,
+    Backend,
+)
+from custom_components.bestway.model import (
+    BestwayApiResults,
+    BestwayDevice,
+    BestwayDeviceStatus,
+    BestwayDeviceType,
 )
 
 _ENTRY_ID = "test_entry"
@@ -71,7 +70,7 @@ def _make_device(device_type: BestwayDeviceType) -> BestwayDevice:
             wifi_soft_version="1.0",
             wifi_hard_version="1.0",
             is_online=True,
-            backend=BACKEND_AWS_IOT,
+            backend=Backend.AWS_IOT,
             product_id="TESTMODEL",
             product_series=_AWS_PRODUCT_SERIES[device_type],
         )
@@ -87,7 +86,7 @@ def _make_device(device_type: BestwayDeviceType) -> BestwayDevice:
         wifi_soft_version="1.0",
         wifi_hard_version="1.0",
         is_online=True,
-        backend=BACKEND_GIZWITS,
+        backend=Backend.GIZWITS,
     )
 
 

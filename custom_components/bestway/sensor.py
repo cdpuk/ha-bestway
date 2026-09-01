@@ -13,10 +13,10 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
 from . import BestwayUpdateCoordinator
-from .bestway.model import BestwayDevice
 from .const import DOMAIN, Icon
 from .entity import BestwayEntity
 from .features import VersionSensorSet, features_for
+from .model import BestwayDevice, DeviceStatus
 
 
 @dataclass
@@ -131,7 +131,7 @@ async def async_setup_entry(
                             icon=Icon.SOFTWARE,
                             entity_category=EntityCategory.DIAGNOSTIC,
                         ),
-                        "wifi_version",
+                        lambda status: status.wifi_version,
                     ),
                     StateSensor(
                         coordinator,
@@ -143,7 +143,7 @@ async def async_setup_entry(
                             icon=Icon.SOFTWARE,
                             entity_category=EntityCategory.DIAGNOSTIC,
                         ),
-                        "trd_version",
+                        lambda status: status.trd_version,
                     ),
                     StateSensor(
                         coordinator,
@@ -155,7 +155,7 @@ async def async_setup_entry(
                             icon=Icon.PROTOCOL,
                             entity_category=EntityCategory.DIAGNOSTIC,
                         ),
-                        "ota_status",
+                        lambda status: status.ota_status,
                     ),
                 ]
             )
@@ -190,7 +190,7 @@ class DeviceSensor(BestwayEntity, SensorEntity):
 
 
 class StateSensor(BestwayEntity, SensorEntity):
-    """A sensor based on device state attributes (for V02 devices)."""
+    """A sensor based on typed device status fields (for V02 devices)."""
 
     def __init__(
         self,
@@ -198,17 +198,17 @@ class StateSensor(BestwayEntity, SensorEntity):
         config_entry: ConfigEntry,
         device_id: str,
         entity_description: SensorEntityDescription,
-        state_key: str,
+        value_fn: Callable[[DeviceStatus], StateType],
     ) -> None:
         """Initialize the sensor."""
         super().__init__(coordinator, config_entry, device_id)
         self.entity_description = entity_description
-        self._state_key = state_key
+        self._value_fn = value_fn
         self._attr_unique_id = f"{device_id}_{entity_description.key}"
 
     @property
     def native_value(self) -> StateType:
-        """Return value from state attrs."""
+        """Return value from typed device status."""
         if self.status is not None:
-            return self.status.attrs.get(self._state_key)
+            return self._value_fn(self.status)
         return None

@@ -1,76 +1,22 @@
-"""Bestway API models."""
+"""Gizwits wire-vocabulary models.
+
+Backend-neutral types (`BestwayDevice`, `BestwayDeviceType`, `BubblesLevel`,
+`TemperatureUnit`, `DeviceStatus`, `BestwayApiResults`, ...) live in the
+top-level `..model` module instead. What's left in this module is
+genuinely Gizwits wire language: the raw integer/enum values POSTed to and
+read from the Gizwits control API, which the other two backends translate
+away from as part of normalizing into the shared vocabulary.
+"""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum, IntEnum, auto
+from enum import IntEnum
 from logging import getLogger
-from typing import Any
 
-from ..const import BACKEND_AWS_IOT, BACKEND_GIZWITS, BACKEND_SMARTSPA
+from ..model import BubblesLevel
 
 _LOGGER = getLogger(__name__)
-
-
-class BestwayDeviceType(Enum):
-    """Bestway device types."""
-
-    AIRJET_SPA = "Airjet"
-    AIRJET_V01_SPA = "Airjet V01"
-    ULTRAFIT_SPA = "UltraFit"
-    HYDROJET_SPA = "Hydrojet"
-    HYDROJET_PRO_SPA = "Hydrojet Pro"
-    POOL_FILTER = "Pool Filter"
-    UNKNOWN = "Unknown"
-    # V02 backend device types (AWS IoT)
-    AIRJET_V02 = "Airjet V02"
-    ULTRAFIT_AIRJET_V02 = "Ultrafit Airjet V02"
-    HYDROJET_V02 = "Hydrojet V02"
-    HYDROJET_PRO_V02 = "Hydrojet Pro V02"
-
-    @staticmethod
-    def from_api_product_name(product_name: str) -> BestwayDeviceType:
-        """Get the enum value based on the 'product_name' field in the API response."""
-
-        if product_name == "Airjet":
-            return BestwayDeviceType.AIRJET_SPA
-        if product_name == "Airjet_V01":
-            return BestwayDeviceType.AIRJET_V01_SPA
-        if product_name == "UltraFit":
-            return BestwayDeviceType.ULTRAFIT_SPA
-        if product_name == "Hydrojet":
-            return BestwayDeviceType.HYDROJET_SPA
-        if product_name == "Hydrojet_Pro":
-            return BestwayDeviceType.HYDROJET_PRO_SPA
-        if product_name == "泳池过滤器":
-            # Chinese translates to "pool filter"
-            return BestwayDeviceType.POOL_FILTER
-        return BestwayDeviceType.UNKNOWN
-
-    @staticmethod
-    def from_aws_product_series(product_series: str) -> BestwayDeviceType:
-        """Get the enum value based on AWS IoT 'product_series' field.
-
-        Args:
-            product_series: Product series from AWS IoT API (e.g., "AIRJET", "HYDROJET")
-
-        Returns:
-            Corresponding V02 device type enum value
-        """
-        mapping = {
-            "AIRJET": BestwayDeviceType.AIRJET_V02,
-            "ULTRAFIT_AIRJET": BestwayDeviceType.ULTRAFIT_AIRJET_V02,
-            "HYDROJET": BestwayDeviceType.HYDROJET_V02,
-            "HYDROJET_PRO": BestwayDeviceType.HYDROJET_PRO_V02,
-        }
-        return mapping.get(product_series, BestwayDeviceType.UNKNOWN)
-
-
-class TemperatureUnit(Enum):
-    """Temperature units supported by the spa."""
-
-    CELSIUS = auto()
-    FAHRENHEIT = auto()
 
 
 class HydrojetFilter(IntEnum):
@@ -85,14 +31,6 @@ class HydrojetHeat(IntEnum):
 
     OFF = 0
     ON = 3
-
-
-class BubblesLevel(Enum):
-    """Bubbles levels available to a range of spa models."""
-
-    OFF = auto()
-    MEDIUM = auto()
-    MAX = auto()
 
 
 class BubblesValues:
@@ -160,41 +98,6 @@ AIRJET_V01_BUBBLES_MAP = BubblesMapping(BV(0), BV(50, [40, 41, 50, 51]), BV(100)
 # logging "Unexpected API value 42 - assuming OFF" and showing the tile as OFF.
 # Write value stays 40 (the device accepts 40 as the "go to medium" command).
 HYDROJET_BUBBLES_MAP = BubblesMapping(BV(0), BV(40, [40, 41, 42, 43]), BV(100))
-
-
-@dataclass
-class BestwayDevice:
-    """A device under a user's account."""
-
-    protocol_version: int
-    device_id: str
-    product_name: str  # For Gizwits: "Airjet", "Hydrojet_Pro", etc.
-    alias: str
-    mcu_soft_version: str
-    mcu_hard_version: str
-    wifi_soft_version: str
-    wifi_hard_version: str
-    is_online: bool
-    ws_host: str = "m2m.gizwits.com"  # WebSocket hostname from bindings API
-    ws_port: int = 8880  # WebSocket port from bindings API
-    backend: str = BACKEND_GIZWITS  # Backend type: gizwits or aws_iot
-    product_id: str | None = None  # For AWS IoT: model ID like "T53NN8"
-    product_series: str | None = None  # For AWS IoT: series like "AIRJET", "HYDROJET"
-
-    @property
-    def device_type(self) -> BestwayDeviceType:
-        """Get the derived device type based on backend."""
-        if self.backend in (BACKEND_AWS_IOT, BACKEND_SMARTSPA) and self.product_series:
-            return BestwayDeviceType.from_aws_product_series(self.product_series)
-        return BestwayDeviceType.from_api_product_name(self.product_name)
-
-
-@dataclass
-class BestwayDeviceStatus:
-    """A snapshot of the status of a spa (i.e. Lay-Z-Spa) device."""
-
-    timestamp: int
-    attrs: dict[str, Any]
 
 
 @dataclass

@@ -11,7 +11,7 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.bestway import (
     BestwayUpdateCoordinator,
 )
-from custom_components.bestway.bestway.model import BestwayDevice, BestwayUserToken
+from custom_components.bestway.bestway.model import BestwayUserToken
 from custom_components.bestway.const import (
     CONF_API_ROOT,
     CONF_API_ROOT_EU,
@@ -22,6 +22,7 @@ from custom_components.bestway.const import (
     CONF_USERNAME,
     DOMAIN,
 )
+from custom_components.bestway.model import BestwayDevice
 
 
 async def test_setup_unload_and_reload_entry(hass: HomeAssistant, bypass_get_data):

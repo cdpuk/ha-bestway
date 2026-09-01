@@ -23,6 +23,8 @@ from typing import Any
 import websockets
 from websockets.asyncio.client import ClientConnection
 
+from ..translation import v01_attrs_from_shadow
+
 _LOGGER = logging.getLogger(__name__)
 
 # Regional WebSocket endpoints (from official app ServiceConfig.java)
@@ -284,10 +286,7 @@ class AwsIotWebSocket:
             len(state),
         )
 
-        # Normalize AWS field names to Gizwits V01 equivalents using shared method
-        from .api import AwsIotApi
-
-        normalized = AwsIotApi.normalize_aws_state(state)
+        normalized = v01_attrs_from_shadow(state)
 
         # Call coordinator callback with (device_id, normalized_attrs)
         if self._update_callback is not None:

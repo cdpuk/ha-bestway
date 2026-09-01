@@ -25,9 +25,6 @@ from .bestway.api import (
     BestwayUserDoesNotExistException,
 )
 from .const import (
-    BACKEND_AWS_IOT,
-    BACKEND_GIZWITS,
-    BACKEND_SMARTSPA,
     BUBBLES_MODE_3WAY,
     BUBBLES_MODE_DEFAULT,
     BUBBLES_MODE_ONOFF,
@@ -45,6 +42,7 @@ from .const import (
     CONF_USER_TOKEN_EXPIRY,
     CONF_USERNAME,
     DOMAIN,
+    Backend,
 )
 
 _LOGGER = getLogger(__name__)
@@ -119,15 +117,15 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
                             selector.SelectSelectorConfig(
                                 options=[
                                     selector.SelectOptionDict(
-                                        value=BACKEND_GIZWITS,
+                                        value=Backend.GIZWITS,
                                         label="V01 - Bestway Smart Hub (Gizwits)",
                                     ),
                                     selector.SelectOptionDict(
-                                        value=BACKEND_AWS_IOT,
+                                        value=Backend.AWS_IOT,
                                         label="V02 - Bestway Connect (AWS IoT)",
                                     ),
                                     selector.SelectOptionDict(
-                                        value=BACKEND_SMARTSPA,
+                                        value=Backend.SMARTSPA,
                                         label=(
                                             "V02 - Bestway Connect account login "
                                             "(app updated July 2026+, SmartSpa gateway)"
@@ -143,9 +141,9 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
         # Store backend choice and route to appropriate auth flow
         self._backend = user_input["backend"]
 
-        if self._backend == BACKEND_GIZWITS:
+        if self._backend == Backend.GIZWITS:
             return await self.async_step_gizwits_auth()
-        elif self._backend == BACKEND_SMARTSPA:
+        elif self._backend == Backend.SMARTSPA:
             return await self.async_step_smartspa_auth()
         else:
             return await self.async_step_aws_iot_auth()
@@ -174,7 +172,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
             errors["base"] = "unknown_connection_error"
         else:
             # Add backend field for Gizwits
-            config_entry_data["backend"] = BACKEND_GIZWITS
+            config_entry_data["backend"] = Backend.GIZWITS
             return self.async_create_entry(
                 title=user_input[CONF_USERNAME], data=config_entry_data
             )
@@ -341,7 +339,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(
                     title=f"Bestway Spa (V02 - {region})",
                     data={
-                        "backend": BACKEND_AWS_IOT,
+                        "backend": Backend.AWS_IOT,
                         "visitor_id": visitor_id,
                         "token": token,
                         "location": "GB",  # Legacy field
@@ -384,8 +382,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle SmartSpa gateway auth (post-July-2026 Bestway Connect).
 
-        Uses plain account login against smart-spa-{region}-app.bestwaycorp.com,
-        which sidesteps the broken share-QR flow entirely (issue #135).
+        Uses plain account login against smart-spa-{region}-app.bestwaycorp.com.
         """
         from .smartspa.api import (
             SMARTSPA_ENDPOINTS,
@@ -449,7 +446,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(
                     title=f"Bestway ({account})",
                     data={
-                        "backend": BACKEND_SMARTSPA,
+                        "backend": Backend.SMARTSPA,
                         CONF_SMARTSPA_ACCOUNT: account,
                         CONF_SMARTSPA_PASSWORD: password,
                         CONF_SMARTSPA_REGION: region,

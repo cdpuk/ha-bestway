@@ -61,11 +61,9 @@ class PoolFilterTimeNumber(BestwayEntity, NumberEntity):
     def native_value(self) -> float | None:
         """Get the number of hours to stay on for."""
         if self.status is not None:
-            hours = self.status.attrs["time"]
-            if isinstance(hours, int):
-                return hours
+            return self.status.filter_timer_hours
         return None
 
     async def async_set_native_value(self, value: float) -> None:
         """Update the current value."""
-        await self.coordinator.api.pool_filter_set_time(self.device_id, int(value))
+        await self.coordinator.api.set_pool_timer(self.device_id, int(value))

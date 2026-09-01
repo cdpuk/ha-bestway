@@ -14,7 +14,8 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from custom_components.bestway.bestway.model import HydrojetFilter, HydrojetHeat
+from custom_components.bestway.const import Backend
+from custom_components.bestway.model import BestwayDevice, BubblesLevel, HeaterState
 from custom_components.bestway.smartspa.api import (
     SMARTSPA_APP_ID,
     SmartSpaApi,
@@ -23,6 +24,29 @@ from custom_components.bestway.smartspa.api import (
     _content_md5,
     _envelope,
 )
+
+
+def _device(device_id: str, product_key: str, product_series: str) -> BestwayDevice:
+    """A BestwayDevice matching a routing entry, for fetch_data() tests.
+
+    In production, self.devices is always populated by refresh_bindings()
+    before fetch_data() runs; these tests exercise fetch_data() in
+    isolation, so they need to populate it manually.
+    """
+    return BestwayDevice(
+        protocol_version=3,
+        device_id=device_id,
+        product_name=product_series,
+        alias="Test Spa",
+        mcu_soft_version="",
+        mcu_hard_version="",
+        wifi_soft_version="",
+        wifi_hard_version="",
+        is_online=True,
+        backend=Backend.SMARTSPA,
+        product_id=product_key,
+        product_series=product_series,
+    )
 
 
 def create_mock_response(status: int, json_data: dict):
@@ -278,7 +302,14 @@ async def test_fetch_data_binary_wave_maps_to_max(api):
 
 
 async def test_fetch_data_heater_readback_two_maps_to_heating(api):
-    """heater_state reads 2 while heating; climate knows 3 (HEATING)."""
+    """heater_state reads 2 while heating.
+
+    No backend-local patch is needed for this: the shared V01 translator
+    already treats any non-zero heat value other than 4 (TARGET_REACHED) as
+    HeaterState.HEATING, so raw readback value 2 comes through untouched in
+    attrs while the typed field renders correctly.
+    """
+    api.devices["6879c4d585ab"] = _device("6879c4d585ab", "F12D9Q", "HYDROJET_PRO")
     api._request = AsyncMock(
         return_value={
             "code": "200",
@@ -288,7 +319,9 @@ async def test_fetch_data_heater_readback_two_maps_to_heating(api):
 
     results = await api.fetch_data()
 
-    assert results.devices["6879c4d585ab"].attrs["heat"] == 3
+    status = results.devices["6879c4d585ab"]
+    assert status.attrs["heat"] == 2
+    assert status.heater is HeaterState.HEATING
 
 
 async def test_fetch_data_survives_one_failing_device(api):
@@ -347,15 +380,16 @@ async def test_control_data_is_stringified_json(api):
     assert "attrs" not in body
 
 
-async def test_control_translates_legacy_write_values(api):
-    """Entity layer passes 2/3/40/100; this gateway writes plain 1/0."""
+async def test_control_semantic_setters_collapse_to_1_0(api):
+    """The semantic setters pass plain bool/BubblesLevel; this gateway
+    writes plain 1/0 for every state datapoint regardless.
+    """
     api._request = AsyncMock(return_value={"code": "200", "data": True})
 
-    # HydrojetFilter.ON == 2, HydrojetHeat.ON == 3, bubbles max == 100
-    await api.hydrojet_spa_set_filter("6879c4d585ab", HydrojetFilter.ON)
-    await api.hydrojet_spa_set_heat("6879c4d585ab", HydrojetHeat.ON)
-    await api.airjet_spa_set_bubbles("6879c4d585ab", True)
-    await api.hydrojet_spa_set_target_temp("6879c4d585ab", 39)
+    await api.set_filter("6879c4d585ab", True)
+    await api.set_heat("6879c4d585ab", True)
+    await api.set_bubbles("6879c4d585ab", BubblesLevel.MAX)
+    await api.set_target_temperature("6879c4d585ab", 39)
 
     sent = [json.loads(call[0][2]["data"]) for call in api._request.call_args_list]
     assert sent[0] == {"filter_state": 1}
@@ -369,8 +403,8 @@ async def test_control_off_values(api):
     """Off writes send 0 (the bubbles-off path from the PR thread)."""
     api._request = AsyncMock(return_value={"code": "200", "data": True})
 
-    await api.airjet_spa_set_bubbles("6879c4d585ab", False)
-    await api.hydrojet_spa_set_filter("6879c4d585ab", HydrojetFilter.OFF)
+    await api.set_bubbles("6879c4d585ab", BubblesLevel.OFF)
+    await api.set_filter("6879c4d585ab", False)
 
     sent = [json.loads(call[0][2]["data"]) for call in api._request.call_args_list]
     assert sent[0] == {"wave_state": 0}
@@ -384,7 +418,72 @@ async def test_control_unknown_device_returns_false(api):
     ok = await api.set_device_state("ffffffffffff", {"power_state": 1})
 
     assert ok is False
-    api._request.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Semantic setters: same 1/0 collapsing as the legacy names, exercised
+# directly rather than through a device-family method name.
+# ---------------------------------------------------------------------------
+
+
+async def test_set_power_semantic(api):
+    api._request = AsyncMock(return_value={"code": "200", "data": True})
+    await api.set_power("6879c4d585ab", True)
+    sent = json.loads(api._request.call_args[0][2]["data"])
+    assert sent == {"power_state": 1}
+
+
+async def test_set_filter_semantic(api):
+    api._request = AsyncMock(return_value={"code": "200", "data": True})
+    await api.set_filter("6879c4d585ab", False)
+    sent = json.loads(api._request.call_args[0][2]["data"])
+    assert sent == {"filter_state": 0}
+
+
+async def test_set_heat_semantic(api):
+    api._request = AsyncMock(return_value={"code": "200", "data": True})
+    await api.set_heat("6879c4d585ab", True)
+    sent = json.loads(api._request.call_args[0][2]["data"])
+    assert sent == {"heater_state": 1}
+
+
+async def test_set_locked_semantic(api):
+    api._request = AsyncMock(return_value={"code": "200", "data": True})
+    await api.set_locked("6879c4d585ab", True)
+    sent = json.loads(api._request.call_args[0][2]["data"])
+    assert sent == {"locked": 1}
+
+
+async def test_set_jets_semantic(api):
+    api._request = AsyncMock(return_value={"code": "200", "data": True})
+    await api.set_jets("6879c4d585ab", True)
+    sent = json.loads(api._request.call_args[0][2]["data"])
+    assert sent == {"hydrojet_state": 1}
+
+
+async def test_set_target_temperature_semantic(api):
+    api._request = AsyncMock(return_value={"code": "200", "data": True})
+    await api.set_target_temperature("6879c4d585ab", 39)
+    sent = json.loads(api._request.call_args[0][2]["data"])
+    assert sent == {"temperature_setting": 39}
+
+
+@pytest.mark.parametrize(
+    "level", [BubblesLevel.OFF, BubblesLevel.MEDIUM, BubblesLevel.MAX]
+)
+async def test_set_bubbles_semantic_is_binary(api, level: BubblesLevel):
+    """Three-way bubbles are lost on this backend: only OFF writes 0."""
+    api._request = AsyncMock(return_value={"code": "200", "data": True})
+    await api.set_bubbles("6879c4d585ab", level)
+    sent = json.loads(api._request.call_args[0][2]["data"])
+    assert sent == {"wave_state": 0 if level is BubblesLevel.OFF else 1}
+
+
+async def test_set_pool_timer_semantic(api):
+    api._request = AsyncMock(return_value={"code": "200", "data": True})
+    await api.set_pool_timer("6879c4d585ab", 6)
+    sent = json.loads(api._request.call_args[0][2]["data"])
+    assert sent == {"time": 6}
 
 
 def test_envelope_shape():

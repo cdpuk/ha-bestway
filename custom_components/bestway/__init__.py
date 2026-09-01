@@ -15,12 +15,8 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .backend import BackendApi
 from .bestway.api import BestwayApi
-from .bestway.model import BestwayDeviceType
 from .bestway.websocket import GizwitsWebSocket
 from .const import (
-    BACKEND_AWS_IOT,
-    BACKEND_GIZWITS,
-    BACKEND_SMARTSPA,
     BUBBLES_MODE_3WAY,
     BUBBLES_MODE_DEFAULT,
     CONF_API_ROOT,
@@ -36,8 +32,10 @@ from .const import (
     CONF_USER_TOKEN_EXPIRY,
     CONF_USERNAME,
     DOMAIN,
+    Backend,
 )
 from .coordinator import BestwayUpdateCoordinator
+from .features import bubbles_mode_dependent
 
 _LOGGER = getLogger(__name__)
 _PLATFORMS: list[Platform] = [
@@ -48,14 +46,6 @@ _PLATFORMS: list[Platform] = [
     Platform.SENSOR,
     Platform.SWITCH,
 ]
-
-
-_MODE_DEPENDENT_BUBBLE_TYPES = (
-    BestwayDeviceType.AIRJET_V02,
-    BestwayDeviceType.ULTRAFIT_AIRJET_V02,
-    BestwayDeviceType.HYDROJET_V02,
-    BestwayDeviceType.HYDROJET_PRO_V02,
-)
 
 
 def _async_remove_orphaned_bubbles_entities(
@@ -69,9 +59,9 @@ def _async_remove_orphaned_bubbles_entities(
     (unique_id ``<device>_bubbles``) and an on/off switch
     (``<device>_spa_wave_power``). Whichever one the current mode does not
     create would otherwise linger in the entity registry as a dead
-    "restored" entity after every mode change. Only the V02 device types
-    whose control is mode-dependent are touched; V01 devices always keep
-    their select.
+    "restored" entity after every mode change. Only device types whose
+    control is mode-dependent are touched (see DeviceFeatures.bubbles_mode_option
+    in features.py); V01 devices always keep their select.
     """
     registry = er.async_get(hass)
     mode = entry.options.get(CONF_BUBBLES_MODE, BUBBLES_MODE_DEFAULT)
@@ -79,7 +69,7 @@ def _async_remove_orphaned_bubbles_entities(
     stale_ids = {
         f"{device_id}{stale_suffix}"
         for device_id, device in api.devices.items()
-        if device.device_type in _MODE_DEPENDENT_BUBBLE_TYPES
+        if bubbles_mode_dependent(device)
     }
     for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
         if entity.unique_id in stale_ids:
@@ -94,16 +84,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up bestway from a config entry."""
 
     # Detect backend (default to Gizwits for backwards compatibility)
-    backend = entry.data.get("backend", BACKEND_GIZWITS)
+    backend = entry.data.get("backend", Backend.GIZWITS)
     _LOGGER.info("Setting up Bestway integration with %s backend", backend)
 
     session = async_get_clientsession(hass)
 
     # Branch based on backend
-    if backend == BACKEND_AWS_IOT:
+    if backend == Backend.AWS_IOT:
         # AWS IoT V02 backend
         return await _async_setup_aws_iot(hass, entry, session)
-    elif backend == BACKEND_SMARTSPA:
+    elif backend == Backend.SMARTSPA:
         # SmartSpa gateway (post-July-2026 Bestway Connect, account login)
         return await _async_setup_smartspa(hass, entry, session)
     else:

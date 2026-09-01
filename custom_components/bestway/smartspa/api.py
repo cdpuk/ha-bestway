@@ -6,9 +6,6 @@ a third backend (smart-spa-{eu,us,cn}-app.bestwaycorp.com, a React Native
 invitation that anonymous visitor accounts cannot redeem (issue #135), but the
 new gateway supports plain account login, which sidesteps the QR flow entirely.
 
-Protocol as reverse-engineered and verified end-to-end against live spas in
-https://github.com/cdpuk/ha-bestway/issues/135 (Aug 2026):
-
 * Login:   POST app/smart_home/login/pwd
            body is an ENVELOPE: {"appKey": <appid>, "data": {...}, "version": "1.0"}
            -> data.userToken
@@ -17,7 +14,7 @@ https://github.com/cdpuk/ha-bestway/issues/135 (Aug 2026):
 * Control: POST app/device/control/{productKey}/{mac}
            body: {"appKey": <appid>, "data": "<JSON STRING>", "version": "1.0"}
 
-CRITICAL quirks (all confirmed on live hardware, EU + US):
+Qquirks (all confirmed on live hardware, EU + US):
 
 1. The control "data" field must be a JSON *string* (json.dumps of the
    datapoints). Sending an {"attrs": {...}} object returns HTTP 200 /
@@ -45,22 +42,19 @@ import hashlib
 import json
 import logging
 from time import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from aiohttp import ClientSession
 
-from ..aws_iot.api import AwsIotApi  # reuse normalize_aws_state (same field names)
-from ..bestway.model import (
+from ..const import Backend
+from ..model import (
+    BestwayApiResults,
     BestwayDevice,
-    BestwayDeviceStatus,
+    BestwayDeviceType,
     BubblesLevel,
-    HydrojetFilter,
-    HydrojetHeat,
+    RawSnapshot,
 )
-from ..const import BACKEND_SMARTSPA
-
-if TYPE_CHECKING:
-    from ..bestway.api import BestwayApiResults
+from ..translation import status_from_attrs, v01_attrs_from_shadow
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -96,11 +90,11 @@ def _envelope(data: Any) -> dict[str, Any]:
 
 
 class SmartSpaApi:
-    """SmartSpa gateway client matching the BestwayApi/AwsIotApi interface.
+    """SmartSpa gateway client implementing the BackendApi protocol.
 
     Drop-in for the coordinator and entity layer: exposes .devices,
-    ._state_cache, refresh_bindings(), fetch_data(), set_device_state()
-    and the airjet_/hydrojet_ convenience methods.
+    refresh_bindings(), fetch_data(), handle_partial_update(),
+    set_device_state() and the semantic setters (set_power, set_filter, ...).
     """
 
     def __init__(
@@ -120,10 +114,45 @@ class SmartSpaApi:
 
         # Interface expected by coordinator/entities
         self.devices: dict[str, BestwayDevice] = {}
-        self._state_cache: dict[str, BestwayDeviceStatus] = {}
+        # Merge substrate for polled + WebSocket-delta state, prior to
+        # translation into the typed DeviceStatus entities read.
+        self._raw_state: dict[str, RawSnapshot] = {}
 
         # device_id -> (productKey, mac) for URL building
         self._routing: dict[str, tuple[str, str]] = {}
+
+    def _results(self) -> BestwayApiResults:
+        """Translate the raw state cache into typed results.
+
+        A raw entry with no matching device translates against UNKNOWN
+        rather than being dropped, so it still surfaces as a status with
+        raw attrs even though no entity can be attached to it yet.
+        """
+        return BestwayApiResults(
+            devices={
+                device_id: status_from_attrs(
+                    self.devices[device_id].device_type
+                    if device_id in self.devices
+                    else BestwayDeviceType.UNKNOWN,
+                    snapshot.timestamp,
+                    snapshot.attrs,
+                )
+                for device_id, snapshot in self._raw_state.items()
+            }
+        )
+
+    def handle_partial_update(
+        self, device_id: str, attrs: dict[str, Any]
+    ) -> BestwayApiResults:
+        """Merge a partial state delta and return freshly translated results.
+
+        This backend has no WebSocket today, but implements the same
+        interface as the other two for uniformity.
+        """
+        existing = self._raw_state.get(device_id)
+        merged = {**existing.attrs, **attrs} if existing else dict(attrs)
+        self._raw_state[device_id] = RawSnapshot(int(time()), merged)
+        return self._results()
 
     # ------------------------------------------------------------------ auth
 
@@ -337,7 +366,7 @@ class SmartSpaApi:
                 wifi_soft_version="",
                 wifi_hard_version="",
                 is_online=is_online,
-                backend=BACKEND_SMARTSPA,
+                backend=Backend.SMARTSPA,
                 product_id=str(product_key),
                 product_series=_pk_series.get(
                     str(product_key), self._series_from_name(product_name)
@@ -350,8 +379,6 @@ class SmartSpaApi:
 
     async def fetch_data(self) -> BestwayApiResults:
         """Fetch the shadow for every device and normalize field names."""
-        from ..bestway.api import BestwayApiResults
-
         for device_id, (product_key, mac) in self._routing.items():
             try:
                 result = await self._request(
@@ -368,29 +395,27 @@ class SmartSpaApi:
                         "is_online", str(connect_type).lower() == "online"
                     )
 
-                # Same field names as the AWS IoT shadow — reuse its normalizer.
-                mapped = AwsIotApi.normalize_aws_state(shadow)
+                # Same shadow vocabulary as the AWS IoT backend serves.
+                mapped = v01_attrs_from_shadow(shadow)
 
-                # Read-back quirk: heater_state reads 2 while heating on this
-                # backend. climate.py knows 3 (HEATING) / 4 (TARGET_REACHED),
-                # so map 2 -> 3 to render a correct hvac_action. Any non-zero
-                # heat already means HVACMode.HEAT, so this is cosmetic-safe.
-                if mapped.get("heat") == 2:
-                    mapped["heat"] = 3
-
-                # Same family of quirk for bubbles: this gateway reads
-                # wave_state back as binary (1, sometimes 2) while running,
-                # but the 3-way bubbles select expects 0/40/100 and renders
-                # an unrecognized value as OFF - making OFF unselectable
-                # (no state change) while bubbles physically run. Map any
-                # binary "on" to 100 so the select shows MAX and OFF becomes
-                # a real change. Writes are unaffected (non-zero -> 1).
-                # Verified live on F12D9Q (HydroJet Pro, EU); explains the
-                # "bubbles turn on but not off" reports on on/off hardware.
+                # Read-back quirk: this gateway reads wave_state back as
+                # binary (1, sometimes 2) while running, but the 3-way
+                # bubbles select expects 0/40/100 and renders an unrecognized
+                # value as OFF - making OFF unselectable (no state change)
+                # while bubbles physically run. Map any binary "on" to 100 so
+                # the select shows MAX and OFF becomes a real change. Writes
+                # are unaffected (non-zero -> 1). Verified live on F12D9Q
+                # (HydroJet Pro, EU); explains the "bubbles turn on but not
+                # off" reports on on/off hardware.
+                #
+                # No equivalent patch is needed for the heater_state == 2
+                # readback quirk: the shared V01 translator already treats
+                # any non-zero heat value other than 4 (TARGET_REACHED) as
+                # HeaterState.HEATING.
                 if mapped.get("wave") in (1, 2):
                     mapped["wave"] = 100
 
-                self._state_cache[device_id] = BestwayDeviceStatus(
+                self._raw_state[device_id] = RawSnapshot(
                     timestamp=int(time()), attrs=mapped
                 )
                 _LOGGER.debug(
@@ -406,24 +431,27 @@ class SmartSpaApi:
                 _LOGGER.warning(
                     "Failed to fetch SmartSpa state for %s: %s", device_id, err
                 )
-                # Deliberately no placeholder entry here: a BestwayDeviceStatus
-                # with empty attrs is truthy, so it passes `if not device.status`
-                # guards and then raises KeyError downstream. Leaving the cache
-                # untouched keeps the last known state, or no state at all.
+                # Deliberately no placeholder entry here: a RawSnapshot with
+                # empty attrs would translate to a truthy DeviceStatus, which
+                # passes `if not device.status` guards and then raises
+                # KeyError downstream. Leaving the cache untouched keeps the
+                # last known state, or no state at all.
 
-        return BestwayApiResults(devices=self._state_cache)
+        return self._results()
 
     # ---------------------------------------------------------------- control
 
     @staticmethod
     def _to_write_value(key: str, value: Any) -> int:
-        """Translate entity-layer values to what this backend expects.
+        """Translate a control value to what this backend's wire format expects.
 
-        The entity layer passes the legacy values (HydrojetFilter.ON == 2,
-        HydrojetHeat.ON == 3, bubbles 40/100), but the SmartSpa gateway writes
-        are plain 1/0 for the state datapoints (confirmed from proxy traces of
-        the official app; the read-back 2 is a status, not a write value).
-        temperature_setting passes through unchanged.
+        The semantic setters pass plain bool/int values, but this also
+        accepts an IntEnum defensively (any caller going through
+        set_device_state directly, bypassing the semantic setters). The
+        SmartSpa gateway writes are plain 1/0 for the state datapoints
+        (confirmed from proxy traces of the official app; the read-back 2 is
+        a status, not a write value). temperature_setting passes through
+        unchanged.
         """
         if isinstance(value, bool):
             numeric: int = 1 if value else 0
@@ -485,82 +513,46 @@ class SmartSpaApi:
         )
         return True
 
-    # ------------------------------------------- entity convenience interface
+    # ------------------------------------------------------- semantic setters
+    # Single implementation per feature; _to_write_value collapses every
+    # state field to 1/0 regardless of what's passed in here.
 
-    async def airjet_spa_set_power(self, device_id: str, power: bool) -> None:
+    async def set_power(self, device_id: str, power: bool) -> None:
         """Set power state."""
         await self.set_device_state(device_id, {"power_state": power})
 
-    async def airjet_spa_set_filter(self, device_id: str, filtering: bool) -> None:
+    async def set_filter(self, device_id: str, filtering: bool) -> None:
         """Set filter state."""
         await self.set_device_state(device_id, {"filter_state": filtering})
 
-    async def airjet_spa_set_bubbles(self, device_id: str, bubbles: bool) -> None:
-        """Set bubbles state."""
-        await self.set_device_state(device_id, {"wave_state": bubbles})
-
-    async def airjet_spa_set_heat(self, device_id: str, heat: bool) -> None:
+    async def set_heat(self, device_id: str, heat: bool) -> None:
         """Set heater state."""
         await self.set_device_state(device_id, {"heater_state": heat})
 
-    async def airjet_spa_set_locked(self, device_id: str, locked: bool) -> None:
+    async def set_locked(self, device_id: str, locked: bool) -> None:
         """Set panel lock."""
         await self.set_device_state(device_id, {"locked": locked})
 
-    async def airjet_spa_set_target_temp(
-        self, device_id: str, target_temp: int
-    ) -> None:
-        """Set target temperature (device-native unit)."""
-        await self.set_device_state(
-            device_id, {"temperature_setting": int(target_temp)}
-        )
-
-    async def hydrojet_spa_set_power(self, device_id: str, power: bool) -> None:
-        """Set power state."""
-        await self.set_device_state(device_id, {"power_state": power})
-
-    async def hydrojet_spa_set_filter(
-        self, device_id: str, filtering: HydrojetFilter
-    ) -> None:
-        """Set filter state (legacy value 2 is translated to a 1 write)."""
-        await self.set_device_state(device_id, {"filter_state": filtering})
-
-    async def hydrojet_spa_set_jets(self, device_id: str, jets: bool) -> None:
+    async def set_jets(self, device_id: str, jets: bool) -> None:
         """Set hydrojets."""
         await self.set_device_state(device_id, {"hydrojet_state": jets})
 
-    async def hydrojet_spa_set_heat(self, device_id: str, heat: HydrojetHeat) -> None:
-        """Set heater (legacy value 3 is translated to a 1 write)."""
-        await self.set_device_state(device_id, {"heater_state": heat})
-
-    async def hydrojet_spa_set_target_temp(
-        self, device_id: str, target_temp: int
-    ) -> None:
+    async def set_target_temperature(self, device_id: str, temperature: int) -> None:
         """Set target temperature (device-native unit)."""
         await self.set_device_state(
-            device_id, {"temperature_setting": int(target_temp)}
+            device_id, {"temperature_setting": int(temperature)}
         )
 
-    async def airjet_v01_spa_set_bubbles(
-        self, device_id: str, bubbles: BubblesLevel
-    ) -> None:
-        """Set bubbles from a BubblesLevel (any non-OFF becomes on)."""
+    async def set_bubbles(self, device_id: str, bubbles: BubblesLevel) -> None:
+        """Set bubbles from a BubblesLevel.
+
+        Bubbles are binary on this gateway (three-way is lost): any non-OFF
+        level becomes on.
+        """
         await self.set_device_state(
             device_id, {"wave_state": bubbles != BubblesLevel.OFF}
         )
 
-    async def hydrojet_spa_set_bubbles(
-        self, device_id: str, bubbles: BubblesLevel
-    ) -> None:
-        """Set bubbles from a BubblesLevel (any non-OFF becomes on)."""
-        await self.set_device_state(
-            device_id, {"wave_state": bubbles != BubblesLevel.OFF}
-        )
-
-    async def pool_filter_set_power(self, device_id: str, power: bool) -> None:
-        """Set pool filter power (untested on this backend)."""
-        await self.set_device_state(device_id, {"power_state": power})
-
-    async def pool_filter_set_time(self, device_id: str, hours: int) -> None:
+    async def set_pool_timer(self, device_id: str, hours: int) -> None:
         """Set pool filter timer (untested on this backend)."""
         await self.set_device_state(device_id, {"time": int(hours)})

@@ -16,22 +16,20 @@ import hashlib
 import logging
 import secrets
 from time import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from aiohttp import ClientSession
 
-from ..bestway.model import (
+from ..const import Backend
+from ..model import (
+    BestwayApiResults,
     BestwayDevice,
-    BestwayDeviceStatus,
+    BestwayDeviceType,
     BubblesLevel,
-    HydrojetFilter,
-    HydrojetHeat,
+    RawSnapshot,
 )
-from ..const import BACKEND_AWS_IOT
+from ..translation import status_from_attrs, v01_attrs_from_shadow
 from .encryption import encrypt_command_payload
-
-if TYPE_CHECKING:
-    from ..bestway.api import BestwayApiResults
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -97,8 +95,39 @@ class AwsIotApi:
         # Device registry (matches Gizwits interface)
         self.devices: dict[str, BestwayDevice] = {}
 
-        # State cache (matches Gizwits interface)
-        self._state_cache: dict[str, BestwayDeviceStatus] = {}
+        # Merge substrate for polled + WebSocket-delta state, prior to
+        # translation into the typed DeviceStatus entities read.
+        self._raw_state: dict[str, RawSnapshot] = {}
+
+    def _results(self) -> BestwayApiResults:
+        """Translate the raw state cache into typed results.
+
+        A raw entry with no matching device (e.g. a WebSocket delta that
+        arrives before refresh_bindings() has run) translates against
+        UNKNOWN rather than being dropped, so it still surfaces as a status
+        with raw attrs even though no entity can be attached to it yet.
+        """
+        return BestwayApiResults(
+            devices={
+                device_id: status_from_attrs(
+                    self.devices[device_id].device_type
+                    if device_id in self.devices
+                    else BestwayDeviceType.UNKNOWN,
+                    snapshot.timestamp,
+                    snapshot.attrs,
+                )
+                for device_id, snapshot in self._raw_state.items()
+            }
+        )
+
+    def handle_partial_update(
+        self, device_id: str, attrs: dict[str, Any]
+    ) -> BestwayApiResults:
+        """Merge a partial WebSocket delta and return freshly translated results."""
+        existing = self._raw_state.get(device_id)
+        merged = {**existing.attrs, **attrs} if existing else dict(attrs)
+        self._raw_state[device_id] = RawSnapshot(int(time()), merged)
+        return self._results()
 
     @staticmethod
     def generate_visitor_id() -> str:
@@ -108,95 +137,6 @@ class AwsIotApi:
             16-character hex visitor_id
         """
         return secrets.token_hex(8)  # 16 hex chars
-
-    @staticmethod
-    def normalize_aws_state(device_state: dict[str, Any]) -> dict[str, Any]:
-        """Normalize AWS IoT field names to Gizwits V01 equivalents.
-
-        This normalization allows existing V01 entities to work unchanged with V02 devices.
-        Used by both fetch_data() and WebSocket message processing.
-
-        Args:
-            device_state: Raw state from AWS IoT device shadow
-
-        Returns:
-            Dict with normalized Gizwits V01 field names
-        """
-        warning = device_state.get("warning")
-        error_code = device_state.get("error_code")
-        power_state = device_state.get("power_state")
-        temperature_unit = device_state.get("temperature_unit", 1)
-        wave_state = device_state.get("wave_state", 0)
-
-        # V02 wave_state actual values: 0=OFF, 40=MEDIUM, 100=HIGH.
-        # Pass the raw device value straight through. Both bubble maps already
-        # recognise 40 as MEDIUM: HYDROJET_BUBBLES_MAP natively, and
-        # AIRJET_V01_BUBBLES_MAP since PR #101 widened its MEDIUM read_values to
-        # [40, 41, 50, 51]. The previous code rewrote 40 -> 50, which Hydrojet's
-        # map rejected ("Unexpected API value 50 - assuming OFF"), so Hydrojet
-        # MEDIUM always fell back to displaying OFF (BUG-SPA-6).
-        wave_normalized = wave_state
-        _LOGGER.debug(
-            "normalize wave_state: raw=%s -> wave=%s", wave_state, wave_normalized
-        )
-
-        # Build normalized dict, only including fields with actual values
-        # This prevents None values from overwriting existing data during merges
-        normalized = {}
-
-        # Version fields (diagnostic) - only if present
-        if "wifivertion" in device_state:
-            normalized["wifi_version"] = device_state["wifivertion"]
-        if "otastatus" in device_state:
-            normalized["ota_status"] = device_state["otastatus"]
-        if "mcuversion" in device_state:
-            normalized["mcu_version"] = device_state["mcuversion"]
-        if "trdversion" in device_state:
-            normalized["trd_version"] = device_state["trdversion"]
-        if "ConnectType" in device_state:
-            normalized["connect_type"] = device_state["ConnectType"]
-
-        # Control state - use exact V01 field names!
-        if power_state is not None:
-            normalized["power"] = bool(power_state == 1)
-        if device_state.get("heater_state") is not None:
-            # Heater state values (same for V01 and V02):
-            # 0 = OFF
-            # 1 = ON (heater enabled, starting to heat)
-            # 3 = HEATING (actively heating toward target)
-            # 4 = TARGET_REACHED (at target temperature, maintaining)
-            normalized["heat"] = device_state["heater_state"]
-        if wave_state is not None:
-            normalized["wave"] = wave_normalized
-        if device_state.get("filter_state") is not None:
-            normalized["filter"] = device_state["filter_state"]
-        if device_state.get("hydrojet_state") is not None:
-            normalized["jet"] = bool(device_state["hydrojet_state"] == 1)
-        if device_state.get("locked") is not None:
-            normalized["locked"] = device_state["locked"]
-
-        # Temperature - use V01 field names (capital T!)
-        if device_state.get("water_temperature") is not None:
-            normalized["Tnow"] = device_state["water_temperature"]
-        if device_state.get("temperature_setting") is not None:
-            normalized["Tset"] = device_state["temperature_setting"]
-        if "temperature_unit" in device_state:
-            normalized["Tunit"] = temperature_unit
-
-        # Errors - only include if present to avoid overwriting during delta merges
-        if "warning" in device_state:
-            normalized["warning"] = 0 if warning == "" else warning
-        if "error_code" in device_state:
-            normalized["error"] = 0 if error_code == "" else error_code
-
-        # Status
-        if device_state.get("is_online") is not None:
-            normalized["is_online"] = device_state["is_online"]
-
-        # V01-specific fields for compatibility
-        normalized["word3"] = 0  # Target reached flag (unknown for V02)
-
-        return normalized
 
     @staticmethod
     async def authenticate(
@@ -467,7 +407,7 @@ class AwsIotApi:
         1. GET /api/enduser/homes → list of homes
         2. For each home: GET /api/enduser/home/rooms?home_id=X → rooms
         3. For each room: GET /api/enduser/home/room/devices?room_id=Y → devices
-        4. Create BestwayDevice for each device with backend=BACKEND_AWS_IOT
+        4. Create BestwayDevice for each device with backend=Backend.AWS_IOT
 
         Note: Device discovery is cached after first successful run.
         Devices are only re-discovered if device list is empty.
@@ -559,7 +499,7 @@ class AwsIotApi:
                     "service_region", "eu-central-1"
                 ),  # Store region in ws_host
                 ws_port=443,  # AWS IoT WebSocket uses standard HTTPS port
-                backend=BACKEND_AWS_IOT,
+                backend=Backend.AWS_IOT,
                 product_id=product_id,  # NEW: Model ID for shadow fetch
                 product_series=product_series,  # NEW: Series for device_type
             )
@@ -586,9 +526,6 @@ class AwsIotApi:
         Returns:
             BestwayApiResults with devices dict
         """
-        # Import here to avoid circular dependency
-        from ..bestway.api import BestwayApiResults
-
         for device_id in self.devices:
             try:
                 # Get device metadata
@@ -629,8 +566,7 @@ class AwsIotApi:
                     list(device_state.keys()),
                 )
 
-                # Normalize AWS field names to Gizwits V01 equivalents
-                mapped = self.normalize_aws_state(device_state)
+                mapped = v01_attrs_from_shadow(device_state)
 
                 _LOGGER.debug(
                     "After normalization: %d fields: %s",
@@ -639,7 +575,7 @@ class AwsIotApi:
                 )
 
                 # Update state cache
-                self._state_cache[device_id] = BestwayDeviceStatus(
+                self._raw_state[device_id] = RawSnapshot(
                     timestamp=int(time()), attrs=mapped
                 )
 
@@ -654,12 +590,12 @@ class AwsIotApi:
                     "Failed to fetch state for device %s: %s", device_id[:12], err
                 )
                 # Keep existing cache or mark offline
-                if device_id not in self._state_cache:
-                    self._state_cache[device_id] = BestwayDeviceStatus(
+                if device_id not in self._raw_state:
+                    self._raw_state[device_id] = RawSnapshot(
                         timestamp=int(time()), attrs={}
                     )
 
-        return BestwayApiResults(devices=self._state_cache)
+        return self._results()
 
     async def set_device_state(
         self, device_id: str, state_updates: dict[str, Any]
@@ -780,69 +716,35 @@ class AwsIotApi:
             )
             return False
 
-    # Convenience setters: translate the shared control vocabulary into AWS field names.
-    async def airjet_spa_set_power(self, device_id: str, power: bool) -> None:
-        """Set power state for Airjet spa."""
+    # AWS IoT has a single wire vocabulary, so each setter below is one
+    # implementation with no device_type dispatch (contrast with Gizwits,
+    # which has several).
+    async def set_power(self, device_id: str, power: bool) -> None:
+        """Set power state."""
         await self.set_device_state(device_id, {"power_state": 1 if power else 0})
 
-    async def airjet_spa_set_filter(self, device_id: str, filtering: bool) -> None:
-        """Set filter state for Airjet spa."""
+    async def set_filter(self, device_id: str, filtering: bool) -> None:
+        """Set filter state."""
         await self.set_device_state(device_id, {"filter_state": 1 if filtering else 0})
 
-    async def airjet_spa_set_bubbles(self, device_id: str, bubbles: bool) -> None:
-        """Set bubbles state for Airjet spa."""
-        await self.set_device_state(device_id, {"wave_state": 100 if bubbles else 0})
-
-    async def airjet_spa_set_heat(self, device_id: str, heat: bool) -> None:
-        """Set heater state for Airjet spa."""
+    async def set_heat(self, device_id: str, heat: bool) -> None:
+        """Set heater state."""
         await self.set_device_state(device_id, {"heater_state": 1 if heat else 0})
 
-    async def airjet_spa_set_locked(self, device_id: str, locked: bool) -> None:
-        """Set locked state for Airjet spa."""
+    async def set_locked(self, device_id: str, locked: bool) -> None:
+        """Set locked state."""
         await self.set_device_state(device_id, {"locked": 1 if locked else 0})
 
-    async def airjet_spa_set_target_temp(
-        self, device_id: str, target_temp: int
-    ) -> None:
-        """Set target temperature for Airjet spa."""
-        await self.set_device_state(device_id, {"temperature_setting": target_temp})
-
-    async def hydrojet_spa_set_power(self, device_id: str, power: bool) -> None:
-        """Set power state for Hydrojet spa."""
-        await self.set_device_state(device_id, {"power_state": 1 if power else 0})
-
-    async def hydrojet_spa_set_filter(
-        self, device_id: str, filtering: HydrojetFilter
-    ) -> None:
-        """Set filter state for Hydrojet spa.
-
-        V01 HydrojetFilter.ON is 2; V02 expects 1 for ON.
-        """
-        value = 1 if filtering == HydrojetFilter.ON else 0
-        await self.set_device_state(device_id, {"filter_state": value})
-
-    async def hydrojet_spa_set_jets(self, device_id: str, jets: bool) -> None:
-        """Set jets state for Hydrojet spa."""
+    async def set_jets(self, device_id: str, jets: bool) -> None:
+        """Set jets state."""
         await self.set_device_state(device_id, {"hydrojet_state": 1 if jets else 0})
 
-    async def hydrojet_spa_set_heat(self, device_id: str, heat: HydrojetHeat) -> None:
-        """Set heater state for Hydrojet spa.
+    async def set_target_temperature(self, device_id: str, temperature: int) -> None:
+        """Set target temperature (device-native unit)."""
+        await self.set_device_state(device_id, {"temperature_setting": temperature})
 
-        V01 HydrojetHeat.ON is 3; V02 expects heater_state 1 for ON.
-        """
-        value = 1 if heat == HydrojetHeat.ON else 0
-        await self.set_device_state(device_id, {"heater_state": value})
-
-    async def hydrojet_spa_set_target_temp(
-        self, device_id: str, target_temp: int
-    ) -> None:
-        """Set target temperature for Hydrojet spa."""
-        await self.set_device_state(device_id, {"temperature_setting": target_temp})
-
-    async def airjet_v01_spa_set_bubbles(
-        self, device_id: str, bubbles: BubblesLevel
-    ) -> None:
-        """Set bubbles level for Airjet spa.
+    async def set_bubbles(self, device_id: str, bubbles: BubblesLevel) -> None:
+        """Set bubbles level.
 
         V02 reports absolute wave_state values: OFF=0, MEDIUM=40, MAX=100.
         Physical button cycles OFF -> MAX -> MEDIUM -> OFF.
@@ -852,25 +754,10 @@ class AwsIotApi:
             BubblesLevel.MEDIUM: 40,  # V02 uses 40 not 50!
             BubblesLevel.MAX: 100,
         }
+        target_value = value_map[bubbles]
+        await self.set_device_state(device_id, {"wave_state": target_value})
+        _LOGGER.debug("Set bubbles to %s (wave_state=%d)", bubbles.name, target_value)
 
-        target_value = value_map.get(bubbles)
-        if target_value is not None:
-            await self.set_device_state(device_id, {"wave_state": target_value})
-            _LOGGER.debug(
-                "Set bubbles to %s (wave_state=%d)", bubbles.name, target_value
-            )
-
-    async def hydrojet_spa_set_bubbles(
-        self, device_id: str, bubbles: BubblesLevel
-    ) -> None:
-        """Set bubbles level for Hydrojet spa (same toggle approach as Airjet V02)."""
-        await self.airjet_v01_spa_set_bubbles(device_id, bubbles)
-
-    # Pool filter methods (V01 only, not applicable to V02 spas)
-    async def pool_filter_set_power(self, device_id: str, power: bool) -> None:
-        """Not supported on V02 devices."""
-        raise NotImplementedError("Pool filter not supported on V02 devices")
-
-    async def pool_filter_set_time(self, device_id: str, hours: int) -> None:
+    async def set_pool_timer(self, device_id: str, hours: int) -> None:
         """Not supported on V02 devices."""
         raise NotImplementedError("Pool filter not supported on V02 devices")

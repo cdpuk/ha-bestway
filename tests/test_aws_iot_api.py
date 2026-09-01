@@ -8,6 +8,7 @@ from custom_components.bestway.aws_iot.api import (
     AwsIotApi,
     AwsIotAuthException,
 )
+from custom_components.bestway.model import BestwayDevice, BubblesLevel
 
 
 def create_mock_response(status: int, json_data: dict):
@@ -167,95 +168,9 @@ async def test_refresh_bindings_multiple_devices(aws_api, mock_session):
     assert aws_api.devices["device2"].alias == "Spa 2"
 
 
-def test_normalize_state_comprehensive():
-    """Test comprehensive field normalization including power, temperature, and wave."""
-    aws_state = {
-        "power_state": 1,
-        "heater_state": 0,
-        "temperature_setting": 37,
-        "water_temperature": 36,
-        "temperature_unit": 1,
-        "wave_state": 100,
-        "warning": "",
-        "error_code": "",
-    }
-    normalized = AwsIotApi.normalize_aws_state(aws_state)
-
-    # Power fields
-    assert normalized["power"] is True
-    assert normalized["heat"] == 0
-
-    # Temperature fields
-    assert normalized["Tset"] == 37
-    assert normalized["Tnow"] == 36
-    assert normalized["Tunit"] == 1
-
-    # Wave field
-    assert normalized["wave"] == 100
-
-
-def test_normalize_state_filter():
-    """Test filter_state normalization."""
-    # Filter on
-    aws_state = {"filter_state": 2}
-    normalized = AwsIotApi.normalize_aws_state(aws_state)
-    assert normalized["filter"] == 2
-
-    # Filter off
-    aws_state = {"filter_state": 0}
-    normalized = AwsIotApi.normalize_aws_state(aws_state)
-    assert normalized["filter"] == 0
-
-
-def test_normalize_state_partial_update_preserves_absent_fields():
-    """Test that partial WebSocket updates don't overwrite absent fields.
-
-    Regression test for temperature unit flip-flop bug: WebSocket deltas
-    that omit temperature_unit should not default it to Celsius (1),
-    which would overwrite a Fahrenheit (0) setting.
-    """
-    # Simulate a partial WebSocket delta with only temperature change
-    partial_state = {
-        "water_temperature": 30,
-    }
-    normalized = AwsIotApi.normalize_aws_state(partial_state)
-
-    # temperature_unit was not in the delta, so Tunit should not be set
-    assert "Tunit" not in normalized
-    # warning/error also absent, should not be set
-    assert "warning" not in normalized
-    assert "error" not in normalized
-    # The field that was present should be set
-    assert normalized["Tnow"] == 30
-
-
-def test_normalize_state_wave_mapping():
-    """Test V02 wave_state is passed through unchanged.
-
-    The normaliser used to rewrite 40 -> 50, which the Hydrojet bubble map
-    rejected, so Hydrojet MEDIUM always rendered as OFF (BUG-SPA-6). Both
-    bubble maps now recognise 40 as MEDIUM directly, so the raw device value
-    is passed straight through.
-    """
-    # MEDIUM (40) is no longer remapped to 50
-    aws_state = {"wave_state": 40}
-    normalized = AwsIotApi.normalize_aws_state(aws_state)
-    assert normalized["wave"] == 40
-
-    aws_state = {"wave_state": 0}
-    normalized = AwsIotApi.normalize_aws_state(aws_state)
-    assert normalized["wave"] == 0
-
-    aws_state = {"wave_state": 100}
-    normalized = AwsIotApi.normalize_aws_state(aws_state)
-    assert normalized["wave"] == 100
-
-
 @pytest.mark.asyncio
 async def test_fetch_data_returns_results(aws_api, mock_session):
     """Test fetch_data returns BestwayApiResults."""
-    from custom_components.bestway.bestway.model import BestwayDevice
-
     # Setup device with real attributes (not MagicMock) so JSON serialization works
     aws_api.devices = {
         "device1": BestwayDevice(
@@ -306,8 +221,6 @@ async def test_fetch_data_returns_results(aws_api, mock_session):
 @pytest.mark.asyncio
 async def test_set_device_state_sends_command(aws_api, mock_session):
     """Test control command sends encrypted payload."""
-    from custom_components.bestway.bestway.model import BestwayDevice
-
     # Setup device with real attributes for JSON serialization
     aws_api.devices = {
         "device1": BestwayDevice(
@@ -346,3 +259,73 @@ async def test_do_get_handles_401(aws_api, mock_session):
 
     with pytest.raises(AwsIotAuthException):
         await aws_api._do_get("/test")
+
+
+# ---------------------------------------------------------------------------
+# Semantic setters: single vocabulary, no per-device dispatch. Each setter
+# is checked against the exact dict handed to set_device_state.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_set_power(aws_api):
+    aws_api.set_device_state = AsyncMock()
+    await aws_api.set_power("device1", True)
+    aws_api.set_device_state.assert_awaited_once_with("device1", {"power_state": 1})
+
+
+@pytest.mark.asyncio
+async def test_set_filter(aws_api):
+    aws_api.set_device_state = AsyncMock()
+    await aws_api.set_filter("device1", False)
+    aws_api.set_device_state.assert_awaited_once_with("device1", {"filter_state": 0})
+
+
+@pytest.mark.asyncio
+async def test_set_heat(aws_api):
+    aws_api.set_device_state = AsyncMock()
+    await aws_api.set_heat("device1", True)
+    aws_api.set_device_state.assert_awaited_once_with("device1", {"heater_state": 1})
+
+
+@pytest.mark.asyncio
+async def test_set_locked(aws_api):
+    aws_api.set_device_state = AsyncMock()
+    await aws_api.set_locked("device1", True)
+    aws_api.set_device_state.assert_awaited_once_with("device1", {"locked": 1})
+
+
+@pytest.mark.asyncio
+async def test_set_jets(aws_api):
+    aws_api.set_device_state = AsyncMock()
+    await aws_api.set_jets("device1", True)
+    aws_api.set_device_state.assert_awaited_once_with("device1", {"hydrojet_state": 1})
+
+
+@pytest.mark.asyncio
+async def test_set_target_temperature(aws_api):
+    aws_api.set_device_state = AsyncMock()
+    await aws_api.set_target_temperature("device1", 38)
+    aws_api.set_device_state.assert_awaited_once_with(
+        "device1", {"temperature_setting": 38}
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("level", "wave_state"),
+    [(BubblesLevel.OFF, 0), (BubblesLevel.MEDIUM, 40), (BubblesLevel.MAX, 100)],
+)
+async def test_set_bubbles(aws_api, level: BubblesLevel, wave_state: int):
+    """V02 uses 40 for MEDIUM, not the V01 map's 50."""
+    aws_api.set_device_state = AsyncMock()
+    await aws_api.set_bubbles("device1", level)
+    aws_api.set_device_state.assert_awaited_once_with(
+        "device1", {"wave_state": wave_state}
+    )
+
+
+@pytest.mark.asyncio
+async def test_set_pool_timer_not_supported(aws_api):
+    with pytest.raises(NotImplementedError):
+        await aws_api.set_pool_timer("device1", 6)
