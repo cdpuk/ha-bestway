@@ -790,69 +790,35 @@ class AwsIotApi:
             )
             return False
 
-    # Convenience setters: translate the shared control vocabulary into AWS field names.
-    async def airjet_spa_set_power(self, device_id: str, power: bool) -> None:
-        """Set power state for Airjet spa."""
+    # Semantic setters: single implementation per feature, no per-device-family
+    # split. AWS IoT has one wire vocabulary, so unlike Gizwits there's no
+    # device_type dispatch here.
+    async def set_power(self, device_id: str, power: bool) -> None:
+        """Set power state."""
         await self.set_device_state(device_id, {"power_state": 1 if power else 0})
 
-    async def airjet_spa_set_filter(self, device_id: str, filtering: bool) -> None:
-        """Set filter state for Airjet spa."""
+    async def set_filter(self, device_id: str, filtering: bool) -> None:
+        """Set filter state."""
         await self.set_device_state(device_id, {"filter_state": 1 if filtering else 0})
 
-    async def airjet_spa_set_bubbles(self, device_id: str, bubbles: bool) -> None:
-        """Set bubbles state for Airjet spa."""
-        await self.set_device_state(device_id, {"wave_state": 100 if bubbles else 0})
-
-    async def airjet_spa_set_heat(self, device_id: str, heat: bool) -> None:
-        """Set heater state for Airjet spa."""
+    async def set_heat(self, device_id: str, heat: bool) -> None:
+        """Set heater state."""
         await self.set_device_state(device_id, {"heater_state": 1 if heat else 0})
 
-    async def airjet_spa_set_locked(self, device_id: str, locked: bool) -> None:
-        """Set locked state for Airjet spa."""
+    async def set_locked(self, device_id: str, locked: bool) -> None:
+        """Set locked state."""
         await self.set_device_state(device_id, {"locked": 1 if locked else 0})
 
-    async def airjet_spa_set_target_temp(
-        self, device_id: str, target_temp: int
-    ) -> None:
-        """Set target temperature for Airjet spa."""
-        await self.set_device_state(device_id, {"temperature_setting": target_temp})
-
-    async def hydrojet_spa_set_power(self, device_id: str, power: bool) -> None:
-        """Set power state for Hydrojet spa."""
-        await self.set_device_state(device_id, {"power_state": 1 if power else 0})
-
-    async def hydrojet_spa_set_filter(
-        self, device_id: str, filtering: HydrojetFilter
-    ) -> None:
-        """Set filter state for Hydrojet spa.
-
-        V01 HydrojetFilter.ON is 2; V02 expects 1 for ON.
-        """
-        value = 1 if filtering == HydrojetFilter.ON else 0
-        await self.set_device_state(device_id, {"filter_state": value})
-
-    async def hydrojet_spa_set_jets(self, device_id: str, jets: bool) -> None:
-        """Set jets state for Hydrojet spa."""
+    async def set_jets(self, device_id: str, jets: bool) -> None:
+        """Set jets state."""
         await self.set_device_state(device_id, {"hydrojet_state": 1 if jets else 0})
 
-    async def hydrojet_spa_set_heat(self, device_id: str, heat: HydrojetHeat) -> None:
-        """Set heater state for Hydrojet spa.
+    async def set_target_temperature(self, device_id: str, temperature: int) -> None:
+        """Set target temperature (device-native unit)."""
+        await self.set_device_state(device_id, {"temperature_setting": temperature})
 
-        V01 HydrojetHeat.ON is 3; V02 expects heater_state 1 for ON.
-        """
-        value = 1 if heat == HydrojetHeat.ON else 0
-        await self.set_device_state(device_id, {"heater_state": value})
-
-    async def hydrojet_spa_set_target_temp(
-        self, device_id: str, target_temp: int
-    ) -> None:
-        """Set target temperature for Hydrojet spa."""
-        await self.set_device_state(device_id, {"temperature_setting": target_temp})
-
-    async def airjet_v01_spa_set_bubbles(
-        self, device_id: str, bubbles: BubblesLevel
-    ) -> None:
-        """Set bubbles level for Airjet spa.
+    async def set_bubbles(self, device_id: str, bubbles: BubblesLevel) -> None:
+        """Set bubbles level.
 
         V02 reports absolute wave_state values: OFF=0, MEDIUM=40, MAX=100.
         Physical button cycles OFF -> MAX -> MEDIUM -> OFF.
@@ -862,19 +828,85 @@ class AwsIotApi:
             BubblesLevel.MEDIUM: 40,  # V02 uses 40 not 50!
             BubblesLevel.MAX: 100,
         }
+        target_value = value_map[bubbles]
+        await self.set_device_state(device_id, {"wave_state": target_value})
+        _LOGGER.debug("Set bubbles to %s (wave_state=%d)", bubbles.name, target_value)
 
-        target_value = value_map.get(bubbles)
-        if target_value is not None:
-            await self.set_device_state(device_id, {"wave_state": target_value})
-            _LOGGER.debug(
-                "Set bubbles to %s (wave_state=%d)", bubbles.name, target_value
-            )
+    async def set_pool_timer(self, device_id: str, hours: int) -> None:
+        """Not supported on V02 devices."""
+        raise NotImplementedError("Pool filter not supported on V02 devices")
+
+    # Legacy device-family method names, kept as thin delegates to the
+    # semantic setters above until the entity layer is migrated off them.
+    async def airjet_spa_set_power(self, device_id: str, power: bool) -> None:
+        """Set power state for Airjet spa."""
+        await self.set_power(device_id, power)
+
+    async def airjet_spa_set_filter(self, device_id: str, filtering: bool) -> None:
+        """Set filter state for Airjet spa."""
+        await self.set_filter(device_id, filtering)
+
+    async def airjet_spa_set_bubbles(self, device_id: str, bubbles: bool) -> None:
+        """Set bubbles state for Airjet spa."""
+        await self.set_bubbles(
+            device_id, BubblesLevel.MAX if bubbles else BubblesLevel.OFF
+        )
+
+    async def airjet_spa_set_heat(self, device_id: str, heat: bool) -> None:
+        """Set heater state for Airjet spa."""
+        await self.set_heat(device_id, heat)
+
+    async def airjet_spa_set_locked(self, device_id: str, locked: bool) -> None:
+        """Set locked state for Airjet spa."""
+        await self.set_locked(device_id, locked)
+
+    async def airjet_spa_set_target_temp(
+        self, device_id: str, target_temp: int
+    ) -> None:
+        """Set target temperature for Airjet spa."""
+        await self.set_target_temperature(device_id, target_temp)
+
+    async def hydrojet_spa_set_power(self, device_id: str, power: bool) -> None:
+        """Set power state for Hydrojet spa."""
+        await self.set_power(device_id, power)
+
+    async def hydrojet_spa_set_filter(
+        self, device_id: str, filtering: HydrojetFilter
+    ) -> None:
+        """Set filter state for Hydrojet spa.
+
+        V01 HydrojetFilter.ON is 2; V02 expects 1 for ON.
+        """
+        await self.set_filter(device_id, filtering == HydrojetFilter.ON)
+
+    async def hydrojet_spa_set_jets(self, device_id: str, jets: bool) -> None:
+        """Set jets state for Hydrojet spa."""
+        await self.set_jets(device_id, jets)
+
+    async def hydrojet_spa_set_heat(self, device_id: str, heat: HydrojetHeat) -> None:
+        """Set heater state for Hydrojet spa.
+
+        V01 HydrojetHeat.ON is 3; V02 expects heater_state 1 for ON.
+        """
+        await self.set_heat(device_id, heat == HydrojetHeat.ON)
+
+    async def hydrojet_spa_set_target_temp(
+        self, device_id: str, target_temp: int
+    ) -> None:
+        """Set target temperature for Hydrojet spa."""
+        await self.set_target_temperature(device_id, target_temp)
+
+    async def airjet_v01_spa_set_bubbles(
+        self, device_id: str, bubbles: BubblesLevel
+    ) -> None:
+        """Set bubbles level for Airjet spa."""
+        await self.set_bubbles(device_id, bubbles)
 
     async def hydrojet_spa_set_bubbles(
         self, device_id: str, bubbles: BubblesLevel
     ) -> None:
         """Set bubbles level for Hydrojet spa (same toggle approach as Airjet V02)."""
-        await self.airjet_v01_spa_set_bubbles(device_id, bubbles)
+        await self.set_bubbles(device_id, bubbles)
 
     # Pool filter methods (V01 only, not applicable to V02 spas)
     async def pool_filter_set_power(self, device_id: str, power: bool) -> None:
@@ -883,4 +915,4 @@ class AwsIotApi:
 
     async def pool_filter_set_time(self, device_id: str, hours: int) -> None:
         """Not supported on V02 devices."""
-        raise NotImplementedError("Pool filter not supported on V02 devices")
+        await self.set_pool_timer(device_id, hours)

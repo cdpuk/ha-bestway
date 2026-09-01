@@ -8,6 +8,8 @@ from custom_components.bestway.aws_iot.api import (
     AwsIotApi,
     AwsIotAuthException,
 )
+from custom_components.bestway.bestway.model import HydrojetFilter, HydrojetHeat
+from custom_components.bestway.model import BubblesLevel
 
 
 def create_mock_response(status: int, json_data: dict):
@@ -352,3 +354,100 @@ async def test_do_get_handles_401(aws_api, mock_session):
 
     with pytest.raises(AwsIotAuthException):
         await aws_api._do_get("/test")
+
+
+# ---------------------------------------------------------------------------
+# Semantic setters: single vocabulary, no per-device dispatch. Each setter
+# is checked against the exact dict handed to set_device_state.
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_set_power(aws_api):
+    aws_api.set_device_state = AsyncMock()
+    await aws_api.set_power("device1", True)
+    aws_api.set_device_state.assert_awaited_once_with("device1", {"power_state": 1})
+
+
+@pytest.mark.asyncio
+async def test_set_filter(aws_api):
+    aws_api.set_device_state = AsyncMock()
+    await aws_api.set_filter("device1", False)
+    aws_api.set_device_state.assert_awaited_once_with("device1", {"filter_state": 0})
+
+
+@pytest.mark.asyncio
+async def test_set_heat(aws_api):
+    aws_api.set_device_state = AsyncMock()
+    await aws_api.set_heat("device1", True)
+    aws_api.set_device_state.assert_awaited_once_with("device1", {"heater_state": 1})
+
+
+@pytest.mark.asyncio
+async def test_set_locked(aws_api):
+    aws_api.set_device_state = AsyncMock()
+    await aws_api.set_locked("device1", True)
+    aws_api.set_device_state.assert_awaited_once_with("device1", {"locked": 1})
+
+
+@pytest.mark.asyncio
+async def test_set_jets(aws_api):
+    aws_api.set_device_state = AsyncMock()
+    await aws_api.set_jets("device1", True)
+    aws_api.set_device_state.assert_awaited_once_with("device1", {"hydrojet_state": 1})
+
+
+@pytest.mark.asyncio
+async def test_set_target_temperature(aws_api):
+    aws_api.set_device_state = AsyncMock()
+    await aws_api.set_target_temperature("device1", 38)
+    aws_api.set_device_state.assert_awaited_once_with(
+        "device1", {"temperature_setting": 38}
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("level", "wave_state"),
+    [(BubblesLevel.OFF, 0), (BubblesLevel.MEDIUM, 40), (BubblesLevel.MAX, 100)],
+)
+async def test_set_bubbles(aws_api, level: BubblesLevel, wave_state: int):
+    """V02 uses 40 for MEDIUM, not the V01 map's 50."""
+    aws_api.set_device_state = AsyncMock()
+    await aws_api.set_bubbles("device1", level)
+    aws_api.set_device_state.assert_awaited_once_with(
+        "device1", {"wave_state": wave_state}
+    )
+
+
+@pytest.mark.asyncio
+async def test_set_pool_timer_not_supported(aws_api):
+    with pytest.raises(NotImplementedError):
+        await aws_api.set_pool_timer("device1", 6)
+
+
+# ---------------------------------------------------------------------------
+# Legacy method names still delegate correctly
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_legacy_hydrojet_spa_set_filter_downshifts_v01_value(aws_api):
+    """V01 HydrojetFilter.ON is 2; V02 expects 1 for ON."""
+    aws_api.set_device_state = AsyncMock()
+    await aws_api.hydrojet_spa_set_filter("device1", HydrojetFilter.ON)
+    aws_api.set_device_state.assert_awaited_once_with("device1", {"filter_state": 1})
+
+
+@pytest.mark.asyncio
+async def test_legacy_hydrojet_spa_set_heat_downshifts_v01_value(aws_api):
+    """V01 HydrojetHeat.ON is 3; V02 expects heater_state 1 for ON."""
+    aws_api.set_device_state = AsyncMock()
+    await aws_api.hydrojet_spa_set_heat("device1", HydrojetHeat.ON)
+    aws_api.set_device_state.assert_awaited_once_with("device1", {"heater_state": 1})
+
+
+@pytest.mark.asyncio
+async def test_legacy_pool_filter_set_time_not_supported(aws_api):
+    with pytest.raises(NotImplementedError):
+        await aws_api.pool_filter_set_time("device1", 6)

@@ -510,82 +510,122 @@ class SmartSpaApi:
         )
         return True
 
-    # ------------------------------------------- entity convenience interface
+    # ------------------------------------------------------- semantic setters
+    # Single implementation per feature; _to_write_value collapses every
+    # state field to 1/0 regardless of what's passed in here.
 
-    async def airjet_spa_set_power(self, device_id: str, power: bool) -> None:
+    async def set_power(self, device_id: str, power: bool) -> None:
         """Set power state."""
         await self.set_device_state(device_id, {"power_state": power})
 
-    async def airjet_spa_set_filter(self, device_id: str, filtering: bool) -> None:
+    async def set_filter(self, device_id: str, filtering: bool) -> None:
         """Set filter state."""
         await self.set_device_state(device_id, {"filter_state": filtering})
 
-    async def airjet_spa_set_bubbles(self, device_id: str, bubbles: bool) -> None:
-        """Set bubbles state."""
-        await self.set_device_state(device_id, {"wave_state": bubbles})
-
-    async def airjet_spa_set_heat(self, device_id: str, heat: bool) -> None:
+    async def set_heat(self, device_id: str, heat: bool) -> None:
         """Set heater state."""
         await self.set_device_state(device_id, {"heater_state": heat})
 
-    async def airjet_spa_set_locked(self, device_id: str, locked: bool) -> None:
+    async def set_locked(self, device_id: str, locked: bool) -> None:
         """Set panel lock."""
         await self.set_device_state(device_id, {"locked": locked})
+
+    async def set_jets(self, device_id: str, jets: bool) -> None:
+        """Set hydrojets."""
+        await self.set_device_state(device_id, {"hydrojet_state": jets})
+
+    async def set_target_temperature(self, device_id: str, temperature: int) -> None:
+        """Set target temperature (device-native unit)."""
+        await self.set_device_state(
+            device_id, {"temperature_setting": int(temperature)}
+        )
+
+    async def set_bubbles(self, device_id: str, bubbles: BubblesLevel) -> None:
+        """Set bubbles from a BubblesLevel.
+
+        Bubbles are binary on this gateway (three-way is lost): any non-OFF
+        level becomes on.
+        """
+        await self.set_device_state(
+            device_id, {"wave_state": bubbles != BubblesLevel.OFF}
+        )
+
+    async def set_pool_timer(self, device_id: str, hours: int) -> None:
+        """Set pool filter timer (untested on this backend)."""
+        await self.set_device_state(device_id, {"time": int(hours)})
+
+    # ------------------------------------------- entity convenience interface
+    # Legacy device-family method names, kept as thin delegates to the
+    # semantic setters above until the entity layer is migrated off them.
+
+    async def airjet_spa_set_power(self, device_id: str, power: bool) -> None:
+        """Set power state."""
+        await self.set_power(device_id, power)
+
+    async def airjet_spa_set_filter(self, device_id: str, filtering: bool) -> None:
+        """Set filter state."""
+        await self.set_filter(device_id, filtering)
+
+    async def airjet_spa_set_bubbles(self, device_id: str, bubbles: bool) -> None:
+        """Set bubbles state."""
+        await self.set_bubbles(
+            device_id, BubblesLevel.MAX if bubbles else BubblesLevel.OFF
+        )
+
+    async def airjet_spa_set_heat(self, device_id: str, heat: bool) -> None:
+        """Set heater state."""
+        await self.set_heat(device_id, heat)
+
+    async def airjet_spa_set_locked(self, device_id: str, locked: bool) -> None:
+        """Set panel lock."""
+        await self.set_locked(device_id, locked)
 
     async def airjet_spa_set_target_temp(
         self, device_id: str, target_temp: int
     ) -> None:
         """Set target temperature (device-native unit)."""
-        await self.set_device_state(
-            device_id, {"temperature_setting": int(target_temp)}
-        )
+        await self.set_target_temperature(device_id, target_temp)
 
     async def hydrojet_spa_set_power(self, device_id: str, power: bool) -> None:
         """Set power state."""
-        await self.set_device_state(device_id, {"power_state": power})
+        await self.set_power(device_id, power)
 
     async def hydrojet_spa_set_filter(
         self, device_id: str, filtering: HydrojetFilter
     ) -> None:
         """Set filter state (legacy value 2 is translated to a 1 write)."""
-        await self.set_device_state(device_id, {"filter_state": filtering})
+        await self.set_filter(device_id, filtering == HydrojetFilter.ON)
 
     async def hydrojet_spa_set_jets(self, device_id: str, jets: bool) -> None:
         """Set hydrojets."""
-        await self.set_device_state(device_id, {"hydrojet_state": jets})
+        await self.set_jets(device_id, jets)
 
     async def hydrojet_spa_set_heat(self, device_id: str, heat: HydrojetHeat) -> None:
         """Set heater (legacy value 3 is translated to a 1 write)."""
-        await self.set_device_state(device_id, {"heater_state": heat})
+        await self.set_heat(device_id, heat == HydrojetHeat.ON)
 
     async def hydrojet_spa_set_target_temp(
         self, device_id: str, target_temp: int
     ) -> None:
         """Set target temperature (device-native unit)."""
-        await self.set_device_state(
-            device_id, {"temperature_setting": int(target_temp)}
-        )
+        await self.set_target_temperature(device_id, target_temp)
 
     async def airjet_v01_spa_set_bubbles(
         self, device_id: str, bubbles: BubblesLevel
     ) -> None:
         """Set bubbles from a BubblesLevel (any non-OFF becomes on)."""
-        await self.set_device_state(
-            device_id, {"wave_state": bubbles != BubblesLevel.OFF}
-        )
+        await self.set_bubbles(device_id, bubbles)
 
     async def hydrojet_spa_set_bubbles(
         self, device_id: str, bubbles: BubblesLevel
     ) -> None:
         """Set bubbles from a BubblesLevel (any non-OFF becomes on)."""
-        await self.set_device_state(
-            device_id, {"wave_state": bubbles != BubblesLevel.OFF}
-        )
+        await self.set_bubbles(device_id, bubbles)
 
     async def pool_filter_set_power(self, device_id: str, power: bool) -> None:
         """Set pool filter power (untested on this backend)."""
-        await self.set_device_state(device_id, {"power_state": power})
+        await self.set_power(device_id, power)
 
     async def pool_filter_set_time(self, device_id: str, hours: int) -> None:
         """Set pool filter timer (untested on this backend)."""
-        await self.set_device_state(device_id, {"time": int(hours)})
+        await self.set_pool_timer(device_id, hours)

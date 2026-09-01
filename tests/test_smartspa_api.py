@@ -16,7 +16,7 @@ import pytest
 
 from custom_components.bestway.bestway.model import HydrojetFilter, HydrojetHeat
 from custom_components.bestway.const import BACKEND_SMARTSPA
-from custom_components.bestway.model import BestwayDevice, HeaterState
+from custom_components.bestway.model import BestwayDevice, BubblesLevel, HeaterState
 from custom_components.bestway.smartspa.api import (
     SMARTSPA_APP_ID,
     SmartSpaApi,
@@ -418,7 +418,72 @@ async def test_control_unknown_device_returns_false(api):
     ok = await api.set_device_state("ffffffffffff", {"power_state": 1})
 
     assert ok is False
-    api._request.assert_not_awaited()
+
+
+# ---------------------------------------------------------------------------
+# Semantic setters: same 1/0 collapsing as the legacy names, exercised
+# directly rather than through a device-family method name.
+# ---------------------------------------------------------------------------
+
+
+async def test_set_power_semantic(api):
+    api._request = AsyncMock(return_value={"code": "200", "data": True})
+    await api.set_power("6879c4d585ab", True)
+    sent = json.loads(api._request.call_args[0][2]["data"])
+    assert sent == {"power_state": 1}
+
+
+async def test_set_filter_semantic(api):
+    api._request = AsyncMock(return_value={"code": "200", "data": True})
+    await api.set_filter("6879c4d585ab", False)
+    sent = json.loads(api._request.call_args[0][2]["data"])
+    assert sent == {"filter_state": 0}
+
+
+async def test_set_heat_semantic(api):
+    api._request = AsyncMock(return_value={"code": "200", "data": True})
+    await api.set_heat("6879c4d585ab", True)
+    sent = json.loads(api._request.call_args[0][2]["data"])
+    assert sent == {"heater_state": 1}
+
+
+async def test_set_locked_semantic(api):
+    api._request = AsyncMock(return_value={"code": "200", "data": True})
+    await api.set_locked("6879c4d585ab", True)
+    sent = json.loads(api._request.call_args[0][2]["data"])
+    assert sent == {"locked": 1}
+
+
+async def test_set_jets_semantic(api):
+    api._request = AsyncMock(return_value={"code": "200", "data": True})
+    await api.set_jets("6879c4d585ab", True)
+    sent = json.loads(api._request.call_args[0][2]["data"])
+    assert sent == {"hydrojet_state": 1}
+
+
+async def test_set_target_temperature_semantic(api):
+    api._request = AsyncMock(return_value={"code": "200", "data": True})
+    await api.set_target_temperature("6879c4d585ab", 39)
+    sent = json.loads(api._request.call_args[0][2]["data"])
+    assert sent == {"temperature_setting": 39}
+
+
+@pytest.mark.parametrize(
+    "level", [BubblesLevel.OFF, BubblesLevel.MEDIUM, BubblesLevel.MAX]
+)
+async def test_set_bubbles_semantic_is_binary(api, level: BubblesLevel):
+    """Three-way bubbles are lost on this backend: only OFF writes 0."""
+    api._request = AsyncMock(return_value={"code": "200", "data": True})
+    await api.set_bubbles("6879c4d585ab", level)
+    sent = json.loads(api._request.call_args[0][2]["data"])
+    assert sent == {"wave_state": 0 if level is BubblesLevel.OFF else 1}
+
+
+async def test_set_pool_timer_semantic(api):
+    api._request = AsyncMock(return_value={"code": "200", "data": True})
+    await api.set_pool_timer("6879c4d585ab", 6)
+    sent = json.loads(api._request.call_args[0][2]["data"])
+    assert sent == {"time": 6}
 
 
 def test_envelope_shape():

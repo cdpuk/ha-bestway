@@ -45,11 +45,13 @@ _HYDROJET_BUBBLES_TYPES = frozenset(
 )
 
 
-def _bubbles_map_for(device_type: BestwayDeviceType) -> BubblesMapping:
-    """The bubbles read map a normalized-vocabulary device type uses.
+def bubbles_map_for(device_type: BestwayDeviceType) -> BubblesMapping:
+    """The bubbles map a normalized-vocabulary device type reads and writes.
 
     Mirrors the THREE_WAY_AIRJET/THREE_WAY_HYDROJET split in features.py:
     Hydrojet variants read MEDIUM as 40-43, everything else as 40/41/50/51.
+    Shared by translation (wire -> typed) and the Gizwits write side
+    (typed -> wire), so both directions agree on which map a device uses.
     """
     if device_type in _HYDROJET_BUBBLES_TYPES:
         return HYDROJET_BUBBLES_MAP
@@ -159,7 +161,7 @@ def _from_v01_vocab(
     bubbles: BubblesLevel | None = None
     wave_int = _as_int(attrs.get("wave"))
     if wave_int is not None:
-        bubbles = _bubbles_map_for(device_type).from_api_value(wave_int)
+        bubbles = bubbles_map_for(device_type).from_api_value(wave_int)
 
     errors = sorted(
         attr
