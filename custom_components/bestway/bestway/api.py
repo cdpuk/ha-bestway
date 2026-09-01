@@ -15,13 +15,14 @@ from .model import (
     HYDROJET_BUBBLES_MAP,
     BestwayApiResults,
     BestwayDevice,
-    BestwayDeviceStatus,
     BestwayDeviceType,
     BestwayUserToken,
     BubblesLevel,
     HydrojetFilter,
     HydrojetHeat,
+    RawSnapshot,
 )
+from .translation import status_from_attrs
 
 _LOGGER = getLogger(__name__)
 _HEADERS = {
@@ -112,8 +113,40 @@ class BestwayApi:
         #
         # When updating state via HA, we update the cache and return this value
         # until the API can provide us with a response containing a timestamp
-        # more recent than the local update.
-        self._state_cache: dict[str, BestwayDeviceStatus] = {}
+        # more recent than the local update. Merge substrate for polled +
+        # WebSocket-delta state, prior to translation into the typed
+        # DeviceStatus entities read.
+        self._raw_state: dict[str, RawSnapshot] = {}
+
+    def _results(self) -> BestwayApiResults:
+        """Translate the raw state cache into typed results.
+
+        A raw entry with no matching device (e.g. a WebSocket delta that
+        arrives before refresh_bindings() has run) translates against
+        UNKNOWN rather than being dropped, so it still surfaces as a status
+        with raw attrs even though no entity can be attached to it yet.
+        """
+        return BestwayApiResults(
+            devices={
+                did: status_from_attrs(
+                    self.devices[did].device_type
+                    if did in self.devices
+                    else BestwayDeviceType.UNKNOWN,
+                    snapshot.timestamp,
+                    snapshot.attrs,
+                )
+                for did, snapshot in self._raw_state.items()
+            }
+        )
+
+    def handle_partial_update(
+        self, device_id: str, attrs: dict[str, Any]
+    ) -> BestwayApiResults:
+        """Merge a partial WebSocket delta and return freshly translated results."""
+        existing = self._raw_state.get(device_id)
+        merged = {**existing.attrs, **attrs} if existing else dict(attrs)
+        self._raw_state[device_id] = RawSnapshot(int(time()), merged)
+        return self._results()
 
     @staticmethod
     async def get_user_token(
@@ -187,9 +220,9 @@ class BestwayApi:
             # Work out whether the received API update is more recent than the
             # locally cached state
             local_update_timestamp = 0
-            cached_state: BestwayDeviceStatus | None
-            if cached_state := self._state_cache.get(did):
-                local_update_timestamp = cached_state.timestamp
+            cached_snapshot: RawSnapshot | None
+            if cached_snapshot := self._raw_state.get(did):
+                local_update_timestamp = cached_snapshot.timestamp
 
             # If the API timestamp is more recent, update the cache
             if api_update_timestamp < local_update_timestamp:
@@ -200,9 +233,7 @@ class BestwayApi:
 
             _LOGGER.debug("New data received for device %s", did)
             device_attrs = latest_data["attr"]
-            self._state_cache[did] = BestwayDeviceStatus(
-                latest_data["updated_at"], device_attrs
-            )
+            self._raw_state[did] = RawSnapshot(latest_data["updated_at"], device_attrs)
 
             attr_dump = json.dumps(device_attrs)
 
@@ -219,11 +250,11 @@ class BestwayApi:
                     attr_dump,
                 )
 
-        return BestwayApiResults(self._state_cache)
+        return self._results()
 
     async def airjet_spa_set_power(self, device_id: str, power: bool) -> None:
         """Turn the spa on/off."""
-        if (cached_state := self._state_cache.get(device_id)) is None:
+        if (cached_state := self._raw_state.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         api_value = 1 if power else 0
@@ -239,7 +270,7 @@ class BestwayApi:
 
     async def airjet_spa_set_filter(self, device_id: str, filtering: bool) -> None:
         """Turn the filter pump on/off on a spa device."""
-        if (cached_state := self._state_cache.get(device_id)) is None:
+        if (cached_state := self._raw_state.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         api_value = 1 if filtering else 0
@@ -259,7 +290,7 @@ class BestwayApi:
 
         Turning the heater on will also turn on the filter pump.
         """
-        if (cached_state := self._state_cache.get(device_id)) is None:
+        if (cached_state := self._raw_state.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         api_value = 1 if heat else 0
@@ -275,7 +306,7 @@ class BestwayApi:
         self, device_id: str, target_temp: int
     ) -> None:
         """Set the target temperature on a spa device."""
-        if (cached_state := self._state_cache.get(device_id)) is None:
+        if (cached_state := self._raw_state.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         target_temp = int(target_temp)
@@ -286,7 +317,7 @@ class BestwayApi:
 
     async def airjet_spa_set_locked(self, device_id: str, locked: bool) -> None:
         """Lock or unlock the physical control panel on a spa device."""
-        if (cached_state := self._state_cache.get(device_id)) is None:
+        if (cached_state := self._raw_state.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         api_value = 1 if locked else 0
@@ -297,7 +328,7 @@ class BestwayApi:
 
     async def airjet_spa_set_bubbles(self, device_id: str, bubbles: bool) -> None:
         """Turn the bubbles on/off on an Airjet spa device."""
-        if (cached_state := self._state_cache.get(device_id)) is None:
+        if (cached_state := self._raw_state.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         _LOGGER.debug("Setting bubbles mode to %s", "ON" if bubbles else "OFF")
@@ -311,7 +342,7 @@ class BestwayApi:
         self, device_id: str, bubbles: BubblesLevel
     ) -> None:
         """Control the bubbles on an Airjet V01 spa device."""
-        if (cached_state := self._state_cache.get(device_id)) is None:
+        if (cached_state := self._raw_state.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         api_value = AIRJET_V01_BUBBLES_MAP.to_api_value(bubbles)
@@ -324,7 +355,7 @@ class BestwayApi:
 
     async def hydrojet_spa_set_power(self, device_id: str, power: bool) -> None:
         """Turn the spa on/off."""
-        if (cached_state := self._state_cache.get(device_id)) is None:
+        if (cached_state := self._raw_state.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         _LOGGER.debug("Setting power to %s", "ON" if power else "OFF")
@@ -341,7 +372,7 @@ class BestwayApi:
         self, device_id: str, filtering: HydrojetFilter
     ) -> None:
         """Turn the filter pump on/off on a spa device."""
-        if (cached_state := self._state_cache.get(device_id)) is None:
+        if (cached_state := self._raw_state.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         _LOGGER.debug("Setting filter mode to %s", "ON" if filtering else "OFF")
@@ -360,7 +391,7 @@ class BestwayApi:
 
         Turning the heater on will also turn on the filter pump.
         """
-        if (cached_state := self._state_cache.get(device_id)) is None:
+        if (cached_state := self._raw_state.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         _LOGGER.debug("Setting heater mode to %s", "ON" if heat else "OFF")
@@ -375,7 +406,7 @@ class BestwayApi:
         self, device_id: str, target_temp: int
     ) -> None:
         """Set the target temperature on a Hydrojet spa device."""
-        if (cached_state := self._state_cache.get(device_id)) is None:
+        if (cached_state := self._raw_state.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         target_temp = int(target_temp)
@@ -388,7 +419,7 @@ class BestwayApi:
         self, device_id: str, bubbles: BubblesLevel
     ) -> None:
         """Control the bubbles on a Hydrojet spa device."""
-        if (cached_state := self._state_cache.get(device_id)) is None:
+        if (cached_state := self._raw_state.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         api_value = HYDROJET_BUBBLES_MAP.to_api_value(bubbles)
@@ -401,7 +432,7 @@ class BestwayApi:
 
     async def hydrojet_spa_set_jets(self, device_id: str, jets: bool) -> None:
         """Control the jets on a Hydrojet spa device."""
-        if (cached_state := self._state_cache.get(device_id)) is None:
+        if (cached_state := self._raw_state.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         api_value = 1 if jets else 0
@@ -414,7 +445,7 @@ class BestwayApi:
 
     async def pool_filter_set_power(self, device_id: str, power: bool) -> None:
         """Control power to a pump device."""
-        if (cached_state := self._state_cache.get(device_id)) is None:
+        if (cached_state := self._raw_state.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         _LOGGER.debug("Setting power to %s", "ON" if power else "OFF")
@@ -424,7 +455,7 @@ class BestwayApi:
 
     async def pool_filter_set_time(self, device_id: str, hours: int) -> None:
         """Set filter timeout for for pool devices."""
-        if (cached_state := self._state_cache.get(device_id)) is None:
+        if (cached_state := self._raw_state.get(device_id)) is None:
             raise BestwayException(f"Device '{device_id}' is not recognised")
 
         _LOGGER.debug("Setting filter timeout to %d hours", hours)

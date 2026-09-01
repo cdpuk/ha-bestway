@@ -15,6 +15,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from custom_components.bestway.bestway.model import HydrojetFilter, HydrojetHeat
+from custom_components.bestway.const import BACKEND_SMARTSPA
+from custom_components.bestway.model import BestwayDevice, HeaterState
 from custom_components.bestway.smartspa.api import (
     SMARTSPA_APP_ID,
     SmartSpaApi,
@@ -23,6 +25,29 @@ from custom_components.bestway.smartspa.api import (
     _content_md5,
     _envelope,
 )
+
+
+def _device(device_id: str, product_key: str, product_series: str) -> BestwayDevice:
+    """A BestwayDevice matching a routing entry, for fetch_data() tests.
+
+    In production, self.devices is always populated by refresh_bindings()
+    before fetch_data() runs; these tests exercise fetch_data() in
+    isolation, so they need to populate it manually.
+    """
+    return BestwayDevice(
+        protocol_version=3,
+        device_id=device_id,
+        product_name=product_series,
+        alias="Test Spa",
+        mcu_soft_version="",
+        mcu_hard_version="",
+        wifi_soft_version="",
+        wifi_hard_version="",
+        is_online=True,
+        backend=BACKEND_SMARTSPA,
+        product_id=product_key,
+        product_series=product_series,
+    )
 
 
 def create_mock_response(status: int, json_data: dict):
@@ -278,7 +303,14 @@ async def test_fetch_data_binary_wave_maps_to_max(api):
 
 
 async def test_fetch_data_heater_readback_two_maps_to_heating(api):
-    """heater_state reads 2 while heating; climate knows 3 (HEATING)."""
+    """heater_state reads 2 while heating.
+
+    No backend-local patch is needed for this: the shared V01 translator
+    already treats any non-zero heat value other than 4 (TARGET_REACHED) as
+    HeaterState.HEATING, so raw readback value 2 comes through untouched in
+    attrs while the typed field renders correctly.
+    """
+    api.devices["6879c4d585ab"] = _device("6879c4d585ab", "F12D9Q", "HYDROJET_PRO")
     api._request = AsyncMock(
         return_value={
             "code": "200",
@@ -288,7 +320,9 @@ async def test_fetch_data_heater_readback_two_maps_to_heating(api):
 
     results = await api.fetch_data()
 
-    assert results.devices["6879c4d585ab"].attrs["heat"] == 3
+    status = results.devices["6879c4d585ab"]
+    assert status.attrs["heat"] == 2
+    assert status.heater is HeaterState.HEATING
 
 
 async def test_fetch_data_survives_one_failing_device(api):

@@ -45,22 +45,15 @@ import hashlib
 import json
 import logging
 from time import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from aiohttp import ClientSession
 
 from ..aws_iot.api import AwsIotApi  # reuse normalize_aws_state (same field names)
-from ..bestway.model import (
-    BestwayDevice,
-    BestwayDeviceStatus,
-    BubblesLevel,
-    HydrojetFilter,
-    HydrojetHeat,
-)
+from ..bestway.model import BubblesLevel, HydrojetFilter, HydrojetHeat
+from ..bestway.translation import status_from_attrs
 from ..const import BACKEND_SMARTSPA
-
-if TYPE_CHECKING:
-    from ..bestway.api import BestwayApiResults
+from ..model import BestwayApiResults, BestwayDevice, BestwayDeviceType, RawSnapshot
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -99,8 +92,8 @@ class SmartSpaApi:
     """SmartSpa gateway client matching the BestwayApi/AwsIotApi interface.
 
     Drop-in for the coordinator and entity layer: exposes .devices,
-    ._state_cache, refresh_bindings(), fetch_data(), set_device_state()
-    and the airjet_/hydrojet_ convenience methods.
+    refresh_bindings(), fetch_data(), handle_partial_update(),
+    set_device_state() and the airjet_/hydrojet_ convenience methods.
     """
 
     def __init__(
@@ -120,10 +113,45 @@ class SmartSpaApi:
 
         # Interface expected by coordinator/entities
         self.devices: dict[str, BestwayDevice] = {}
-        self._state_cache: dict[str, BestwayDeviceStatus] = {}
+        # Merge substrate for polled + WebSocket-delta state, prior to
+        # translation into the typed DeviceStatus entities read.
+        self._raw_state: dict[str, RawSnapshot] = {}
 
         # device_id -> (productKey, mac) for URL building
         self._routing: dict[str, tuple[str, str]] = {}
+
+    def _results(self) -> BestwayApiResults:
+        """Translate the raw state cache into typed results.
+
+        A raw entry with no matching device translates against UNKNOWN
+        rather than being dropped, so it still surfaces as a status with
+        raw attrs even though no entity can be attached to it yet.
+        """
+        return BestwayApiResults(
+            devices={
+                device_id: status_from_attrs(
+                    self.devices[device_id].device_type
+                    if device_id in self.devices
+                    else BestwayDeviceType.UNKNOWN,
+                    snapshot.timestamp,
+                    snapshot.attrs,
+                )
+                for device_id, snapshot in self._raw_state.items()
+            }
+        )
+
+    def handle_partial_update(
+        self, device_id: str, attrs: dict[str, Any]
+    ) -> BestwayApiResults:
+        """Merge a partial state delta and return freshly translated results.
+
+        This backend has no WebSocket today, but implements the same
+        interface as the other two for uniformity.
+        """
+        existing = self._raw_state.get(device_id)
+        merged = {**existing.attrs, **attrs} if existing else dict(attrs)
+        self._raw_state[device_id] = RawSnapshot(int(time()), merged)
+        return self._results()
 
     # ------------------------------------------------------------------ auth
 
@@ -350,8 +378,6 @@ class SmartSpaApi:
 
     async def fetch_data(self) -> BestwayApiResults:
         """Fetch the shadow for every device and normalize field names."""
-        from ..bestway.api import BestwayApiResults
-
         for device_id, (product_key, mac) in self._routing.items():
             try:
                 result = await self._request(
@@ -371,26 +397,24 @@ class SmartSpaApi:
                 # Same field names as the AWS IoT shadow — reuse its normalizer.
                 mapped = AwsIotApi.normalize_aws_state(shadow)
 
-                # Read-back quirk: heater_state reads 2 while heating on this
-                # backend. climate.py knows 3 (HEATING) / 4 (TARGET_REACHED),
-                # so map 2 -> 3 to render a correct hvac_action. Any non-zero
-                # heat already means HVACMode.HEAT, so this is cosmetic-safe.
-                if mapped.get("heat") == 2:
-                    mapped["heat"] = 3
-
-                # Same family of quirk for bubbles: this gateway reads
-                # wave_state back as binary (1, sometimes 2) while running,
-                # but the 3-way bubbles select expects 0/40/100 and renders
-                # an unrecognized value as OFF - making OFF unselectable
-                # (no state change) while bubbles physically run. Map any
-                # binary "on" to 100 so the select shows MAX and OFF becomes
-                # a real change. Writes are unaffected (non-zero -> 1).
-                # Verified live on F12D9Q (HydroJet Pro, EU); explains the
-                # "bubbles turn on but not off" reports on on/off hardware.
+                # Read-back quirk: this gateway reads wave_state back as
+                # binary (1, sometimes 2) while running, but the 3-way
+                # bubbles select expects 0/40/100 and renders an unrecognized
+                # value as OFF - making OFF unselectable (no state change)
+                # while bubbles physically run. Map any binary "on" to 100 so
+                # the select shows MAX and OFF becomes a real change. Writes
+                # are unaffected (non-zero -> 1). Verified live on F12D9Q
+                # (HydroJet Pro, EU); explains the "bubbles turn on but not
+                # off" reports on on/off hardware.
+                #
+                # No equivalent patch is needed for the heater_state == 2
+                # readback quirk: the shared V01 translator already treats
+                # any non-zero heat value other than 4 (TARGET_REACHED) as
+                # HeaterState.HEATING.
                 if mapped.get("wave") in (1, 2):
                     mapped["wave"] = 100
 
-                self._state_cache[device_id] = BestwayDeviceStatus(
+                self._raw_state[device_id] = RawSnapshot(
                     timestamp=int(time()), attrs=mapped
                 )
                 _LOGGER.debug(
@@ -406,12 +430,13 @@ class SmartSpaApi:
                 _LOGGER.warning(
                     "Failed to fetch SmartSpa state for %s: %s", device_id, err
                 )
-                # Deliberately no placeholder entry here: a BestwayDeviceStatus
-                # with empty attrs is truthy, so it passes `if not device.status`
-                # guards and then raises KeyError downstream. Leaving the cache
-                # untouched keeps the last known state, or no state at all.
+                # Deliberately no placeholder entry here: a RawSnapshot with
+                # empty attrs would translate to a truthy DeviceStatus, which
+                # passes `if not device.status` guards and then raises
+                # KeyError downstream. Leaving the cache untouched keeps the
+                # last known state, or no state at all.
 
-        return BestwayApiResults(devices=self._state_cache)
+        return self._results()
 
     # ---------------------------------------------------------------- control
 

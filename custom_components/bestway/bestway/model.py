@@ -23,6 +23,7 @@ from ..model import (
     BubblesLevel,
     DeviceStatus,
     HeaterState,
+    RawSnapshot,
     TemperatureUnit,
 )
 
@@ -42,6 +43,7 @@ __all__ = [
     "HeaterState",
     "HydrojetFilter",
     "HydrojetHeat",
+    "RawSnapshot",
     "TemperatureUnit",
 ]
 

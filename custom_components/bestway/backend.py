@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from typing import Protocol, runtime_checkable
+from typing import Any, Protocol, runtime_checkable
 
 from .bestway.model import BubblesLevel, HydrojetFilter, HydrojetHeat
-from .model import BestwayApiResults, BestwayDevice, BestwayDeviceStatus
+from .model import BestwayApiResults, BestwayDevice
 
 
 @runtime_checkable
@@ -18,11 +18,19 @@ class BackendApi(Protocol):
 
     # Populated by refresh_bindings(); entities read it via coordinator.api.devices.
     devices: dict[str, BestwayDevice]
-    # Optimistic-state cache the coordinator merges websocket deltas into.
-    _state_cache: dict[str, BestwayDeviceStatus]
 
     async def refresh_bindings(self) -> None: ...
     async def fetch_data(self) -> BestwayApiResults: ...
+
+    def handle_partial_update(
+        self, device_id: str, attrs: dict[str, Any]
+    ) -> BestwayApiResults:
+        """Merge a partial WebSocket delta into backend state and return
+        freshly translated results. Each backend owns its own raw-state
+        merge substrate; this is the only mutation the coordinator performs
+        through the protocol rather than reaching into backend internals.
+        """
+        ...
 
     async def airjet_spa_set_power(self, device_id: str, power: bool) -> None: ...
     async def airjet_spa_set_filter(self, device_id: str, filtering: bool) -> None: ...

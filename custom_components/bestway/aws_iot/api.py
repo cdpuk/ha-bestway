@@ -16,22 +16,15 @@ import hashlib
 import logging
 import secrets
 from time import time
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from aiohttp import ClientSession
 
-from ..bestway.model import (
-    BestwayDevice,
-    BestwayDeviceStatus,
-    BubblesLevel,
-    HydrojetFilter,
-    HydrojetHeat,
-)
+from ..bestway.model import BubblesLevel, HydrojetFilter, HydrojetHeat
+from ..bestway.translation import status_from_attrs
 from ..const import BACKEND_AWS_IOT
+from ..model import BestwayApiResults, BestwayDevice, BestwayDeviceType, RawSnapshot
 from .encryption import encrypt_command_payload
-
-if TYPE_CHECKING:
-    from ..bestway.api import BestwayApiResults
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -97,8 +90,39 @@ class AwsIotApi:
         # Device registry (matches Gizwits interface)
         self.devices: dict[str, BestwayDevice] = {}
 
-        # State cache (matches Gizwits interface)
-        self._state_cache: dict[str, BestwayDeviceStatus] = {}
+        # Merge substrate for polled + WebSocket-delta state, prior to
+        # translation into the typed DeviceStatus entities read.
+        self._raw_state: dict[str, RawSnapshot] = {}
+
+    def _results(self) -> BestwayApiResults:
+        """Translate the raw state cache into typed results.
+
+        A raw entry with no matching device (e.g. a WebSocket delta that
+        arrives before refresh_bindings() has run) translates against
+        UNKNOWN rather than being dropped, so it still surfaces as a status
+        with raw attrs even though no entity can be attached to it yet.
+        """
+        return BestwayApiResults(
+            devices={
+                device_id: status_from_attrs(
+                    self.devices[device_id].device_type
+                    if device_id in self.devices
+                    else BestwayDeviceType.UNKNOWN,
+                    snapshot.timestamp,
+                    snapshot.attrs,
+                )
+                for device_id, snapshot in self._raw_state.items()
+            }
+        )
+
+    def handle_partial_update(
+        self, device_id: str, attrs: dict[str, Any]
+    ) -> BestwayApiResults:
+        """Merge a partial WebSocket delta and return freshly translated results."""
+        existing = self._raw_state.get(device_id)
+        merged = {**existing.attrs, **attrs} if existing else dict(attrs)
+        self._raw_state[device_id] = RawSnapshot(int(time()), merged)
+        return self._results()
 
     @staticmethod
     def generate_visitor_id() -> str:
@@ -575,9 +599,6 @@ class AwsIotApi:
         Returns:
             BestwayApiResults with devices dict
         """
-        # Import here to avoid circular dependency
-        from ..bestway.api import BestwayApiResults
-
         for device_id in self.devices:
             try:
                 # Get device metadata
@@ -628,7 +649,7 @@ class AwsIotApi:
                 )
 
                 # Update state cache
-                self._state_cache[device_id] = BestwayDeviceStatus(
+                self._raw_state[device_id] = RawSnapshot(
                     timestamp=int(time()), attrs=mapped
                 )
 
@@ -643,12 +664,12 @@ class AwsIotApi:
                     "Failed to fetch state for device %s: %s", device_id[:12], err
                 )
                 # Keep existing cache or mark offline
-                if device_id not in self._state_cache:
-                    self._state_cache[device_id] = BestwayDeviceStatus(
+                if device_id not in self._raw_state:
+                    self._raw_state[device_id] = RawSnapshot(
                         timestamp=int(time()), attrs={}
                     )
 
-        return BestwayApiResults(devices=self._state_cache)
+        return self._results()
 
     async def set_device_state(
         self, device_id: str, state_updates: dict[str, Any]

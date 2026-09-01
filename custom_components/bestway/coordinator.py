@@ -13,9 +13,8 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .aws_iot.websocket import AwsIotWebSocket
 from .backend import BackendApi
-from .bestway.api import BestwayApiResults
-from .bestway.model import BestwayDeviceStatus
 from .bestway.websocket import GizwitsWebSocket
+from .model import BestwayApiResults
 from .smartspa.api import SmartSpaAuthException
 
 _LOGGER = getLogger(__name__)
@@ -66,9 +65,10 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
     def handle_websocket_update(self, device_id: str, attrs: dict[str, Any]) -> None:
         """Handle real-time device update from WebSocket.
 
-        Updates the device state cache with real-time data from WebSocket
-        and triggers immediate entity updates. This provides sub-second
-        update latency compared to 30-second polling.
+        Delegates the merge-and-translate work to the backend, which owns
+        the raw state cache these deltas are partial updates against, then
+        triggers immediate entity updates. This provides sub-second update
+        latency compared to 30-second polling.
 
         Args:
             device_id: Device ID (DID) that was updated
@@ -78,25 +78,13 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
             "WebSocket update for device %s with %d attributes", device_id, len(attrs)
         )
 
-        # Merge WebSocket updates with existing state to preserve diagnostic fields
-        # WebSocket deltas only include changed fields, not full state
-        existing = self.api._state_cache.get(device_id)
-        if existing:
-            merged_attrs = {**existing.attrs, **attrs}
-        else:
-            merged_attrs = attrs
-
-        # Update state cache with merged data
-        self.api._state_cache[device_id] = BestwayDeviceStatus(
-            timestamp=int(time()),
-            attrs=merged_attrs,
-        )
+        results = self.api.handle_partial_update(device_id, attrs)
 
         # Track last WebSocket update time for this device
         self._ws_last_update[device_id] = time()
 
         # Trigger immediate entity updates
-        self.async_set_updated_data(BestwayApiResults(self.api._state_cache))
+        self.async_set_updated_data(results)
 
     def handle_websocket_disconnect(self) -> None:
         """Handle WebSocket disconnection.
