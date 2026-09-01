@@ -6,9 +6,6 @@ a third backend (smart-spa-{eu,us,cn}-app.bestwaycorp.com, a React Native
 invitation that anonymous visitor accounts cannot redeem (issue #135), but the
 new gateway supports plain account login, which sidesteps the QR flow entirely.
 
-Protocol as reverse-engineered and verified end-to-end against live spas in
-https://github.com/cdpuk/ha-bestway/issues/135 (Aug 2026):
-
 * Login:   POST app/smart_home/login/pwd
            body is an ENVELOPE: {"appKey": <appid>, "data": {...}, "version": "1.0"}
            -> data.userToken
@@ -17,7 +14,7 @@ https://github.com/cdpuk/ha-bestway/issues/135 (Aug 2026):
 * Control: POST app/device/control/{productKey}/{mac}
            body: {"appKey": <appid>, "data": "<JSON STRING>", "version": "1.0"}
 
-CRITICAL quirks (all confirmed on live hardware, EU + US):
+Qquirks (all confirmed on live hardware, EU + US):
 
 1. The control "data" field must be a JSON *string* (json.dumps of the
    datapoints). Sending an {"attrs": {...}} object returns HTTP 200 /

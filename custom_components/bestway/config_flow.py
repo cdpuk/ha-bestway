@@ -382,8 +382,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
     ) -> ConfigFlowResult:
         """Handle SmartSpa gateway auth (post-July-2026 Bestway Connect).
 
-        Uses plain account login against smart-spa-{region}-app.bestwaycorp.com,
-        which sidesteps the broken share-QR flow entirely (issue #135).
+        Uses plain account login against smart-spa-{region}-app.bestwaycorp.com.
         """
         from .smartspa.api import (
             SMARTSPA_ENDPOINTS,
