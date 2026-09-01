@@ -9,12 +9,12 @@ These tests cover the fixes in:
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
-from custom_components.bestway.bestway.api import BestwayApiResults
-from custom_components.bestway.bestway.model import (
+from custom_components.bestway.model import (
+    BestwayApiResults,
     BestwayDevice,
     BestwayDeviceStatus,
+    TemperatureUnit,
 )
-from custom_components.bestway.model import TemperatureUnit
 
 # ---------------------------------------------------------------------------
 # Helpers

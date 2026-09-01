@@ -8,7 +8,7 @@ from custom_components.bestway.aws_iot.api import (
     AwsIotApi,
     AwsIotAuthException,
 )
-from custom_components.bestway.model import BubblesLevel
+from custom_components.bestway.model import BestwayDevice, BubblesLevel
 
 
 def create_mock_response(status: int, json_data: dict):
@@ -261,8 +261,6 @@ def test_normalize_state_wave_mapping():
 @pytest.mark.asyncio
 async def test_fetch_data_returns_results(aws_api, mock_session):
     """Test fetch_data returns BestwayApiResults."""
-    from custom_components.bestway.bestway.model import BestwayDevice
-
     # Setup device with real attributes (not MagicMock) so JSON serialization works
     aws_api.devices = {
         "device1": BestwayDevice(
@@ -313,8 +311,6 @@ async def test_fetch_data_returns_results(aws_api, mock_session):
 @pytest.mark.asyncio
 async def test_set_device_state_sends_command(aws_api, mock_session):
     """Test control command sends encrypted payload."""
-    from custom_components.bestway.bestway.model import BestwayDevice
-
     # Setup device with real attributes for JSON serialization
     aws_api.devices = {
         "device1": BestwayDevice(

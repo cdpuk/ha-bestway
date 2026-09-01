@@ -50,10 +50,15 @@ from typing import Any
 from aiohttp import ClientSession
 
 from ..aws_iot.api import AwsIotApi  # reuse normalize_aws_state (same field names)
-from ..bestway.model import BubblesLevel
 from ..bestway.translation import status_from_attrs
 from ..const import Backend
-from ..model import BestwayApiResults, BestwayDevice, BestwayDeviceType, RawSnapshot
+from ..model import (
+    BestwayApiResults,
+    BestwayDevice,
+    BestwayDeviceType,
+    BubblesLevel,
+    RawSnapshot,
+)
 
 _LOGGER = logging.getLogger(__name__)
 

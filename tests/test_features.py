@@ -4,7 +4,6 @@ from typing import cast
 
 import pytest
 
-from custom_components.bestway.bestway.model import BestwayDevice, BestwayDeviceType
 from custom_components.bestway.const import (
     BUBBLES_MODE_3WAY,
     BUBBLES_MODE_ONOFF,
@@ -18,6 +17,7 @@ from custom_components.bestway.features import (
     bubbles_mode_dependent,
     features_for,
 )
+from custom_components.bestway.model import BestwayDevice, BestwayDeviceType
 
 
 def _device(

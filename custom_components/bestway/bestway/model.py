@@ -1,12 +1,11 @@
 """Gizwits wire-vocabulary models.
 
 Backend-neutral types (`BestwayDevice`, `BestwayDeviceType`, `BubblesLevel`,
-`TemperatureUnit`, `DeviceStatus`/`BestwayDeviceStatus`, `BestwayApiResults`)
-live in the top-level `..model` module and are re-exported here so existing
-import paths keep working. What's left in this module is genuinely Gizwits
-wire language: the raw integer/enum values POSTed to and read from the
-Gizwits control API, which the other two backends translate away from as
-part of normalizing into the shared vocabulary.
+`TemperatureUnit`, `DeviceStatus`, `BestwayApiResults`, ...) live in the
+top-level `..model` module instead. What's left in this module is
+genuinely Gizwits wire language: the raw integer/enum values POSTed to and
+read from the Gizwits control API, which the other two backends translate
+away from as part of normalizing into the shared vocabulary.
 """
 
 from __future__ import annotations
@@ -15,37 +14,7 @@ from dataclasses import dataclass
 from enum import IntEnum
 from logging import getLogger
 
-from ..model import (
-    BestwayApiResults,
-    BestwayDevice,
-    BestwayDeviceStatus,
-    BestwayDeviceType,
-    BubblesLevel,
-    DeviceStatus,
-    HeaterState,
-    RawSnapshot,
-    TemperatureUnit,
-)
-
-# Re-exported for existing import paths - see module docstring.
-__all__ = [
-    "AIRJET_V01_BUBBLES_MAP",
-    "HYDROJET_BUBBLES_MAP",
-    "BestwayApiResults",
-    "BestwayDevice",
-    "BestwayDeviceStatus",
-    "BestwayDeviceType",
-    "BestwayUserToken",
-    "BubblesLevel",
-    "BubblesMapping",
-    "BubblesValues",
-    "DeviceStatus",
-    "HeaterState",
-    "HydrojetFilter",
-    "HydrojetHeat",
-    "RawSnapshot",
-    "TemperatureUnit",
-]
+from ..model import BubblesLevel
 
 _LOGGER = getLogger(__name__)
 

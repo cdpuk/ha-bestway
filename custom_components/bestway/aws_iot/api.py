@@ -20,10 +20,15 @@ from typing import Any
 
 from aiohttp import ClientSession
 
-from ..bestway.model import BubblesLevel
 from ..bestway.translation import status_from_attrs
 from ..const import Backend
-from ..model import BestwayApiResults, BestwayDevice, BestwayDeviceType, RawSnapshot
+from ..model import (
+    BestwayApiResults,
+    BestwayDevice,
+    BestwayDeviceType,
+    BubblesLevel,
+    RawSnapshot,
+)
 from .encryption import encrypt_command_payload
 
 _LOGGER = logging.getLogger(__name__)

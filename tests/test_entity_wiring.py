@@ -13,9 +13,13 @@ import pytest
 from homeassistant.components.climate.const import ATTR_HVAC_MODE, HVACAction, HVACMode
 from homeassistant.const import ATTR_TEMPERATURE
 
-from custom_components.bestway.bestway.api import BestwayApiResults
 from custom_components.bestway.climate import SpaThermostat
-from custom_components.bestway.model import BestwayDevice, BubblesLevel, DeviceStatus
+from custom_components.bestway.model import (
+    BestwayApiResults,
+    BestwayDevice,
+    BubblesLevel,
+    DeviceStatus,
+)
 from custom_components.bestway.number import _POOL_FILTER_TIME, PoolFilterTimeNumber
 from custom_components.bestway.select import ThreeWaySpaBubblesSelect
 from custom_components.bestway.switch import (

@@ -1,6 +1,6 @@
-"""Tests for the shared Gizwits (V01) device model."""
+"""Tests for BestwayDeviceType's Gizwits product_name mapping."""
 
-from custom_components.bestway.bestway.model import BestwayDeviceType
+from custom_components.bestway.model import BestwayDeviceType
 
 
 def test_from_api_product_name():

@@ -10,16 +10,14 @@ from typing import Any
 from aiohttp import ClientResponse, ClientSession
 
 from ..const import GIZWITS_APP_ID
-from .model import (
+from ..model import (
     BestwayApiResults,
     BestwayDevice,
     BestwayDeviceType,
-    BestwayUserToken,
     BubblesLevel,
-    HydrojetFilter,
-    HydrojetHeat,
     RawSnapshot,
 )
+from .model import BestwayUserToken, HydrojetFilter, HydrojetHeat
 from .translation import bubbles_map_for, status_from_attrs
 
 _LOGGER = getLogger(__name__)

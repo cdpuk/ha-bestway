@@ -1,7 +1,7 @@
 """Tests for AWS IoT model extensions."""
 
-from custom_components.bestway.bestway.model import (
-    HYDROJET_BUBBLES_MAP,
+from custom_components.bestway.bestway.model import HYDROJET_BUBBLES_MAP
+from custom_components.bestway.model import (
     BestwayDevice,
     BestwayDeviceType,
     BubblesLevel,
