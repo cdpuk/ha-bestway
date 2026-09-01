@@ -156,9 +156,8 @@ class DeviceErrorsSensor(BestwayEntity, BinarySensorEntity):
     def extra_state_attributes(self) -> Mapping[str, Any] | None:
         """Return the active error codes.
 
-        The vocabulary-specific parsing (Airjet system_err*/earth, Airjet_V01
-        and Hydrojet E-codes minus E32, pool filter "error") happens once in
-        bestway/translation.py rather than being duplicated here.
+        Error-code vocabulary is backend/device-type specific; the parsing
+        lives in bestway/translation.py.
         """
         return {"errors": list(self.status.errors)} if self.status else None
 

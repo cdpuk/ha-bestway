@@ -65,19 +65,21 @@ The integration supports three completely separate cloud backends, selected at c
 
 `__init__.py` branches on `entry.data["backend"]` to call `_async_setup_gizwits`, `_async_setup_aws_iot` or `_async_setup_smartspa`. Every path creates a `BestwayUpdateCoordinator`, which accepts any `BackendApi` (`backend.py`) — the structural `Protocol` all three API classes satisfy, so entities are backend-agnostic. Add a fourth backend by implementing that `Protocol`, not by widening a union.
 
+`BackendApi` exposes device-agnostic semantic setters (`set_power`, `set_filter`, `set_heat`, `set_locked`, `set_jets`, `set_target_temperature`, `set_bubbles`, `set_pool_timer`) plus `refresh_bindings`/`fetch_data`/`handle_partial_update`. Each backend owns its own wire encoding internally; entities and platform code never see per-device vocabulary (Gizwits' `HydrojetHeat`/`HydrojetFilter`/bubbles ints and the rest are confined to `custom_components/bestway/bestway/`).
+
 ### Update flow
 
-The coordinator polls every 30 seconds by default. When a WebSocket connects successfully, polling drops to 5 minutes (`set_websocket_active()`). WebSocket updates call `handle_websocket_update()`, which merges the partial delta into `api._state_cache` and immediately pushes via `async_set_updated_data()`.
+The coordinator polls every 30 seconds by default. When a WebSocket connects successfully, polling drops to 5 minutes (`set_websocket_active()`). WebSocket updates call `handle_websocket_update()`, which delegates to the backend's `handle_partial_update()` (merges the partial delta into its raw state cache and translates it into a fresh `DeviceStatus`) and pushes the result via `async_set_updated_data()`.
 
 ### State cache pattern
 
-Each API class maintains `_state_cache: dict[str, BestwayDeviceStatus]`. After sending a control command (e.g. `airjet_spa_set_power`), the API immediately updates the cache with the new value and a fresh timestamp. On the next poll, if the API response timestamp is older than the local cache, the poll result is discarded. This works around the Gizwits API's latency in reflecting POSTed changes.
+Each API class maintains `_raw_state: dict[str, RawSnapshot]` (raw/normalized wire attrs, not the typed status entities read). After sending a control command (e.g. `set_power`), the API immediately updates this cache with the new value and a fresh timestamp, then translates it (`status_from_attrs()` in `bestway/translation.py`) into the `DeviceStatus` entities read. On the next poll, if the API response timestamp is older than the cached one, the poll result is discarded. This works around the Gizwits API's latency in reflecting POSTed changes.
 
 ### Entity structure
 
 All entities extend `BestwayEntity` (in `entity.py`), which extends `CoordinatorEntity`. It exposes:
 
-- `self.status` → `BestwayDeviceStatus | None` (current attribute snapshot)
+- `self.status` → `DeviceStatus | None` (typed snapshot of the device's current state — see `model.py`)
 - `self.bestway_device` → `BestwayDevice | None` (device metadata)
 - `available` returns `True` as long as coordinator has data and the device is known — the `is_online` flag from the API is explicitly ignored as unreliable.
 
@@ -92,3 +94,5 @@ Pre-commit runs: `ruff` (lint + format), `mypy`, `codespell`, `yamllint`, `prett
 ### Comments
 
 Don't write comments that just restate what an IDE derives on demand — lists of a type's implementers or subclasses, a function's callers, "used by X/Y/Z", "see also <module>". They rot silently when code moves. Comment the _why_ and any non-obvious contract, not the _where-used_.
+
+Don't narrate a refactor in the comment — "no longer needs to", "used to live here", "now lives in", "legacy X becomes Y", "mirrors the pre-refactor branch in...". Describe the code as it is, not as a diff against what it replaced; the git history already has that. Once the change lands, that framing is dead weight for anyone reading the file cold, and it's the first thing to go stale the next time the code moves again.

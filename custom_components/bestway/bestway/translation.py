@@ -48,11 +48,9 @@ _HYDROJET_BUBBLES_TYPES = frozenset(
 def bubbles_map_for(device_type: BestwayDeviceType) -> BubblesMapping:
     """The bubbles map a normalized-vocabulary device type reads and writes.
 
-    Hydrojet variants read MEDIUM as 40-43, everything else as 40/41/50/51 -
-    a device-type distinction features.py no longer needs to know about,
-    since it only decides which entities exist, not which wire vocabulary
-    they speak. Shared by translation (wire -> typed) and the Gizwits write
-    side (typed -> wire), so both directions agree on which map a device uses.
+    Hydrojet variants read MEDIUM as 40-43, everything else as 40/41/50/51.
+    Shared by translation (wire -> typed) and the Gizwits write side (typed
+    -> wire), so both directions agree on which map a device uses.
     """
     if device_type in _HYDROJET_BUBBLES_TYPES:
         return HYDROJET_BUBBLES_MAP

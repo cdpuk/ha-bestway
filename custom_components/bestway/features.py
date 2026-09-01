@@ -25,9 +25,8 @@ from .model import BestwayDevice, BestwayDeviceType
 class DeviceKind(Enum):
     """Broad device category, for the handful of things that differ between
     a spa and a pool filter (name prefix, which power/connectivity/error
-    description a device gets). Device-family wire vocabulary no longer
-    lives here - every setter/getter is device-agnostic (see backend.py,
-    bestway/translation.py), so this is purely a UI-shape distinction now.
+    description a device gets). Purely a UI-shape distinction - wire
+    vocabulary lives in backend.py / bestway/translation.py.
     """
 
     NONE = auto()
@@ -39,8 +38,8 @@ class BubblesStyle(Enum):
     """Which bubbles control (if any) a device gets.
 
     Which read/write map (Airjet-style vs. Hydrojet-style MEDIUM values) a
-    THREE_WAY device uses is a backend concern now - see bubbles_map_for()
-    in bestway/translation.py - not an entity-selection concern.
+    THREE_WAY device uses is decided by bubbles_map_for() in
+    bestway/translation.py, not here.
     """
 
     NONE = auto()
@@ -245,9 +244,8 @@ def features_for(device: BestwayDevice, options: Mapping[str, Any]) -> DeviceFea
     base = _FEATURES_BY_TYPE.get(device.device_type, _NO_FEATURES)
 
     # Version sensors follow the backend, not the model: every device gets a
-    # set, including UNKNOWN. This mirrors the pre-refactor `else` branch in
-    # sensor.py, which gave the shadow-based set to anything that wasn't
-    # BACKEND_GIZWITS (i.e. both AWS IoT and SmartSpa).
+    # set, including UNKNOWN. Anything that isn't BACKEND_GIZWITS (AWS IoT,
+    # SmartSpa, and any future backend) gets the shadow-based set.
     version_sensors = (
         VersionSensorSet.GIZWITS
         if device.backend == BACKEND_GIZWITS

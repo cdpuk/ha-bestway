@@ -52,10 +52,9 @@ async def async_setup_entry(
 class SpaThermostat(BestwayEntity, ClimateEntity):
     """A thermostat that works for every spa device type.
 
-    Reads/writes exclusively through DeviceStatus.heater and
-    BackendApi.set_heat/set_target_temperature - no device-family branching
-    needed, since the backend already normalized the heater state and wire
-    encoding away.
+    Reads DeviceStatus.heater and writes via BackendApi.set_heat /
+    set_target_temperature; the backend owns the wire encoding for heater
+    state and temperature units.
     """
 
     _attr_name = "Spa Thermostat"

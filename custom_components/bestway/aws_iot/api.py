@@ -790,9 +790,9 @@ class AwsIotApi:
             )
             return False
 
-    # Semantic setters: single implementation per feature, no per-device-family
-    # split. AWS IoT has one wire vocabulary, so unlike Gizwits there's no
-    # device_type dispatch here.
+    # AWS IoT has a single wire vocabulary, so each setter below is one
+    # implementation with no device_type dispatch (contrast with Gizwits,
+    # which has several).
     async def set_power(self, device_id: str, power: bool) -> None:
         """Set power state."""
         await self.set_device_state(device_id, {"power_state": 1 if power else 0})

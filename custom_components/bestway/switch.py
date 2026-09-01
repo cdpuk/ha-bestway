@@ -62,9 +62,9 @@ _SPA_FILTER_SWITCH = BestwaySwitchEntityDescription(
     turn_off_fn=lambda api, device_id: api.set_filter(device_id, False),
 )
 
-# Covers legacy Airjet's binary hardware and both V02 on/off bubbles modes:
-# the read/write map differences between device types now live entirely in
-# the backend, so one description serves all of them.
+# One description serves every on/off bubbles device, binary-hardware
+# devices included: any non-OFF level reads as "on", and the backend picks
+# the write value per device type.
 _SPA_BUBBLES_SWITCH = BestwaySwitchEntityDescription(
     key="spa_wave_power",
     name="Spa Bubbles",

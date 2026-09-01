@@ -19,10 +19,9 @@ _BUBBLES_OPTIONS = {
     BubblesLevel.MAX: "MAX",
 }
 
-# The read/write map differences between Airjet and Hydrojet device types
-# now live entirely in the backend (see bubbles_map_for() in
-# bestway/translation.py); the entity just reads status.bubbles and writes
-# via set_bubbles(), so one description serves both three-way styles.
+# Which bubbles map (Airjet-style vs. Hydrojet-style MEDIUM value) a device
+# uses is decided by bubbles_map_for() in bestway/translation.py; the entity
+# only reads status.bubbles and writes via set_bubbles().
 _BUBBLES_SELECT_DESCRIPTION = SelectEntityDescription(
     key="bubbles",
     options=list(_BUBBLES_OPTIONS.values()),

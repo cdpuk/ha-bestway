@@ -168,9 +168,8 @@ class DeviceStatus:
     ota_status: str | int | None = None
 
 
-# Compat alias: the type used to be named BestwayDeviceStatus and carried
-# only timestamp/attrs. Keeping the name importable avoids a mechanical
-# rename across every call site that still says `BestwayDeviceStatus`.
+# Alias kept importable as BestwayDeviceStatus for call sites that use that
+# name.
 BestwayDeviceStatus = DeviceStatus
 
 
