@@ -83,6 +83,8 @@ All entities extend `BestwayEntity` (in `entity.py`), which extends `Coordinator
 
 Platform files (`switch.py`, `climate.py`, `sensor.py`, etc.) each define entities and an `async_setup_entry` that iterates `coordinator.api.devices` to create per-device entities.
 
+Which entities a device gets is decided by `features.py`, not by per-platform device-type checks. `features_for(device, options)` derives a `DeviceFeatures` from the device's `device_type` (plus the bubbles UI option) and returns a table of booleans/enums that each platform's `async_setup_entry` reads. Adding support for a new model, or changing what an existing model exposes, means adding or editing one row in `features.py`'s `_FEATURES_BY_TYPE` table — not touching every platform file. Characterisation tests in `tests/test_entity_setup.py` pin the exact set of entity `unique_id`s produced per device type; update them deliberately when a table change is intended to add/remove/rename an entity.
+
 ### Linting
 
 Pre-commit runs: `ruff` (lint + format), `mypy`, `codespell`, `yamllint`, `prettier`, `actionlint`. Ruff replaces black/flake8/isort. mypy is strict for `custom_components/` but relaxed for `tests/`.

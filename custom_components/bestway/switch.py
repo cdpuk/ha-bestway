@@ -14,20 +14,10 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import BestwayUpdateCoordinator
 from .backend import BackendApi
-from .bestway.model import (
-    BestwayDeviceStatus,
-    BestwayDeviceType,
-    BubblesLevel,
-    HydrojetFilter,
-)
-from .const import (
-    BUBBLES_MODE_DEFAULT,
-    BUBBLES_MODE_ONOFF,
-    CONF_BUBBLES_MODE,
-    DOMAIN,
-    Icon,
-)
+from .bestway.model import BestwayDeviceStatus, BubblesLevel, HydrojetFilter
+from .const import DOMAIN, Icon
 from .entity import BestwayEntity
+from .features import BubblesStyle, ControlFamily, features_for
 
 # Maximum time an optimistic value is trusted before the entity falls back
 # to whatever the cloud last reported. Long enough to ride out a normal
@@ -149,6 +139,23 @@ _POOL_FILTER_POWER_SWITCH = BestwaySwitchEntityDescription(
     turn_off_fn=lambda api, device_id: api.pool_filter_set_power(device_id, False),
 )
 
+_POWER_SWITCH_BY_FAMILY = {
+    ControlFamily.RAW_AIRJET: _AIRJET_SPA_POWER_SWITCH,
+    ControlFamily.NORMALIZED_SPA: _AIRJET_V01_HYDROJET_SPA_POWER_SWITCH,
+    ControlFamily.POOL_FILTER: _POOL_FILTER_POWER_SWITCH,
+}
+
+_FILTER_SWITCH_BY_FAMILY = {
+    ControlFamily.RAW_AIRJET: _AIRJET_SPA_FILTER_SWITCH,
+    ControlFamily.NORMALIZED_SPA: _AIRJET_V01_HYDROJET_SPA_FILTER_SWITCH,
+}
+
+_BUBBLES_SWITCH_BY_STYLE = {
+    BubblesStyle.LEGACY_SWITCH: _AIRJET_SPA_BUBBLES_SWITCH,
+    BubblesStyle.V02_SWITCH: _AIRJET_V02_BUBBLES_SWITCH,
+    BubblesStyle.V02_HYDROJET_SWITCH: _HYDROJET_BUBBLES_ONOFF_SWITCH,
+}
+
 
 async def async_setup_entry(
     hass: HomeAssistant,
@@ -161,133 +168,45 @@ async def async_setup_entry(
     entities: list[BestwayEntity] = []
 
     for device_id, device in coordinator.api.devices.items():
-        if device.device_type == BestwayDeviceType.AIRJET_SPA:
-            entities.extend(
-                [
-                    BestwaySwitch(
-                        coordinator, config_entry, device_id, _AIRJET_SPA_POWER_SWITCH
-                    ),
-                    BestwaySwitch(
-                        coordinator,
-                        config_entry,
-                        device_id,
-                        _AIRJET_SPA_FILTER_SWITCH,
-                    ),
-                    BestwaySwitch(
-                        coordinator,
-                        config_entry,
-                        device_id,
-                        _AIRJET_SPA_BUBBLES_SWITCH,
-                    ),
-                    BestwaySwitch(
-                        coordinator,
-                        config_entry,
-                        device_id,
-                        _AIRJET_SPA_LOCK_SWITCH,
-                    ),
-                ]
-            )
+        features = features_for(device, config_entry.options)
 
-        # V01 and V02 Airjet devices (normalization provides consistent field names)
-        if device.device_type in [
-            BestwayDeviceType.AIRJET_V01_SPA,
-            BestwayDeviceType.ULTRAFIT_SPA,
-            BestwayDeviceType.AIRJET_V02,
-            BestwayDeviceType.ULTRAFIT_AIRJET_V02,
-        ]:
-            entities.extend(
-                [
-                    BestwaySwitch(
-                        coordinator,
-                        config_entry,
-                        device_id,
-                        _AIRJET_V01_HYDROJET_SPA_POWER_SWITCH,
-                    ),
-                    BestwaySwitch(
-                        coordinator,
-                        config_entry,
-                        device_id,
-                        _AIRJET_V01_HYDROJET_SPA_FILTER_SWITCH,
-                    ),
-                ]
-            )
-
-        # V02 Airjet bubbles: some models physically only have on/off,
-        # others have 3 levels (the product_id doesn't distinguish them).
-        # When the user has chosen the "on/off" mode in options, expose
-        # a switch here; otherwise the 3-way select in select.py handles it.
-        bubbles_mode = config_entry.options.get(CONF_BUBBLES_MODE, BUBBLES_MODE_DEFAULT)
-        if (
-            device.device_type
-            in [
-                BestwayDeviceType.AIRJET_V02,
-                BestwayDeviceType.ULTRAFIT_AIRJET_V02,
-            ]
-            and bubbles_mode == BUBBLES_MODE_ONOFF
-        ):
+        if features.power_switch:
             entities.append(
                 BestwaySwitch(
                     coordinator,
                     config_entry,
                     device_id,
-                    _AIRJET_V02_BUBBLES_SWITCH,
+                    _POWER_SWITCH_BY_FAMILY[features.control_family],
                 )
             )
 
-        if (
-            device.device_type
-            in [
-                BestwayDeviceType.HYDROJET_V02,
-                BestwayDeviceType.HYDROJET_PRO_V02,
-            ]
-            and bubbles_mode == BUBBLES_MODE_ONOFF
-        ):
+        if features.filter_switch:
             entities.append(
                 BestwaySwitch(
                     coordinator,
                     config_entry,
                     device_id,
-                    _HYDROJET_BUBBLES_ONOFF_SWITCH,
+                    _FILTER_SWITCH_BY_FAMILY[features.control_family],
                 )
             )
 
-        # V01 and V02 Hydrojet devices (normalization provides consistent field names)
-        if device.device_type in [
-            BestwayDeviceType.HYDROJET_SPA,
-            BestwayDeviceType.HYDROJET_PRO_SPA,
-            BestwayDeviceType.HYDROJET_V02,
-            BestwayDeviceType.HYDROJET_PRO_V02,
-        ]:
-            entities.extend(
-                [
-                    BestwaySwitch(
-                        coordinator,
-                        config_entry,
-                        device_id,
-                        _AIRJET_V01_HYDROJET_SPA_POWER_SWITCH,
-                    ),
-                    BestwaySwitch(
-                        coordinator,
-                        config_entry,
-                        device_id,
-                        _AIRJET_V01_HYDROJET_SPA_FILTER_SWITCH,
-                    ),
-                    BestwaySwitch(
-                        coordinator,
-                        config_entry,
-                        device_id,
-                        _HYDROJET_SPA_JETS_SWITCH,
-                    ),
-                ]
+        if features.jets_switch:
+            entities.append(
+                BestwaySwitch(
+                    coordinator, config_entry, device_id, _HYDROJET_SPA_JETS_SWITCH
+                )
             )
 
-        if device.device_type == BestwayDeviceType.POOL_FILTER:
-            entities.extend(
-                [
-                    BestwaySwitch(
-                        coordinator, config_entry, device_id, _POOL_FILTER_POWER_SWITCH
-                    )
-                ]
+        if features.lock_switch:
+            entities.append(
+                BestwaySwitch(
+                    coordinator, config_entry, device_id, _AIRJET_SPA_LOCK_SWITCH
+                )
+            )
+
+        if description := _BUBBLES_SWITCH_BY_STYLE.get(features.bubbles):
+            entities.append(
+                BestwaySwitch(coordinator, config_entry, device_id, description)
             )
 
     async_add_entities(entities)

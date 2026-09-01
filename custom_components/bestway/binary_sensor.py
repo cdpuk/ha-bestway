@@ -17,9 +17,9 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from . import BestwayUpdateCoordinator
-from .bestway.model import BestwayDeviceType
 from .const import DOMAIN, Icon
 from .entity import BestwayEntity
+from .features import ControlFamily, features_for
 
 _SPA_CONNECTIVITY_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
     key="spa_connected",
@@ -64,53 +64,34 @@ async def async_setup_entry(
     entities: list[BestwayEntity] = []
 
     for device_id, device in coordinator.api.devices.items():
-        if device.device_type in [
-            BestwayDeviceType.AIRJET_SPA,
-            BestwayDeviceType.AIRJET_V01_SPA,
-            BestwayDeviceType.ULTRAFIT_SPA,
-            BestwayDeviceType.HYDROJET_SPA,
-            BestwayDeviceType.HYDROJET_PRO_SPA,
-            BestwayDeviceType.AIRJET_V02,
-            BestwayDeviceType.ULTRAFIT_AIRJET_V02,
-            BestwayDeviceType.HYDROJET_V02,
-            BestwayDeviceType.HYDROJET_PRO_V02,
-        ]:
-            entities.extend(
-                [
-                    DeviceConnectivitySensor(
-                        coordinator,
-                        config_entry,
-                        device_id,
-                        _SPA_CONNECTIVITY_SENSOR_DESCRIPTION,
-                    ),
-                    DeviceErrorsSensor(
-                        coordinator,
-                        config_entry,
-                        device_id,
-                        _SPA_ERRORS_SENSOR_DESCRIPTION,
-                    ),
-                ]
+        features = features_for(device, config_entry.options)
+        is_pool_filter = features.control_family == ControlFamily.POOL_FILTER
+
+        if features.connectivity_sensor:
+            description = (
+                _POOL_FILTER_CONNECTIVITY_SENSOR_DESCRIPTION
+                if is_pool_filter
+                else _SPA_CONNECTIVITY_SENSOR_DESCRIPTION
+            )
+            entities.append(
+                DeviceConnectivitySensor(
+                    coordinator, config_entry, device_id, description
+                )
             )
 
-        if device.device_type == BestwayDeviceType.POOL_FILTER:
-            entities.extend(
-                [
-                    DeviceConnectivitySensor(
-                        coordinator,
-                        config_entry,
-                        device_id,
-                        _POOL_FILTER_CONNECTIVITY_SENSOR_DESCRIPTION,
-                    ),
-                    PoolFilterChangeRequiredSensor(
-                        coordinator, config_entry, device_id
-                    ),
-                    DeviceErrorsSensor(
-                        coordinator,
-                        config_entry,
-                        device_id,
-                        _POOL_FILTER_ERROR_SENSOR_DESCRIPTION,
-                    ),
-                ]
+        if features.filter_change_sensor:
+            entities.append(
+                PoolFilterChangeRequiredSensor(coordinator, config_entry, device_id)
+            )
+
+        if features.errors_sensor:
+            description = (
+                _POOL_FILTER_ERROR_SENSOR_DESCRIPTION
+                if is_pool_filter
+                else _SPA_ERRORS_SENSOR_DESCRIPTION
+            )
+            entities.append(
+                DeviceErrorsSensor(coordinator, config_entry, device_id, description)
             )
 
     async_add_entities(entities)
