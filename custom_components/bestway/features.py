@@ -127,11 +127,7 @@ _FEATURES_BY_TYPE: dict[BestwayDeviceType, DeviceFeatures] = {
         bubbles=BubblesStyle.THREE_WAY_AIRJET,
         connectivity_sensor=True,
         errors_sensor=True,
-        # TODO: this should be "Spa" like every other spa type - left as
-        # "Bestway" (inherited from _NO_FEATURES) to match pre-refactor
-        # behaviour. See sensor.py's old name_prefix list, which omitted
-        # AIRJET_V01_SPA.
-        name_prefix="Bestway",
+        name_prefix="Spa",
     ),
     BestwayDeviceType.ULTRAFIT_SPA: replace(
         _NO_FEATURES,
