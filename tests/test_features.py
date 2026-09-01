@@ -13,7 +13,9 @@ from custom_components.bestway.const import (
 )
 from custom_components.bestway.features import (
     BubblesStyle,
+    DeviceKind,
     VersionSensorSet,
+    bubbles_mode_dependent,
     features_for,
 )
 
@@ -83,10 +85,10 @@ def test_every_device_type_has_a_row(device_type: BestwayDeviceType) -> None:
 def test_bubbles_mode_option_flips_only_v02_types() -> None:
     """CONF_BUBBLES_MODE should only affect the four V02 device types.
 
-    Airjet V02 flips to a plain on/off switch using airjet_spa_set_bubbles;
-    Hydrojet V02 (e.g. F12D9Q San Francisco HydroJet Pro, which is on/off
-    only) flips to a switch using hydrojet_spa_set_bubbles instead - they
-    are different control families and must not share a switch description.
+    All four flip to a plain on/off switch (BubblesStyle.SWITCH); which
+    wire vocabulary/map the switch actually uses (Airjet-style vs.
+    Hydrojet-style) is a backend concern now (bubbles_map_for() in
+    bestway/translation.py), not something features.py distinguishes.
     V01 types (Airjet, its ULTRAFIT_SPA sibling, and both V01 Hydrojets)
     always stay three-way; V01 Airjet was never wired up to honour the
     option (see the TODO in features.py), and V01 Hydrojet has no on/off
@@ -98,40 +100,28 @@ def test_bubbles_mode_option_flips_only_v02_types() -> None:
     for device_type in (
         BestwayDeviceType.AIRJET_V02,
         BestwayDeviceType.ULTRAFIT_AIRJET_V02,
-    ):
-        device = _device(device_type, backend=BACKEND_AWS_IOT)
-        assert features_for(device, onoff).bubbles == BubblesStyle.V02_SWITCH
-        assert features_for(device, threeway).bubbles == BubblesStyle.THREE_WAY_AIRJET
-
-    for device_type in (
         BestwayDeviceType.HYDROJET_V02,
         BestwayDeviceType.HYDROJET_PRO_V02,
     ):
         device = _device(device_type, backend=BACKEND_AWS_IOT)
-        assert features_for(device, onoff).bubbles == BubblesStyle.V02_HYDROJET_SWITCH
-        assert features_for(device, threeway).bubbles == BubblesStyle.THREE_WAY_HYDROJET
+        assert features_for(device, onoff).bubbles == BubblesStyle.SWITCH
+        assert features_for(device, threeway).bubbles == BubblesStyle.THREE_WAY
 
     for device_type in (
         BestwayDeviceType.AIRJET_V01_SPA,
         BestwayDeviceType.ULTRAFIT_SPA,
-    ):
-        device = _device(device_type)
-        assert features_for(device, onoff).bubbles == BubblesStyle.THREE_WAY_AIRJET
-        assert features_for(device, threeway).bubbles == BubblesStyle.THREE_WAY_AIRJET
-
-    for device_type in (
         BestwayDeviceType.HYDROJET_SPA,
         BestwayDeviceType.HYDROJET_PRO_SPA,
     ):
         device = _device(device_type)
-        assert features_for(device, onoff).bubbles == BubblesStyle.THREE_WAY_HYDROJET
-        assert features_for(device, threeway).bubbles == BubblesStyle.THREE_WAY_HYDROJET
+        assert features_for(device, onoff).bubbles == BubblesStyle.THREE_WAY
+        assert features_for(device, threeway).bubbles == BubblesStyle.THREE_WAY
 
 
 def test_bubbles_mode_defaults_to_three_way() -> None:
     """With no option set, V02 Airjet defaults to the pre-existing 3-way UI."""
     device = _device(BestwayDeviceType.AIRJET_V02, backend=BACKEND_AWS_IOT)
-    assert features_for(device, {}).bubbles == BubblesStyle.THREE_WAY_AIRJET
+    assert features_for(device, {}).bubbles == BubblesStyle.THREE_WAY
 
 
 @pytest.mark.parametrize(
@@ -161,3 +151,32 @@ def test_unknown_device_gets_diagnostics_only() -> None:
     assert not features.climate
     assert not features.power_switch
     assert not features.connectivity_sensor
+
+
+def test_device_kind_distinguishes_spa_from_pool_filter() -> None:
+    spa = _device(BestwayDeviceType.AIRJET_SPA)
+    pool = _device(BestwayDeviceType.POOL_FILTER)
+    unknown = _device(BestwayDeviceType.UNKNOWN)
+    assert features_for(spa, {}).device_kind == DeviceKind.SPA
+    assert features_for(pool, {}).device_kind == DeviceKind.POOL_FILTER
+    assert features_for(unknown, {}).device_kind == DeviceKind.NONE
+
+
+def test_bubbles_mode_dependent_only_true_for_v02_types() -> None:
+    """Mirrors the bubbles_mode_option column: only the four V02 types."""
+    for device_type in (
+        BestwayDeviceType.AIRJET_V02,
+        BestwayDeviceType.ULTRAFIT_AIRJET_V02,
+        BestwayDeviceType.HYDROJET_V02,
+        BestwayDeviceType.HYDROJET_PRO_V02,
+    ):
+        assert bubbles_mode_dependent(_device(device_type, backend=BACKEND_AWS_IOT))
+
+    for device_type in (
+        BestwayDeviceType.AIRJET_SPA,
+        BestwayDeviceType.AIRJET_V01_SPA,
+        BestwayDeviceType.HYDROJET_SPA,
+        BestwayDeviceType.POOL_FILTER,
+        BestwayDeviceType.UNKNOWN,
+    ):
+        assert not bubbles_mode_dependent(_device(device_type))

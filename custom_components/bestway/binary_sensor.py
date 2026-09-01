@@ -18,7 +18,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from . import BestwayUpdateCoordinator
 from .const import DOMAIN, Icon
 from .entity import BestwayEntity
-from .features import ControlFamily, features_for
+from .features import DeviceKind, features_for
 
 _SPA_CONNECTIVITY_SENSOR_DESCRIPTION = BinarySensorEntityDescription(
     key="spa_connected",
@@ -64,7 +64,7 @@ async def async_setup_entry(
 
     for device_id, device in coordinator.api.devices.items():
         features = features_for(device, config_entry.options)
-        is_pool_filter = features.control_family == ControlFamily.POOL_FILTER
+        is_pool_filter = features.device_kind == DeviceKind.POOL_FILTER
 
         if features.connectivity_sensor:
             description = (

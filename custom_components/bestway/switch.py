@@ -16,7 +16,7 @@ from . import BestwayUpdateCoordinator
 from .backend import BackendApi
 from .const import DOMAIN, Icon
 from .entity import BestwayEntity
-from .features import BubblesStyle, ControlFamily, features_for
+from .features import BubblesStyle, DeviceKind, features_for
 from .model import BubblesLevel, DeviceStatus
 
 # Maximum time an optimistic value is trusted before the entity falls back
@@ -24,17 +24,6 @@ from .model import BubblesLevel, DeviceStatus
 # Bestway/AWS round trip, short enough that a stuck UI self-heals quickly
 # when commands fail or get processed out of order.
 _OPTIMISTIC_TIMEOUT_S = 8.0
-
-# Bubbles switch styles that render as a plain on/off switch rather than
-# the 3-way select (see select.py) - one description now covers all three,
-# since the underlying setter/getter are device-agnostic.
-_BUBBLES_SWITCH_STYLES = frozenset(
-    {
-        BubblesStyle.LEGACY_SWITCH,
-        BubblesStyle.V02_SWITCH,
-        BubblesStyle.V02_HYDROJET_SWITCH,
-    }
-)
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -116,7 +105,7 @@ async def async_setup_entry(
 
     for device_id, device in coordinator.api.devices.items():
         features = features_for(device, config_entry.options)
-        is_pool_filter = features.control_family == ControlFamily.POOL_FILTER
+        is_pool_filter = features.device_kind == DeviceKind.POOL_FILTER
 
         if features.power_switch:
             description = (
@@ -141,7 +130,7 @@ async def async_setup_entry(
                 BestwaySwitch(coordinator, config_entry, device_id, _SPA_LOCK_SWITCH)
             )
 
-        if features.bubbles in _BUBBLES_SWITCH_STYLES:
+        if features.bubbles == BubblesStyle.SWITCH:
             entities.append(
                 BestwaySwitch(coordinator, config_entry, device_id, _SPA_BUBBLES_SWITCH)
             )

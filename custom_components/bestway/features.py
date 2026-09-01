@@ -22,30 +22,30 @@ from .const import (
 from .model import BestwayDevice, BestwayDeviceType
 
 
-class ControlFamily(Enum):
-    """Which API methods and attribute vocabulary a device speaks."""
+class DeviceKind(Enum):
+    """Broad device category, for the handful of things that differ between
+    a spa and a pool filter (name prefix, which power/connectivity/error
+    description a device gets). Device-family wire vocabulary no longer
+    lives here - every setter/getter is device-agnostic (see backend.py,
+    bestway/translation.py), so this is purely a UI-shape distinction now.
+    """
 
     NONE = auto()
-    # airjet_spa_set_*, raw attrs "power"/"filter_power"/"wave_power"/"locked"
-    RAW_AIRJET = auto()
-    # hydrojet_spa_set_*, normalized attrs "power"/"filter"/"jet"/"wave"
-    # (shared by Airjet V01, Hydrojet V01/V02, and Airjet V02 - normalization
-    # gives them all consistent field names)
-    NORMALIZED_SPA = auto()
+    SPA = auto()
     POOL_FILTER = auto()
 
 
 class BubblesStyle(Enum):
-    """Which bubbles control (if any) a device gets."""
+    """Which bubbles control (if any) a device gets.
+
+    Which read/write map (Airjet-style vs. Hydrojet-style MEDIUM values) a
+    THREE_WAY device uses is a backend concern now - see bubbles_map_for()
+    in bestway/translation.py - not an entity-selection concern.
+    """
 
     NONE = auto()
-    LEGACY_SWITCH = auto()  # AIRJET_SPA: plain on/off switch on wave_power
-    V02_SWITCH = auto()  # V02 Airjet in on/off mode: switch on wave
-    # V02 Hydrojet in on/off mode (e.g. F12D9Q San Francisco HydroJet Pro is
-    # on/off only): switch using hydrojet_spa_set_bubbles(MAX/OFF).
-    V02_HYDROJET_SWITCH = auto()
-    THREE_WAY_AIRJET = auto()  # AIRJET_V01_BUBBLES_MAP + airjet_v01_spa_set_bubbles
-    THREE_WAY_HYDROJET = auto()  # HYDROJET_BUBBLES_MAP + hydrojet_spa_set_bubbles
+    SWITCH = auto()  # plain on/off switch
+    THREE_WAY = auto()  # OFF/MEDIUM/MAX select
 
 
 class VersionSensorSet(Enum):
@@ -59,7 +59,7 @@ class VersionSensorSet(Enum):
 class DeviceFeatures:
     """The set of entities and behaviours supported by a device."""
 
-    control_family: ControlFamily
+    device_kind: DeviceKind
     climate: bool
     power_switch: bool
     filter_switch: bool
@@ -80,7 +80,7 @@ class DeviceFeatures:
 
 
 _NO_FEATURES = DeviceFeatures(
-    control_family=ControlFamily.NONE,
+    device_kind=DeviceKind.NONE,
     climate=False,
     power_switch=False,
     filter_switch=False,
@@ -106,34 +106,34 @@ _NO_FEATURES = DeviceFeatures(
 _FEATURES_BY_TYPE: dict[BestwayDeviceType, DeviceFeatures] = {
     BestwayDeviceType.AIRJET_SPA: replace(
         _NO_FEATURES,
-        control_family=ControlFamily.RAW_AIRJET,
+        device_kind=DeviceKind.SPA,
         climate=True,
         power_switch=True,
         filter_switch=True,
         lock_switch=True,
-        bubbles=BubblesStyle.LEGACY_SWITCH,
+        bubbles=BubblesStyle.SWITCH,
         connectivity_sensor=True,
         errors_sensor=True,
         name_prefix="Spa",
     ),
     BestwayDeviceType.AIRJET_V01_SPA: replace(
         _NO_FEATURES,
-        control_family=ControlFamily.NORMALIZED_SPA,
+        device_kind=DeviceKind.SPA,
         climate=True,
         power_switch=True,
         filter_switch=True,
-        bubbles=BubblesStyle.THREE_WAY_AIRJET,
+        bubbles=BubblesStyle.THREE_WAY,
         connectivity_sensor=True,
         errors_sensor=True,
         name_prefix="Spa",
     ),
     BestwayDeviceType.ULTRAFIT_SPA: replace(
         _NO_FEATURES,
-        control_family=ControlFamily.NORMALIZED_SPA,
+        device_kind=DeviceKind.SPA,
         climate=True,
         power_switch=True,
         filter_switch=True,
-        bubbles=BubblesStyle.THREE_WAY_AIRJET,
+        bubbles=BubblesStyle.THREE_WAY,
         bubbles_mode_option=False,
         connectivity_sensor=True,
         errors_sensor=True,
@@ -141,91 +141,91 @@ _FEATURES_BY_TYPE: dict[BestwayDeviceType, DeviceFeatures] = {
     ),
     BestwayDeviceType.HYDROJET_SPA: replace(
         _NO_FEATURES,
-        control_family=ControlFamily.NORMALIZED_SPA,
+        device_kind=DeviceKind.SPA,
         climate=True,
         power_switch=True,
         filter_switch=True,
         jets_switch=True,
-        bubbles=BubblesStyle.THREE_WAY_HYDROJET,
+        bubbles=BubblesStyle.THREE_WAY,
         connectivity_sensor=True,
         errors_sensor=True,
         name_prefix="Spa",
     ),
     BestwayDeviceType.HYDROJET_PRO_SPA: replace(
         _NO_FEATURES,
-        control_family=ControlFamily.NORMALIZED_SPA,
+        device_kind=DeviceKind.SPA,
         climate=True,
         power_switch=True,
         filter_switch=True,
         jets_switch=True,
-        bubbles=BubblesStyle.THREE_WAY_HYDROJET,
+        bubbles=BubblesStyle.THREE_WAY,
         connectivity_sensor=True,
         errors_sensor=True,
         name_prefix="Spa",
     ),
     BestwayDeviceType.AIRJET_V02: replace(
         _NO_FEATURES,
-        control_family=ControlFamily.NORMALIZED_SPA,
+        device_kind=DeviceKind.SPA,
         climate=True,
         power_switch=True,
         filter_switch=True,
         lock_switch=True,
-        bubbles=BubblesStyle.THREE_WAY_AIRJET,
+        bubbles=BubblesStyle.THREE_WAY,
         bubbles_mode_option=True,
-        bubbles_onoff=BubblesStyle.V02_SWITCH,
+        bubbles_onoff=BubblesStyle.SWITCH,
         connectivity_sensor=True,
         errors_sensor=True,
         name_prefix="Spa",
     ),
     BestwayDeviceType.ULTRAFIT_AIRJET_V02: replace(
         _NO_FEATURES,
-        control_family=ControlFamily.NORMALIZED_SPA,
+        device_kind=DeviceKind.SPA,
         climate=True,
         power_switch=True,
         filter_switch=True,
         lock_switch=True,
-        bubbles=BubblesStyle.THREE_WAY_AIRJET,
+        bubbles=BubblesStyle.THREE_WAY,
         bubbles_mode_option=True,
-        bubbles_onoff=BubblesStyle.V02_SWITCH,
+        bubbles_onoff=BubblesStyle.SWITCH,
         connectivity_sensor=True,
         errors_sensor=True,
         name_prefix="Spa",
     ),
     BestwayDeviceType.HYDROJET_V02: replace(
         _NO_FEATURES,
-        control_family=ControlFamily.NORMALIZED_SPA,
+        device_kind=DeviceKind.SPA,
         climate=True,
         power_switch=True,
         filter_switch=True,
         jets_switch=True,
-        bubbles=BubblesStyle.THREE_WAY_HYDROJET,
+        bubbles=BubblesStyle.THREE_WAY,
         # V02 Hydrojet hardware varies (F12D9Q San Francisco HydroJet Pro is
         # on/off only), so it honours the same bubbles-mode option as the
         # Airjet V02 family.
         bubbles_mode_option=True,
-        bubbles_onoff=BubblesStyle.V02_HYDROJET_SWITCH,
+        bubbles_onoff=BubblesStyle.SWITCH,
         connectivity_sensor=True,
         errors_sensor=True,
         name_prefix="Spa",
     ),
     BestwayDeviceType.HYDROJET_PRO_V02: replace(
         _NO_FEATURES,
-        control_family=ControlFamily.NORMALIZED_SPA,
+        device_kind=DeviceKind.SPA,
         climate=True,
         power_switch=True,
         filter_switch=True,
         jets_switch=True,
-        bubbles=BubblesStyle.THREE_WAY_HYDROJET,
+        bubbles=BubblesStyle.THREE_WAY,
         # See HYDROJET_V02 above.
         bubbles_mode_option=True,
-        bubbles_onoff=BubblesStyle.V02_HYDROJET_SWITCH,
+        bubbles_onoff=BubblesStyle.SWITCH,
         connectivity_sensor=True,
         errors_sensor=True,
         name_prefix="Spa",
     ),
     BestwayDeviceType.POOL_FILTER: replace(
         _NO_FEATURES,
-        control_family=ControlFamily.POOL_FILTER,
+        device_kind=DeviceKind.POOL_FILTER,
         power_switch=True,
         pool_filter_timer=True,
         filter_change_sensor=True,
@@ -261,3 +261,13 @@ def features_for(device: BestwayDevice, options: Mapping[str, Any]) -> DeviceFea
             bubbles = base.bubbles_onoff
 
     return replace(base, bubbles=bubbles, version_sensors=version_sensors)
+
+
+def bubbles_mode_dependent(device: BestwayDevice) -> bool:
+    """True if this device type's bubbles control changes shape (switch vs.
+    3-way select) depending on the bubbles_mode option.
+
+    Used to identify which entity registry entries are stale after a mode
+    change (see _async_remove_orphaned_bubbles_entities in __init__.py).
+    """
+    return _FEATURES_BY_TYPE.get(device.device_type, _NO_FEATURES).bubbles_mode_option

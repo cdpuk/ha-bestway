@@ -42,10 +42,7 @@ async def async_setup_entry(
 
     for device_id, device in coordinator.api.devices.items():
         features = features_for(device, config_entry.options)
-        if features.bubbles in (
-            BubblesStyle.THREE_WAY_AIRJET,
-            BubblesStyle.THREE_WAY_HYDROJET,
-        ):
+        if features.bubbles == BubblesStyle.THREE_WAY:
             entities.append(
                 ThreeWaySpaBubblesSelect(coordinator, config_entry, device_id)
             )

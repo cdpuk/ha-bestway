@@ -37,7 +37,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import BestwayUpdateCoordinator
-from .model import BestwayDeviceType
+from .features import bubbles_mode_dependent
 
 _LOGGER = getLogger(__name__)
 _PLATFORMS: list[Platform] = [
@@ -48,14 +48,6 @@ _PLATFORMS: list[Platform] = [
     Platform.SENSOR,
     Platform.SWITCH,
 ]
-
-
-_MODE_DEPENDENT_BUBBLE_TYPES = (
-    BestwayDeviceType.AIRJET_V02,
-    BestwayDeviceType.ULTRAFIT_AIRJET_V02,
-    BestwayDeviceType.HYDROJET_V02,
-    BestwayDeviceType.HYDROJET_PRO_V02,
-)
 
 
 def _async_remove_orphaned_bubbles_entities(
@@ -69,9 +61,9 @@ def _async_remove_orphaned_bubbles_entities(
     (unique_id ``<device>_bubbles``) and an on/off switch
     (``<device>_spa_wave_power``). Whichever one the current mode does not
     create would otherwise linger in the entity registry as a dead
-    "restored" entity after every mode change. Only the V02 device types
-    whose control is mode-dependent are touched; V01 devices always keep
-    their select.
+    "restored" entity after every mode change. Only device types whose
+    control is mode-dependent are touched (see DeviceFeatures.bubbles_mode_option
+    in features.py); V01 devices always keep their select.
     """
     registry = er.async_get(hass)
     mode = entry.options.get(CONF_BUBBLES_MODE, BUBBLES_MODE_DEFAULT)
@@ -79,7 +71,7 @@ def _async_remove_orphaned_bubbles_entities(
     stale_ids = {
         f"{device_id}{stale_suffix}"
         for device_id, device in api.devices.items()
-        if device.device_type in _MODE_DEPENDENT_BUBBLE_TYPES
+        if bubbles_mode_dependent(device)
     }
     for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
         if entity.unique_id in stale_ids:
