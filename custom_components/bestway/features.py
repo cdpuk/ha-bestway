@@ -13,13 +13,13 @@ from dataclasses import dataclass, replace
 from enum import Enum, auto
 from typing import Any
 
-from .bestway.model import BestwayDevice, BestwayDeviceType
 from .const import (
     BACKEND_GIZWITS,
     BUBBLES_MODE_DEFAULT,
     BUBBLES_MODE_ONOFF,
     CONF_BUBBLES_MODE,
 )
+from .model import BestwayDevice, BestwayDeviceType
 
 
 class ControlFamily(Enum):

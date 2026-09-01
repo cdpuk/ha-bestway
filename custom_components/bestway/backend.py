@@ -2,18 +2,10 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
-from .bestway.model import (
-    BestwayDevice,
-    BestwayDeviceStatus,
-    BubblesLevel,
-    HydrojetFilter,
-    HydrojetHeat,
-)
-
-if TYPE_CHECKING:
-    from .bestway.api import BestwayApiResults
+from .bestway.model import BubblesLevel, HydrojetFilter, HydrojetHeat
+from .model import BestwayApiResults, BestwayDevice, BestwayDeviceStatus
 
 
 @runtime_checkable

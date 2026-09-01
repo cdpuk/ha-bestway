@@ -15,7 +15,6 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .backend import BackendApi
 from .bestway.api import BestwayApi
-from .bestway.model import BestwayDeviceType
 from .bestway.websocket import GizwitsWebSocket
 from .const import (
     BACKEND_AWS_IOT,
@@ -38,6 +37,7 @@ from .const import (
     DOMAIN,
 )
 from .coordinator import BestwayUpdateCoordinator
+from .model import BestwayDeviceType
 
 _LOGGER = getLogger(__name__)
 _PLATFORMS: list[Platform] = [

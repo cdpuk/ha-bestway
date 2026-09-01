@@ -3,7 +3,6 @@
 import asyncio
 import json
 from copy import deepcopy
-from dataclasses import dataclass
 from logging import getLogger
 from time import time
 from typing import Any
@@ -14,6 +13,7 @@ from ..const import GIZWITS_APP_ID
 from .model import (
     AIRJET_V01_BUBBLES_MAP,
     HYDROJET_BUBBLES_MAP,
+    BestwayApiResults,
     BestwayDevice,
     BestwayDeviceStatus,
     BestwayDeviceType,
@@ -29,13 +29,6 @@ _HEADERS = {
     "X-Gizwits-Application-Id": GIZWITS_APP_ID,
 }
 _TIMEOUT = 10
-
-
-@dataclass
-class BestwayApiResults:
-    """A snapshot of device status reports returned from the API."""
-
-    devices: dict[str, BestwayDeviceStatus]
 
 
 class BestwayException(Exception):
