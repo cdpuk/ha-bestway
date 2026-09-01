@@ -97,14 +97,12 @@ _NO_FEATURES = DeviceFeatures(
     version_sensors=VersionSensorSet.SHADOW,  # overwritten by features_for()
 )
 
-# This table intentionally reproduces the pre-existing per-platform behaviour
-# exactly, asymmetries included. Known asymmetries are marked TODO and are
-# corrected in separate follow-up commits so existing installs don't see
-# entities appear, disappear, or rename underneath them as a side effect of
-# this refactor. Every spa row repeats connectivity_sensor/errors_sensor and
-# a name_prefix (usually "Spa") rather than sharing a common base via a dict
-# splat, so that mypy's strict checking on this module can verify every field
-# by name.
+# A table change that adds, removes or renames entities on existing installs
+# should be its own commit, with the characterisation tests in
+# tests/test_entity_setup.py updated alongside. Every spa row repeats
+# connectivity_sensor/errors_sensor and a name_prefix (usually "Spa") rather
+# than sharing a common base via a dict splat, so that mypy's strict checking on
+# this module can verify every field by name.
 _FEATURES_BY_TYPE: dict[BestwayDeviceType, DeviceFeatures] = {
     BestwayDeviceType.AIRJET_SPA: replace(
         _NO_FEATURES,
@@ -136,8 +134,6 @@ _FEATURES_BY_TYPE: dict[BestwayDeviceType, DeviceFeatures] = {
         power_switch=True,
         filter_switch=True,
         bubbles=BubblesStyle.THREE_WAY_AIRJET,
-        # TODO: the V02 sibling (ULTRAFIT_AIRJET_V02) can flip to an on/off
-        # switch via CONF_BUBBLES_MODE; V01 was never wired up to honour it.
         bubbles_mode_option=False,
         connectivity_sensor=True,
         errors_sensor=True,
