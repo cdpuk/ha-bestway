@@ -14,7 +14,6 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from custom_components.bestway.bestway.model import HydrojetFilter, HydrojetHeat
 from custom_components.bestway.const import BACKEND_SMARTSPA
 from custom_components.bestway.model import BestwayDevice, BubblesLevel, HeaterState
 from custom_components.bestway.smartspa.api import (
@@ -381,15 +380,16 @@ async def test_control_data_is_stringified_json(api):
     assert "attrs" not in body
 
 
-async def test_control_translates_legacy_write_values(api):
-    """Entity layer passes 2/3/40/100; this gateway writes plain 1/0."""
+async def test_control_semantic_setters_collapse_to_1_0(api):
+    """The semantic setters pass plain bool/BubblesLevel; this gateway
+    writes plain 1/0 for every state datapoint regardless.
+    """
     api._request = AsyncMock(return_value={"code": "200", "data": True})
 
-    # HydrojetFilter.ON == 2, HydrojetHeat.ON == 3, bubbles max == 100
-    await api.hydrojet_spa_set_filter("6879c4d585ab", HydrojetFilter.ON)
-    await api.hydrojet_spa_set_heat("6879c4d585ab", HydrojetHeat.ON)
-    await api.airjet_spa_set_bubbles("6879c4d585ab", True)
-    await api.hydrojet_spa_set_target_temp("6879c4d585ab", 39)
+    await api.set_filter("6879c4d585ab", True)
+    await api.set_heat("6879c4d585ab", True)
+    await api.set_bubbles("6879c4d585ab", BubblesLevel.MAX)
+    await api.set_target_temperature("6879c4d585ab", 39)
 
     sent = [json.loads(call[0][2]["data"]) for call in api._request.call_args_list]
     assert sent[0] == {"filter_state": 1}
@@ -403,8 +403,8 @@ async def test_control_off_values(api):
     """Off writes send 0 (the bubbles-off path from the PR thread)."""
     api._request = AsyncMock(return_value={"code": "200", "data": True})
 
-    await api.airjet_spa_set_bubbles("6879c4d585ab", False)
-    await api.hydrojet_spa_set_filter("6879c4d585ab", HydrojetFilter.OFF)
+    await api.set_bubbles("6879c4d585ab", BubblesLevel.OFF)
+    await api.set_filter("6879c4d585ab", False)
 
     sent = [json.loads(call[0][2]["data"]) for call in api._request.call_args_list]
     assert sent[0] == {"wave_state": 0}

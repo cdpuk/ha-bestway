@@ -50,7 +50,7 @@ from typing import Any
 from aiohttp import ClientSession
 
 from ..aws_iot.api import AwsIotApi  # reuse normalize_aws_state (same field names)
-from ..bestway.model import BubblesLevel, HydrojetFilter, HydrojetHeat
+from ..bestway.model import BubblesLevel
 from ..bestway.translation import status_from_attrs
 from ..const import BACKEND_SMARTSPA
 from ..model import BestwayApiResults, BestwayDevice, BestwayDeviceType, RawSnapshot
@@ -93,7 +93,7 @@ class SmartSpaApi:
 
     Drop-in for the coordinator and entity layer: exposes .devices,
     refresh_bindings(), fetch_data(), handle_partial_update(),
-    set_device_state() and the airjet_/hydrojet_ convenience methods.
+    set_device_state() and the semantic setters (set_power, set_filter, ...).
     """
 
     def __init__(
@@ -442,13 +442,15 @@ class SmartSpaApi:
 
     @staticmethod
     def _to_write_value(key: str, value: Any) -> int:
-        """Translate entity-layer values to what this backend expects.
+        """Translate a control value to what this backend's wire format expects.
 
-        The entity layer passes the legacy values (HydrojetFilter.ON == 2,
-        HydrojetHeat.ON == 3, bubbles 40/100), but the SmartSpa gateway writes
-        are plain 1/0 for the state datapoints (confirmed from proxy traces of
-        the official app; the read-back 2 is a status, not a write value).
-        temperature_setting passes through unchanged.
+        The semantic setters pass plain bool/int values, but this also
+        accepts an IntEnum defensively (any caller going through
+        set_device_state directly, bypassing the semantic setters). The
+        SmartSpa gateway writes are plain 1/0 for the state datapoints
+        (confirmed from proxy traces of the official app; the read-back 2 is
+        a status, not a write value). temperature_setting passes through
+        unchanged.
         """
         if isinstance(value, bool):
             numeric: int = 1 if value else 0
@@ -553,79 +555,3 @@ class SmartSpaApi:
     async def set_pool_timer(self, device_id: str, hours: int) -> None:
         """Set pool filter timer (untested on this backend)."""
         await self.set_device_state(device_id, {"time": int(hours)})
-
-    # ------------------------------------------- entity convenience interface
-    # Legacy device-family method names, kept as thin delegates to the
-    # semantic setters above until the entity layer is migrated off them.
-
-    async def airjet_spa_set_power(self, device_id: str, power: bool) -> None:
-        """Set power state."""
-        await self.set_power(device_id, power)
-
-    async def airjet_spa_set_filter(self, device_id: str, filtering: bool) -> None:
-        """Set filter state."""
-        await self.set_filter(device_id, filtering)
-
-    async def airjet_spa_set_bubbles(self, device_id: str, bubbles: bool) -> None:
-        """Set bubbles state."""
-        await self.set_bubbles(
-            device_id, BubblesLevel.MAX if bubbles else BubblesLevel.OFF
-        )
-
-    async def airjet_spa_set_heat(self, device_id: str, heat: bool) -> None:
-        """Set heater state."""
-        await self.set_heat(device_id, heat)
-
-    async def airjet_spa_set_locked(self, device_id: str, locked: bool) -> None:
-        """Set panel lock."""
-        await self.set_locked(device_id, locked)
-
-    async def airjet_spa_set_target_temp(
-        self, device_id: str, target_temp: int
-    ) -> None:
-        """Set target temperature (device-native unit)."""
-        await self.set_target_temperature(device_id, target_temp)
-
-    async def hydrojet_spa_set_power(self, device_id: str, power: bool) -> None:
-        """Set power state."""
-        await self.set_power(device_id, power)
-
-    async def hydrojet_spa_set_filter(
-        self, device_id: str, filtering: HydrojetFilter
-    ) -> None:
-        """Set filter state (legacy value 2 is translated to a 1 write)."""
-        await self.set_filter(device_id, filtering == HydrojetFilter.ON)
-
-    async def hydrojet_spa_set_jets(self, device_id: str, jets: bool) -> None:
-        """Set hydrojets."""
-        await self.set_jets(device_id, jets)
-
-    async def hydrojet_spa_set_heat(self, device_id: str, heat: HydrojetHeat) -> None:
-        """Set heater (legacy value 3 is translated to a 1 write)."""
-        await self.set_heat(device_id, heat == HydrojetHeat.ON)
-
-    async def hydrojet_spa_set_target_temp(
-        self, device_id: str, target_temp: int
-    ) -> None:
-        """Set target temperature (device-native unit)."""
-        await self.set_target_temperature(device_id, target_temp)
-
-    async def airjet_v01_spa_set_bubbles(
-        self, device_id: str, bubbles: BubblesLevel
-    ) -> None:
-        """Set bubbles from a BubblesLevel (any non-OFF becomes on)."""
-        await self.set_bubbles(device_id, bubbles)
-
-    async def hydrojet_spa_set_bubbles(
-        self, device_id: str, bubbles: BubblesLevel
-    ) -> None:
-        """Set bubbles from a BubblesLevel (any non-OFF becomes on)."""
-        await self.set_bubbles(device_id, bubbles)
-
-    async def pool_filter_set_power(self, device_id: str, power: bool) -> None:
-        """Set pool filter power (untested on this backend)."""
-        await self.set_power(device_id, power)
-
-    async def pool_filter_set_time(self, device_id: str, hours: int) -> None:
-        """Set pool filter timer (untested on this backend)."""
-        await self.set_pool_timer(device_id, hours)

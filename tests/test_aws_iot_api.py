@@ -8,7 +8,6 @@ from custom_components.bestway.aws_iot.api import (
     AwsIotApi,
     AwsIotAuthException,
 )
-from custom_components.bestway.bestway.model import HydrojetFilter, HydrojetHeat
 from custom_components.bestway.model import BubblesLevel
 
 
@@ -424,30 +423,3 @@ async def test_set_bubbles(aws_api, level: BubblesLevel, wave_state: int):
 async def test_set_pool_timer_not_supported(aws_api):
     with pytest.raises(NotImplementedError):
         await aws_api.set_pool_timer("device1", 6)
-
-
-# ---------------------------------------------------------------------------
-# Legacy method names still delegate correctly
-# ---------------------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_legacy_hydrojet_spa_set_filter_downshifts_v01_value(aws_api):
-    """V01 HydrojetFilter.ON is 2; V02 expects 1 for ON."""
-    aws_api.set_device_state = AsyncMock()
-    await aws_api.hydrojet_spa_set_filter("device1", HydrojetFilter.ON)
-    aws_api.set_device_state.assert_awaited_once_with("device1", {"filter_state": 1})
-
-
-@pytest.mark.asyncio
-async def test_legacy_hydrojet_spa_set_heat_downshifts_v01_value(aws_api):
-    """V01 HydrojetHeat.ON is 3; V02 expects heater_state 1 for ON."""
-    aws_api.set_device_state = AsyncMock()
-    await aws_api.hydrojet_spa_set_heat("device1", HydrojetHeat.ON)
-    aws_api.set_device_state.assert_awaited_once_with("device1", {"heater_state": 1})
-
-
-@pytest.mark.asyncio
-async def test_legacy_pool_filter_set_time_not_supported(aws_api):
-    with pytest.raises(NotImplementedError):
-        await aws_api.pool_filter_set_time("device1", 6)

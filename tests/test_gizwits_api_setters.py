@@ -384,27 +384,3 @@ async def test_set_power_raises_for_registered_but_unpolled_device(api):
     )
     with pytest.raises(BestwayException):
         await api.set_power("d", True)
-
-
-# ---------------------------------------------------------------------------
-# Legacy method names still delegate correctly (backward compat during the
-# entity-layer migration window)
-# ---------------------------------------------------------------------------
-
-
-async def test_legacy_airjet_spa_set_power_delegates(api, mock_session):
-    _seed(api, "d", BestwayDeviceType.AIRJET_SPA)
-    await api.airjet_spa_set_power("d", True)
-    assert _posted_attrs(mock_session) == {"power": 1}
-
-
-async def test_legacy_hydrojet_spa_set_filter_translates_enum(api, mock_session):
-    _seed(api, "d", BestwayDeviceType.HYDROJET_SPA)
-    await api.hydrojet_spa_set_filter("d", HydrojetFilter.ON)
-    assert _posted_attrs(mock_session) == {"filter": HydrojetFilter.ON}
-
-
-async def test_legacy_pool_filter_set_time_delegates(api, mock_session):
-    _seed(api, "d", BestwayDeviceType.POOL_FILTER)
-    await api.pool_filter_set_time("d", 12)
-    assert _posted_attrs(mock_session) == {"time": 12}
