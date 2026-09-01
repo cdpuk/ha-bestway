@@ -88,7 +88,7 @@ def test_bubbles_mode_option_flips_only_v02_types() -> None:
     All four flip to a plain on/off switch (BubblesStyle.SWITCH); which
     wire vocabulary/map the switch actually uses (Airjet-style vs.
     Hydrojet-style) is decided by bubbles_map_for() in
-    bestway/translation.py, not something features.py distinguishes.
+    translation.py, not something features.py distinguishes.
     V01 types (Airjet, its ULTRAFIT_SPA sibling, and both V01 Hydrojets)
     always stay three-way; V01 Airjet was never wired up to honour the
     option (see the TODO in features.py), and V01 Hydrojet has no on/off

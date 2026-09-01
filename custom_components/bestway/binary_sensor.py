@@ -157,7 +157,7 @@ class DeviceErrorsSensor(BestwayEntity, BinarySensorEntity):
         """Return the active error codes.
 
         Error-code vocabulary is backend/device-type specific; the parsing
-        lives in bestway/translation.py.
+        lives in translation.py.
         """
         return {"errors": list(self.status.errors)} if self.status else None
 

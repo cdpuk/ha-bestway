@@ -20,7 +20,6 @@ from typing import Any
 
 from aiohttp import ClientSession
 
-from ..bestway.translation import status_from_attrs
 from ..const import Backend
 from ..model import (
     BestwayApiResults,
@@ -29,6 +28,7 @@ from ..model import (
     BubblesLevel,
     RawSnapshot,
 )
+from ..translation import status_from_attrs, v01_attrs_from_shadow
 from .encryption import encrypt_command_payload
 
 _LOGGER = logging.getLogger(__name__)
@@ -137,84 +137,6 @@ class AwsIotApi:
             16-character hex visitor_id
         """
         return secrets.token_hex(8)  # 16 hex chars
-
-    @staticmethod
-    def normalize_aws_state(device_state: dict[str, Any]) -> dict[str, Any]:
-        """Normalize AWS IoT field names to Gizwits V01 equivalents.
-
-        This normalization allows existing V01 entities to work unchanged with V02 devices.
-        Used by both fetch_data() and WebSocket message processing.
-
-        Args:
-            device_state: Raw state from AWS IoT device shadow
-
-        Returns:
-            Dict with normalized Gizwits V01 field names
-        """
-        warning = device_state.get("warning")
-        error_code = device_state.get("error_code")
-        power_state = device_state.get("power_state")
-        temperature_unit = device_state.get("temperature_unit", 1)
-
-        # Build normalized dict, only including fields with actual values
-        # This prevents None values from overwriting existing data during merges
-        normalized = {}
-
-        # Version fields (diagnostic) - only if present
-        if "wifivertion" in device_state:
-            normalized["wifi_version"] = device_state["wifivertion"]
-        if "otastatus" in device_state:
-            normalized["ota_status"] = device_state["otastatus"]
-        if "mcuversion" in device_state:
-            normalized["mcu_version"] = device_state["mcuversion"]
-        if "trdversion" in device_state:
-            normalized["trd_version"] = device_state["trdversion"]
-        if "ConnectType" in device_state:
-            normalized["connect_type"] = device_state["ConnectType"]
-
-        # Control state - use exact V01 field names!
-        if power_state is not None:
-            normalized["power"] = bool(power_state == 1)
-        if device_state.get("heater_state") is not None:
-            # Heater state values (same for V01 and V02):
-            # 0 = OFF
-            # 1 = ON (heater enabled, starting to heat)
-            # 3 = HEATING (actively heating toward target)
-            # 4 = TARGET_REACHED (at target temperature, maintaining)
-            normalized["heat"] = device_state["heater_state"]
-        if "wave_state" in device_state:
-            # V02 wave_state actual values: 0=OFF, 40=MEDIUM, 100=HIGH. Pass
-            # the raw device value straight through. Both bubble maps
-            # already recognise 40 as MEDIUM: HYDROJET_BUBBLES_MAP natively,
-            # and AIRJET_V01_BUBBLES_MAP since PR #101 widened its MEDIUM
-            # read_values to [40, 41, 50, 51].
-            normalized["wave"] = device_state["wave_state"]
-        if device_state.get("filter_state") is not None:
-            normalized["filter"] = device_state["filter_state"]
-        if device_state.get("hydrojet_state") is not None:
-            normalized["jet"] = bool(device_state["hydrojet_state"] == 1)
-        if device_state.get("locked") is not None:
-            normalized["locked"] = device_state["locked"]
-
-        # Temperature - use V01 field names (capital T!)
-        if device_state.get("water_temperature") is not None:
-            normalized["Tnow"] = device_state["water_temperature"]
-        if device_state.get("temperature_setting") is not None:
-            normalized["Tset"] = device_state["temperature_setting"]
-        if "temperature_unit" in device_state:
-            normalized["Tunit"] = temperature_unit
-
-        # Errors - only include if present to avoid overwriting during delta merges
-        if "warning" in device_state:
-            normalized["warning"] = 0 if warning == "" else warning
-        if "error_code" in device_state:
-            normalized["error"] = 0 if error_code == "" else error_code
-
-        # Status
-        if device_state.get("is_online") is not None:
-            normalized["is_online"] = device_state["is_online"]
-
-        return normalized
 
     @staticmethod
     async def authenticate(
@@ -644,8 +566,7 @@ class AwsIotApi:
                     list(device_state.keys()),
                 )
 
-                # Normalize AWS field names to Gizwits V01 equivalents
-                mapped = self.normalize_aws_state(device_state)
+                mapped = v01_attrs_from_shadow(device_state)
 
                 _LOGGER.debug(
                     "After normalization: %d fields: %s",

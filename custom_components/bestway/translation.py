@@ -6,16 +6,16 @@ time its raw/normalized attrs reach here:
 - Raw Airjet (`AIRJET_SPA` only): the only device type Gizwits never
   normalized. Field names like `heat_power`, `wave_power`, `temp_set_unit`.
 - The V01 vocabulary: Gizwits V01 devices natively, plus everything AWS IoT
-  and SmartSpa emit after their own `normalize_aws_state` step (which
-  deliberately targets this same vocabulary). Field names like `heat`,
-  `wave`, `Tset`, `Tunit`.
+  and SmartSpa emit after `v01_attrs_from_shadow` (below) maps their shadow
+  onto it. Field names like `heat`, `wave`, `Tset`, `Tunit`.
 - Pool filter: `power`, `time`, `filter` (meaning "change required" here,
   not "filtering" - the typed model disambiguates what the raw vocabulary
   couldn't).
 
 `status_from_attrs` is the single entry point backends call, after merging
 any partial WebSocket delta into their raw cache, to produce the typed
-`DeviceStatus` entities read.
+`DeviceStatus` entities read. The V02 backends call `v01_attrs_from_shadow`
+first, so both halves of their shadow -> V01 -> typed pipeline live here.
 """
 
 from __future__ import annotations
@@ -23,14 +23,18 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from ..model import (
+from .bestway.model import (
+    AIRJET_V01_BUBBLES_MAP,
+    HYDROJET_BUBBLES_MAP,
+    BubblesMapping,
+)
+from .model import (
     BestwayDeviceType,
     BubblesLevel,
     DeviceStatus,
     HeaterState,
     TemperatureUnit,
 )
-from .model import AIRJET_V01_BUBBLES_MAP, HYDROJET_BUBBLES_MAP, BubblesMapping
 
 _SYSTEM_ERR_RE = re.compile(r"system_err\d+")
 _E_CODE_RE = re.compile(r"E\d{2}")
@@ -74,6 +78,83 @@ def _as_bool(value: Any) -> bool | None:
     if value is None:
         return None
     return bool(value)
+
+
+def v01_attrs_from_shadow(shadow: dict[str, Any]) -> dict[str, Any]:
+    """Map a V02 device shadow onto the V01 vocabulary `status_from_attrs` parses.
+
+    AWS IoT and SmartSpa serve the same shadow document over different
+    transports, so both pivot through here and a single parser
+    (`_from_v01_vocab`) covers all three backends.
+
+    Only keys actually present in `shadow` are emitted. That matters for
+    partial WebSocket deltas, which are merged over the backend's cached
+    attrs: a defaulted key would silently overwrite good state. The guard
+    style is per-field on purpose - fields whose `0`/`""` is meaningful are
+    tested for presence, the rest for a non-None value.
+    """
+    warning = shadow.get("warning")
+    error_code = shadow.get("error_code")
+    power_state = shadow.get("power_state")
+    temperature_unit = shadow.get("temperature_unit", 1)
+
+    normalized = {}
+
+    # Version fields (diagnostic)
+    if "wifivertion" in shadow:
+        normalized["wifi_version"] = shadow["wifivertion"]
+    if "otastatus" in shadow:
+        normalized["ota_status"] = shadow["otastatus"]
+    if "mcuversion" in shadow:
+        normalized["mcu_version"] = shadow["mcuversion"]
+    if "trdversion" in shadow:
+        normalized["trd_version"] = shadow["trdversion"]
+    if "ConnectType" in shadow:
+        normalized["connect_type"] = shadow["ConnectType"]
+
+    # Control state
+    if power_state is not None:
+        normalized["power"] = bool(power_state == 1)
+    if shadow.get("heater_state") is not None:
+        # Heater state values (same for V01 and V02):
+        # 0 = OFF
+        # 1 = ON (heater enabled, starting to heat)
+        # 3 = HEATING (actively heating toward target)
+        # 4 = TARGET_REACHED (at target temperature, maintaining)
+        normalized["heat"] = shadow["heater_state"]
+    if "wave_state" in shadow:
+        # V02 wave_state actual values: 0=OFF, 40=MEDIUM, 100=HIGH. Pass
+        # the raw device value straight through. Both bubble maps
+        # already recognise 40 as MEDIUM: HYDROJET_BUBBLES_MAP natively,
+        # and AIRJET_V01_BUBBLES_MAP since PR #101 widened its MEDIUM
+        # read_values to [40, 41, 50, 51].
+        normalized["wave"] = shadow["wave_state"]
+    if shadow.get("filter_state") is not None:
+        normalized["filter"] = shadow["filter_state"]
+    if shadow.get("hydrojet_state") is not None:
+        normalized["jet"] = bool(shadow["hydrojet_state"] == 1)
+    if shadow.get("locked") is not None:
+        normalized["locked"] = shadow["locked"]
+
+    # Temperature - V01 field names use a capital T
+    if shadow.get("water_temperature") is not None:
+        normalized["Tnow"] = shadow["water_temperature"]
+    if shadow.get("temperature_setting") is not None:
+        normalized["Tset"] = shadow["temperature_setting"]
+    if "temperature_unit" in shadow:
+        normalized["Tunit"] = temperature_unit
+
+    # Errors
+    if "warning" in shadow:
+        normalized["warning"] = 0 if warning == "" else warning
+    if "error_code" in shadow:
+        normalized["error"] = 0 if error_code == "" else error_code
+
+    # Status
+    if shadow.get("is_online") is not None:
+        normalized["is_online"] = shadow["is_online"]
+
+    return normalized
 
 
 def status_from_attrs(

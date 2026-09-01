@@ -26,7 +26,7 @@ class DeviceKind(Enum):
     """Broad device category, for the handful of things that differ between
     a spa and a pool filter (name prefix, which power/connectivity/error
     description a device gets). Purely a UI-shape distinction - wire
-    vocabulary lives in backend.py / bestway/translation.py.
+    vocabulary lives in backend.py / translation.py.
     """
 
     NONE = auto()
@@ -39,7 +39,7 @@ class BubblesStyle(Enum):
 
     Which read/write map (Airjet-style vs. Hydrojet-style MEDIUM values) a
     THREE_WAY device uses is decided by bubbles_map_for() in
-    bestway/translation.py, not here.
+    translation.py, not here.
     """
 
     NONE = auto()

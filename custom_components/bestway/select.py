@@ -20,7 +20,7 @@ _BUBBLES_OPTIONS = {
 }
 
 # Which bubbles map (Airjet-style vs. Hydrojet-style MEDIUM value) a device
-# uses is decided by bubbles_map_for() in bestway/translation.py; the entity
+# uses is decided by bubbles_map_for() in translation.py; the entity
 # only reads status.bubbles and writes via set_bubbles().
 _BUBBLES_SELECT_DESCRIPTION = SelectEntityDescription(
     key="bubbles",

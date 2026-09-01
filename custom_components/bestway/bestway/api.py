@@ -17,8 +17,8 @@ from ..model import (
     BubblesLevel,
     RawSnapshot,
 )
+from ..translation import bubbles_map_for, status_from_attrs
 from .model import BestwayUserToken, HydrojetFilter, HydrojetHeat
-from .translation import bubbles_map_for, status_from_attrs
 
 _LOGGER = getLogger(__name__)
 _HEADERS = {

@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import pytest
 
-from custom_components.bestway.bestway.translation import status_from_attrs
 from custom_components.bestway.model import (
     BestwayDeviceType,
     BubblesLevel,
     HeaterState,
     TemperatureUnit,
+)
+from custom_components.bestway.translation import (
+    status_from_attrs,
+    v01_attrs_from_shadow,
 )
 
 # ---------------------------------------------------------------------------
@@ -265,3 +268,98 @@ def test_malformed_wave_value_does_not_crash_translation() -> None:
         BestwayDeviceType.HYDROJET_SPA, 1000, {"wave": _NotAnInt()}
     )
     assert status.bubbles is None
+
+
+# ---------------------------------------------------------------------------
+# V02 shadow -> V01 vocabulary (AWS IoT and SmartSpa)
+# ---------------------------------------------------------------------------
+
+
+def test_shadow_comprehensive():
+    """Test comprehensive field normalization including power, temperature, and wave."""
+    shadow = {
+        "power_state": 1,
+        "heater_state": 0,
+        "temperature_setting": 37,
+        "water_temperature": 36,
+        "temperature_unit": 1,
+        "wave_state": 100,
+        "warning": "",
+        "error_code": "",
+    }
+    normalized = v01_attrs_from_shadow(shadow)
+
+    # Power fields
+    assert normalized["power"] is True
+    assert normalized["heat"] == 0
+
+    # Temperature fields
+    assert normalized["Tset"] == 37
+    assert normalized["Tnow"] == 36
+    assert normalized["Tunit"] == 1
+
+    # Wave field
+    assert normalized["wave"] == 100
+
+
+def test_shadow_filter():
+    """Test filter_state normalization."""
+    # Filter on
+    shadow = {"filter_state": 2}
+    normalized = v01_attrs_from_shadow(shadow)
+    assert normalized["filter"] == 2
+
+    # Filter off
+    shadow = {"filter_state": 0}
+    normalized = v01_attrs_from_shadow(shadow)
+    assert normalized["filter"] == 0
+
+
+def test_shadow_partial_update_preserves_absent_fields():
+    """Test that partial WebSocket updates don't overwrite absent fields.
+
+    Regression test for temperature unit flip-flop bug: WebSocket deltas
+    that omit temperature_unit should not default it to Celsius (1),
+    which would overwrite a Fahrenheit (0) setting.
+    """
+    # Simulate a partial WebSocket delta with only temperature change
+    partial_state = {
+        "water_temperature": 30,
+    }
+    normalized = v01_attrs_from_shadow(partial_state)
+
+    # temperature_unit was not in the delta, so Tunit should not be set
+    assert "Tunit" not in normalized
+    # warning/error also absent, should not be set
+    assert "warning" not in normalized
+    assert "error" not in normalized
+    # wave_state was not in the delta either - regression test for a bug
+    # where a missing wave_state silently injected wave=0 into every delta
+    # lacking it, stomping bubbles to OFF on every unrelated WS update.
+    assert "wave" not in normalized
+    # word3 was always injected but never read anywhere; dropped.
+    assert "word3" not in normalized
+    # The field that was present should be set
+    assert normalized["Tnow"] == 30
+
+
+def test_shadow_wave_mapping():
+    """Test V02 wave_state is passed through unchanged.
+
+    The normaliser used to rewrite 40 -> 50, which the Hydrojet bubble map
+    rejected, so Hydrojet MEDIUM always rendered as OFF (BUG-SPA-6). Both
+    bubble maps now recognise 40 as MEDIUM directly, so the raw device value
+    is passed straight through.
+    """
+    # MEDIUM (40) is no longer remapped to 50
+    shadow = {"wave_state": 40}
+    normalized = v01_attrs_from_shadow(shadow)
+    assert normalized["wave"] == 40
+
+    shadow = {"wave_state": 0}
+    normalized = v01_attrs_from_shadow(shadow)
+    assert normalized["wave"] == 0
+
+    shadow = {"wave_state": 100}
+    normalized = v01_attrs_from_shadow(shadow)
+    assert normalized["wave"] == 100

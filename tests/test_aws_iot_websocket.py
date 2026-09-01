@@ -63,7 +63,7 @@ async def test_handle_message_calls_callback_with_normalized_attrs(
     }
 
     with patch(
-        "custom_components.bestway.aws_iot.api.AwsIotApi.normalize_aws_state"
+        "custom_components.bestway.aws_iot.websocket.v01_attrs_from_shadow"
     ) as mock_normalize:
         mock_normalize.return_value = {"power": True, "heat": 3, "Tset": 37}
 
@@ -83,7 +83,7 @@ async def test_handle_message_no_callback_error(aws_websocket):
     message = {"state": {"reported": {"power_state": 1}}}
 
     # Should not raise exception
-    with patch("custom_components.bestway.aws_iot.api.AwsIotApi.normalize_aws_state"):
+    with patch("custom_components.bestway.aws_iot.websocket.v01_attrs_from_shadow"):
         await aws_websocket._handle_message(message)
 
 
@@ -98,7 +98,7 @@ async def test_handle_message_delta_shape(aws_websocket, mock_callback):
     message = {"state": {"power_state": 1, "filter_state": 1}, "version": 42}
 
     with patch(
-        "custom_components.bestway.aws_iot.api.AwsIotApi.normalize_aws_state"
+        "custom_components.bestway.aws_iot.websocket.v01_attrs_from_shadow"
     ) as mock_normalize:
         mock_normalize.return_value = {"power": True, "filter": 1}
         await aws_websocket._handle_message(message)
@@ -121,7 +121,7 @@ async def test_handle_message_documents_shape(aws_websocket, mock_callback):
     }
 
     with patch(
-        "custom_components.bestway.aws_iot.api.AwsIotApi.normalize_aws_state"
+        "custom_components.bestway.aws_iot.websocket.v01_attrs_from_shadow"
     ) as mock_normalize:
         mock_normalize.return_value = {"power": True, "heat": 1}
         await aws_websocket._handle_message(message)
@@ -142,7 +142,7 @@ async def test_handle_message_desired_overrides_reported(aws_websocket, mock_cal
     }
 
     with patch(
-        "custom_components.bestway.aws_iot.api.AwsIotApi.normalize_aws_state"
+        "custom_components.bestway.aws_iot.websocket.v01_attrs_from_shadow"
     ) as mock_normalize:
         mock_normalize.return_value = {"filter": 1}
         await aws_websocket._handle_message(message)
@@ -278,7 +278,7 @@ async def test_listen_loop_processes_shadow_updates(aws_websocket):
     aws_websocket._websocket = mock_ws
 
     with patch(
-        "custom_components.bestway.aws_iot.api.AwsIotApi.normalize_aws_state"
+        "custom_components.bestway.aws_iot.websocket.v01_attrs_from_shadow"
     ) as mock_normalize:
         mock_normalize.side_effect = [
             {"power": True},

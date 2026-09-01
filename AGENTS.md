@@ -65,6 +65,8 @@ The integration supports three completely separate cloud backends, selected at c
 
 `__init__.py` branches on `entry.data["backend"]` to call `_async_setup_gizwits`, `_async_setup_aws_iot` or `_async_setup_smartspa`. Every path creates a `BestwayUpdateCoordinator`, which accepts any `BackendApi` (`backend.py`) — the structural `Protocol` all three API classes satisfy, so entities are backend-agnostic. Add a fourth backend by implementing that `Protocol`, not by widening a union.
 
+On the read side, all three converge on `translation.py`: `status_from_attrs()` turns merged wire attrs into a typed `DeviceStatus`. AWS IoT and SmartSpa serve the same V02 device shadow over different transports, so both first pass it through `v01_attrs_from_shadow()` in that same module, which maps the shadow vocabulary onto the Gizwits V01 one — that's why a single parser covers every backend.
+
 `BackendApi` exposes device-agnostic semantic setters (`set_power`, `set_filter`, `set_heat`, `set_locked`, `set_jets`, `set_target_temperature`, `set_bubbles`, `set_pool_timer`) plus `refresh_bindings`/`fetch_data`/`handle_partial_update`. Each backend owns its own wire encoding internally; entities and platform code never see per-device vocabulary (Gizwits' `HydrojetHeat`/`HydrojetFilter`/bubbles ints and the rest are confined to `custom_components/bestway/bestway/`).
 
 ### Update flow

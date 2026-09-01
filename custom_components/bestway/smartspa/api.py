@@ -46,8 +46,6 @@ from typing import Any
 
 from aiohttp import ClientSession
 
-from ..aws_iot.api import AwsIotApi  # reuse normalize_aws_state (same field names)
-from ..bestway.translation import status_from_attrs
 from ..const import Backend
 from ..model import (
     BestwayApiResults,
@@ -56,6 +54,7 @@ from ..model import (
     BubblesLevel,
     RawSnapshot,
 )
+from ..translation import status_from_attrs, v01_attrs_from_shadow
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -91,7 +90,7 @@ def _envelope(data: Any) -> dict[str, Any]:
 
 
 class SmartSpaApi:
-    """SmartSpa gateway client matching the BestwayApi/AwsIotApi interface.
+    """SmartSpa gateway client implementing the BackendApi protocol.
 
     Drop-in for the coordinator and entity layer: exposes .devices,
     refresh_bindings(), fetch_data(), handle_partial_update(),
@@ -396,8 +395,8 @@ class SmartSpaApi:
                         "is_online", str(connect_type).lower() == "online"
                     )
 
-                # Same field names as the AWS IoT shadow — reuse its normalizer.
-                mapped = AwsIotApi.normalize_aws_state(shadow)
+                # Same shadow vocabulary as the AWS IoT backend serves.
+                mapped = v01_attrs_from_shadow(shadow)
 
                 # Read-back quirk: this gateway reads wave_state back as
                 # binary (1, sometimes 2) while running, but the 3-way
