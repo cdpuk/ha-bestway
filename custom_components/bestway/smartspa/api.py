@@ -52,7 +52,7 @@ from aiohttp import ClientSession
 from ..aws_iot.api import AwsIotApi  # reuse normalize_aws_state (same field names)
 from ..bestway.model import BubblesLevel
 from ..bestway.translation import status_from_attrs
-from ..const import BACKEND_SMARTSPA
+from ..const import Backend
 from ..model import BestwayApiResults, BestwayDevice, BestwayDeviceType, RawSnapshot
 
 _LOGGER = logging.getLogger(__name__)
@@ -365,7 +365,7 @@ class SmartSpaApi:
                 wifi_soft_version="",
                 wifi_hard_version="",
                 is_online=is_online,
-                backend=BACKEND_SMARTSPA,
+                backend=Backend.SMARTSPA,
                 product_id=str(product_key),
                 product_series=_pk_series.get(
                     str(product_key), self._series_from_name(product_name)

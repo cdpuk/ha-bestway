@@ -22,7 +22,7 @@ from aiohttp import ClientSession
 
 from ..bestway.model import BubblesLevel
 from ..bestway.translation import status_from_attrs
-from ..const import BACKEND_AWS_IOT
+from ..const import Backend
 from ..model import BestwayApiResults, BestwayDevice, BestwayDeviceType, RawSnapshot
 from .encryption import encrypt_command_payload
 
@@ -480,7 +480,7 @@ class AwsIotApi:
         1. GET /api/enduser/homes → list of homes
         2. For each home: GET /api/enduser/home/rooms?home_id=X → rooms
         3. For each room: GET /api/enduser/home/room/devices?room_id=Y → devices
-        4. Create BestwayDevice for each device with backend=BACKEND_AWS_IOT
+        4. Create BestwayDevice for each device with backend=Backend.AWS_IOT
 
         Note: Device discovery is cached after first successful run.
         Devices are only re-discovered if device list is empty.
@@ -572,7 +572,7 @@ class AwsIotApi:
                     "service_region", "eu-central-1"
                 ),  # Store region in ws_host
                 ws_port=443,  # AWS IoT WebSocket uses standard HTTPS port
-                backend=BACKEND_AWS_IOT,
+                backend=Backend.AWS_IOT,
                 product_id=product_id,  # NEW: Model ID for shadow fetch
                 product_series=product_series,  # NEW: Series for device_type
             )

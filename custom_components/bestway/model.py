@@ -14,7 +14,7 @@ from dataclasses import dataclass, field
 from enum import Enum, auto
 from typing import Any
 
-from .const import BACKEND_AWS_IOT, BACKEND_GIZWITS, BACKEND_SMARTSPA
+from .const import Backend
 
 
 class BestwayDeviceType(Enum):
@@ -109,14 +109,14 @@ class BestwayDevice:
     is_online: bool
     ws_host: str = "m2m.gizwits.com"  # WebSocket hostname from bindings API
     ws_port: int = 8880  # WebSocket port from bindings API
-    backend: str = BACKEND_GIZWITS  # Backend type: gizwits or aws_iot
+    backend: Backend = Backend.GIZWITS
     product_id: str | None = None  # For AWS IoT: model ID like "T53NN8"
     product_series: str | None = None  # For AWS IoT: series like "AIRJET", "HYDROJET"
 
     @property
     def device_type(self) -> BestwayDeviceType:
         """Get the derived device type based on backend."""
-        if self.backend in (BACKEND_AWS_IOT, BACKEND_SMARTSPA) and self.product_series:
+        if self.backend in (Backend.AWS_IOT, Backend.SMARTSPA) and self.product_series:
             return BestwayDeviceType.from_aws_product_series(self.product_series)
         return BestwayDeviceType.from_api_product_name(self.product_name)
 

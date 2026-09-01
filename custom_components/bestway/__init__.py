@@ -17,9 +17,6 @@ from .backend import BackendApi
 from .bestway.api import BestwayApi
 from .bestway.websocket import GizwitsWebSocket
 from .const import (
-    BACKEND_AWS_IOT,
-    BACKEND_GIZWITS,
-    BACKEND_SMARTSPA,
     BUBBLES_MODE_3WAY,
     BUBBLES_MODE_DEFAULT,
     CONF_API_ROOT,
@@ -35,6 +32,7 @@ from .const import (
     CONF_USER_TOKEN_EXPIRY,
     CONF_USERNAME,
     DOMAIN,
+    Backend,
 )
 from .coordinator import BestwayUpdateCoordinator
 from .features import bubbles_mode_dependent
@@ -86,16 +84,16 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up bestway from a config entry."""
 
     # Detect backend (default to Gizwits for backwards compatibility)
-    backend = entry.data.get("backend", BACKEND_GIZWITS)
+    backend = entry.data.get("backend", Backend.GIZWITS)
     _LOGGER.info("Setting up Bestway integration with %s backend", backend)
 
     session = async_get_clientsession(hass)
 
     # Branch based on backend
-    if backend == BACKEND_AWS_IOT:
+    if backend == Backend.AWS_IOT:
         # AWS IoT V02 backend
         return await _async_setup_aws_iot(hass, entry, session)
-    elif backend == BACKEND_SMARTSPA:
+    elif backend == Backend.SMARTSPA:
         # SmartSpa gateway (post-July-2026 Bestway Connect, account login)
         return await _async_setup_smartspa(hass, entry, session)
     else:

@@ -14,10 +14,10 @@ from enum import Enum, auto
 from typing import Any
 
 from .const import (
-    BACKEND_GIZWITS,
     BUBBLES_MODE_DEFAULT,
     BUBBLES_MODE_ONOFF,
     CONF_BUBBLES_MODE,
+    Backend,
 )
 from .model import BestwayDevice, BestwayDeviceType
 
@@ -244,11 +244,11 @@ def features_for(device: BestwayDevice, options: Mapping[str, Any]) -> DeviceFea
     base = _FEATURES_BY_TYPE.get(device.device_type, _NO_FEATURES)
 
     # Version sensors follow the backend, not the model: every device gets a
-    # set, including UNKNOWN. Anything that isn't BACKEND_GIZWITS (AWS IoT,
+    # set, including UNKNOWN. Anything that isn't Backend.GIZWITS (AWS IoT,
     # SmartSpa, and any future backend) gets the shadow-based set.
     version_sensors = (
         VersionSensorSet.GIZWITS
-        if device.backend == BACKEND_GIZWITS
+        if device.backend == Backend.GIZWITS
         else VersionSensorSet.SHADOW
     )
 

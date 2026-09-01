@@ -1,6 +1,6 @@
 """Constants for the bestway integration."""
 
-from enum import Enum
+from enum import Enum, StrEnum
 
 DOMAIN = "bestway"
 CONF_USERNAME = "username"
@@ -13,11 +13,20 @@ CONF_USER_TOKEN_EXPIRY = "user_token_expiry"
 CONF_UID = "uid"
 GIZWITS_APP_ID = "98754e684ec045528b073876c34c7348"
 
-# Backend types
-BACKEND_GIZWITS = "gizwits"
-BACKEND_AWS_IOT = "aws_iot"
-# Post-July-2026 Bestway Connect gateway (account login, no share QR) — issue #135
-BACKEND_SMARTSPA = "smartspa"
+
+class Backend(StrEnum):
+    """Cloud backend selected at config flow time."""
+
+    GIZWITS = "gizwits"
+    AWS_IOT = "aws_iot"
+    # Post-July-2026 Bestway Connect gateway (account login, no share QR) — issue #135
+    SMARTSPA = "smartspa"
+
+
+# Aliases kept importable for call sites that use these names directly.
+BACKEND_GIZWITS = Backend.GIZWITS
+BACKEND_AWS_IOT = Backend.AWS_IOT
+BACKEND_SMARTSPA = Backend.SMARTSPA
 
 CONF_SMARTSPA_ACCOUNT = "smartspa_account"
 CONF_SMARTSPA_PASSWORD = "smartspa_password"
