@@ -173,11 +173,7 @@ _FEATURES_BY_TYPE: dict[BestwayDeviceType, DeviceFeatures] = {
         climate=True,
         power_switch=True,
         filter_switch=True,
-        # TODO: aws_iot normalizes a "locked" attribute for this device type
-        # but no lock switch has ever been created for it. Needs confirmation
-        # that airjet_spa_set_locked routes correctly on the AWS backend
-        # before enabling.
-        lock_switch=False,
+        lock_switch=True,
         bubbles=BubblesStyle.THREE_WAY_AIRJET,
         bubbles_mode_option=True,
         bubbles_onoff=BubblesStyle.V02_SWITCH,
@@ -191,8 +187,7 @@ _FEATURES_BY_TYPE: dict[BestwayDeviceType, DeviceFeatures] = {
         climate=True,
         power_switch=True,
         filter_switch=True,
-        # TODO: see AIRJET_V02 above.
-        lock_switch=False,
+        lock_switch=True,
         bubbles=BubblesStyle.THREE_WAY_AIRJET,
         bubbles_mode_option=True,
         bubbles_onoff=BubblesStyle.V02_SWITCH,
