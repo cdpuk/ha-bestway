@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -148,49 +147,20 @@ class DeviceErrorsSensor(BestwayEntity, BinarySensorEntity):
             device_id,
         )
 
-    def _all_error_properties(self) -> dict[str, bool]:
-        """Get all error properties from the device status."""
-        errors: dict[str, bool] = {}
-
-        if not self.status:
-            return errors
-
-        # Airjet error properties
-        for attr in self.status.attrs:
-            if re.match("system_err\\d+", attr):
-                errors[attr] = bool(self.status.attrs[attr])
-
-        # Airjet ground fault
-        if "earth" in self.status.attrs:
-            errors["earth"] = bool(self.status.attrs["earth"])
-
-        # Airjet_V01 and Hydrojet
-        for attr in self.status.attrs:
-            # E32: Not actually an error. This means heating is on but the spa has
-            #      already reached the desired temperature.
-            if attr == "E32":
-                continue
-
-            if re.match("E\\d{2}", attr):
-                errors[attr] = bool(self.status.attrs[attr])
-
-        # Pool filter
-        if "error" in self.status.attrs:
-            errors["error"] = bool(self.status.attrs["error"])
-
-        return errors
-
     @property
     def is_on(self) -> bool | None:
         """Return true if the spa is reporting an error."""
-        errors = self._all_error_properties()
-        active_errors = {k: v for k, v in errors.items() if v}
-        return len(active_errors) > 0
+        return bool(self.status and self.status.errors)
 
     @property
     def extra_state_attributes(self) -> Mapping[str, Any] | None:
-        """Return more detailed error information."""
-        return self._all_error_properties()
+        """Return the active error codes.
+
+        The vocabulary-specific parsing (Airjet system_err*/earth, Airjet_V01
+        and Hydrojet E-codes minus E32, pool filter "error") happens once in
+        bestway/translation.py rather than being duplicated here.
+        """
+        return {"errors": list(self.status.errors)} if self.status else None
 
 
 class PoolFilterChangeRequiredSensor(BestwayEntity, BinarySensorEntity):
@@ -215,4 +185,4 @@ class PoolFilterChangeRequiredSensor(BestwayEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool | None:
         """Return true if the spa is online."""
-        return self.status is not None and self.status.attrs["filter"]
+        return self.status is not None and self.status.filter_change_required

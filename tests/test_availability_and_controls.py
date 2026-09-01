@@ -3,7 +3,7 @@
 These tests cover the fixes in:
 - entity.py: available property ignoring unreliable is_online
 - switch.py: optimistic state tracking
-- climate.py: safe .get() for Tunit key
+- climate.py: a safe default temperature_unit when status is absent/unknown
 """
 
 from typing import Any
@@ -14,6 +14,7 @@ from custom_components.bestway.bestway.model import (
     BestwayDevice,
     BestwayDeviceStatus,
 )
+from custom_components.bestway.model import TemperatureUnit
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -295,21 +296,22 @@ class TestSwitchOptimistic:
 
 
 class TestClimateTunitSafety:
-    """Test that missing Tunit key doesn't crash the climate entity."""
+    """Test that a missing/unknown temperature_unit renders a safe default."""
 
-    def _make_thermostat(self, attrs: dict[str, Any] | None = None):
-        """Create an AirjetV01HydrojetSpaThermostat with the given status attrs."""
-        from custom_components.bestway.climate import AirjetV01HydrojetSpaThermostat
+    def _make_thermostat(self, temperature_unit: TemperatureUnit | None):
+        """Create a SpaThermostat whose status carries the given typed unit."""
+        from custom_components.bestway.climate import SpaThermostat
 
         device = _make_device()
-        status = _make_status(attrs) if attrs is not None else _make_status()
+        status = _make_status()
+        status.temperature_unit = temperature_unit
         coordinator = _make_coordinator(device, status)
         config_entry = MagicMock()
-        return AirjetV01HydrojetSpaThermostat(coordinator, config_entry, "test_device")
+        return SpaThermostat(coordinator, config_entry, "test_device")
 
     def _make_thermostat_no_status(self):
         """Create a thermostat whose coordinator has no status for the device."""
-        from custom_components.bestway.climate import AirjetV01HydrojetSpaThermostat
+        from custom_components.bestway.climate import SpaThermostat
 
         device = _make_device()
         coordinator = MagicMock()
@@ -318,29 +320,27 @@ class TestClimateTunitSafety:
         coordinator.data = BestwayApiResults(devices={})
         coordinator.last_update_success = True
         config_entry = MagicMock()
-        return AirjetV01HydrojetSpaThermostat(coordinator, config_entry, "test_device")
+        return SpaThermostat(coordinator, config_entry, "test_device")
 
-    def test_temperature_unit_with_tunit_present(self):
-        """Returns Celsius when Tunit=1 (truthy value)."""
+    def test_temperature_unit_celsius(self):
+        """Returns Celsius when the typed unit is CELSIUS."""
         from homeassistant.const import UnitOfTemperature
 
-        thermostat = self._make_thermostat({"Tunit": 1})
+        thermostat = self._make_thermostat(TemperatureUnit.CELSIUS)
         assert thermostat.temperature_unit == str(UnitOfTemperature.CELSIUS)
 
-    def test_temperature_unit_with_tunit_zero(self):
-        """Returns Fahrenheit when Tunit=0 (falsy value)."""
+    def test_temperature_unit_fahrenheit(self):
+        """Returns Fahrenheit when the typed unit is FAHRENHEIT."""
         from homeassistant.const import UnitOfTemperature
 
-        thermostat = self._make_thermostat({"Tunit": 0})
+        thermostat = self._make_thermostat(TemperatureUnit.FAHRENHEIT)
         assert thermostat.temperature_unit == str(UnitOfTemperature.FAHRENHEIT)
 
-    def test_temperature_unit_with_tunit_missing(self):
-        """Returns Celsius when Tunit key is missing entirely (no KeyError)."""
+    def test_temperature_unit_missing_defaults_to_celsius(self):
+        """Returns Celsius when the typed unit is unknown (no crash)."""
         from homeassistant.const import UnitOfTemperature
 
-        attrs = {"power": True, "heat": 0, "Tnow": 30, "Tset": 40}
-        thermostat = self._make_thermostat(attrs)
-        # Tunit missing -> .get("Tunit", 1) defaults to 1 (truthy) -> Celsius
+        thermostat = self._make_thermostat(None)
         assert thermostat.temperature_unit == str(UnitOfTemperature.CELSIUS)
 
     def test_temperature_unit_with_no_status(self):
