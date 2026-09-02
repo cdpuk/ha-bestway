@@ -21,18 +21,24 @@ from .bestway.websocket import GizwitsWebSocket
 from .const import (
     BUBBLES_MODE_3WAY,
     BUBBLES_MODE_DEFAULT,
+    CONF_API_BASE,
     CONF_API_ROOT,
     CONF_API_ROOT_EU,
+    CONF_BACKEND,
     CONF_BUBBLES_MODE,
+    CONF_LOCATION,
     CONF_PASSWORD,
+    CONF_REGION,
     CONF_SMARTSPA_ACCOUNT,
     CONF_SMARTSPA_PASSWORD,
     CONF_SMARTSPA_REGION,
     CONF_SMARTSPA_TOKEN,
+    CONF_TOKEN,
     CONF_UID,
     CONF_USER_TOKEN,
     CONF_USER_TOKEN_EXPIRY,
     CONF_USERNAME,
+    CONF_VISITOR_ID,
     DOMAIN,
     Backend,
 )
@@ -93,7 +99,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up bestway from a config entry."""
 
     # Detect backend (default to Gizwits for backwards compatibility)
-    backend = entry.data.get("backend", Backend.GIZWITS)
+    backend = entry.data.get(CONF_BACKEND, Backend.GIZWITS)
     _LOGGER.info("Setting up Bestway integration with %s backend", backend)
 
     session = async_get_clientsession(hass)
@@ -220,14 +226,14 @@ async def _async_setup_aws_iot(
     hass: HomeAssistant, entry: ConfigEntry, session: ClientSession
 ) -> bool:
     """Set up AWS IoT V02 backend."""
-    visitor_id = entry.data["visitor_id"]
-    token = entry.data.get("token")
-    location = entry.data.get("location", "GB")
-    api_base = entry.data.get("api_base")  # Regional endpoint from config flow
+    visitor_id = entry.data[CONF_VISITOR_ID]
+    token = entry.data.get(CONF_TOKEN)
+    location = entry.data.get(CONF_LOCATION, "GB")
+    api_base = entry.data.get(CONF_API_BASE)  # Regional endpoint from config flow
 
     # Fallback for existing configs without api_base
     if not api_base:
-        region = entry.data.get("region", "EU")
+        region = entry.data.get(CONF_REGION, "EU")
         api_base = API_ENDPOINTS.get(region, API_ENDPOINTS["EU"])
 
     _LOGGER.info(
@@ -248,7 +254,7 @@ async def _async_setup_aws_iot(
         token = await AwsIotApi.authenticate(session, visitor_id, location, api_base)
         # Update entry with fresh token
         hass.config_entries.async_update_entry(
-            entry, data={**entry.data, "token": token}
+            entry, data={**entry.data, CONF_TOKEN: token}
         )
         api._token = token
     except AwsIotAuthException as ex:
@@ -271,7 +277,7 @@ async def _async_setup_aws_iot(
                     )
                     api._token = new_token
                     hass.config_entries.async_update_entry(
-                        entry, data={**entry.data, "token": new_token}
+                        entry, data={**entry.data, CONF_TOKEN: new_token}
                     )
                     return new_token
 

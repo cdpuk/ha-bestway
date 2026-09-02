@@ -28,19 +28,25 @@ from .const import (
     BUBBLES_MODE_3WAY,
     BUBBLES_MODE_DEFAULT,
     BUBBLES_MODE_ONOFF,
+    CONF_API_BASE,
     CONF_API_ROOT,
     CONF_API_ROOT_EU,
     CONF_API_ROOT_US,
+    CONF_BACKEND,
     CONF_BUBBLES_MODE,
+    CONF_LOCATION,
     CONF_PASSWORD,
+    CONF_REGION,
     CONF_SMARTSPA_ACCOUNT,
     CONF_SMARTSPA_PASSWORD,
     CONF_SMARTSPA_REGION,
     CONF_SMARTSPA_TOKEN,
+    CONF_TOKEN,
     CONF_UID,
     CONF_USER_TOKEN,
     CONF_USER_TOKEN_EXPIRY,
     CONF_USERNAME,
+    CONF_VISITOR_ID,
     DOMAIN,
     Backend,
 )
@@ -52,7 +58,7 @@ from .smartspa.api import (
 )
 
 _LOGGER = getLogger(__name__)
-_STEP_USER_DATA_SCHEMA = vol.Schema(
+_GIZWITS_AUTH_SCHEMA = vol.Schema(
     {
         vol.Required(CONF_USERNAME): str,
         vol.Required(CONF_PASSWORD): str,
@@ -66,6 +72,31 @@ _STEP_USER_DATA_SCHEMA = vol.Schema(
         ),
     }
 )
+
+
+def _aws_iot_schema(region: str) -> vol.Schema:
+    """Schema for the AWS IoT auth step, defaulting the region selector to
+    the value the user last picked (or "EU" on first show).
+
+    Used for every re-render of this step - the initial form, the
+    validation-error and QR-binding-error paths, and the final catch-all -
+    so a user who hits an error never loses their region selection.
+    """
+    return vol.Schema(
+        {
+            vol.Required(CONF_REGION, default=region): selector.SelectSelector(
+                selector.SelectSelectorConfig(
+                    options=[
+                        selector.SelectOptionDict(value="EU", label="Europe"),
+                        selector.SelectOptionDict(value="US", label="United States"),
+                        selector.SelectOptionDict(value="CN", label="China"),
+                    ]
+                )
+            ),
+            vol.Optional(CONF_VISITOR_ID): str,
+            vol.Optional("qr_code"): str,
+        }
+    )
 
 
 async def validate_input(
@@ -119,7 +150,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
                 step_id="user",
                 data_schema=vol.Schema(
                     {
-                        vol.Required("backend"): selector.SelectSelector(
+                        vol.Required(CONF_BACKEND): selector.SelectSelector(
                             selector.SelectSelectorConfig(
                                 options=[
                                     selector.SelectOptionDict(
@@ -145,7 +176,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
             )
 
         # Store backend choice and route to appropriate auth flow
-        self._backend = user_input["backend"]
+        self._backend = user_input[CONF_BACKEND]
 
         if self._backend == Backend.GIZWITS:
             return await self.async_step_gizwits_auth()
@@ -160,7 +191,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
         """Handle Gizwits authentication (V01 backend)."""
         if user_input is None:
             return self.async_show_form(
-                step_id="gizwits_auth", data_schema=_STEP_USER_DATA_SCHEMA
+                step_id="gizwits_auth", data_schema=_GIZWITS_AUTH_SCHEMA
             )
 
         errors = {}
@@ -178,13 +209,13 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
             errors["base"] = "unknown_connection_error"
         else:
             # Add backend field for Gizwits
-            config_entry_data["backend"] = Backend.GIZWITS
+            config_entry_data[CONF_BACKEND] = Backend.GIZWITS
             return self.async_create_entry(
                 title=user_input[CONF_USERNAME], data=config_entry_data
             )
 
         return self.async_show_form(
-            step_id="gizwits_auth", data_schema=_STEP_USER_DATA_SCHEMA, errors=errors
+            step_id="gizwits_auth", data_schema=_GIZWITS_AUTH_SCHEMA, errors=errors
         )
 
     async def async_step_aws_iot_auth(
@@ -194,27 +225,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
         if user_input is None:
             return self.async_show_form(
                 step_id="aws_iot_auth",
-                data_schema=vol.Schema(
-                    {
-                        vol.Required("region", default="EU"): selector.SelectSelector(
-                            selector.SelectSelectorConfig(
-                                options=[
-                                    selector.SelectOptionDict(
-                                        value="EU", label="Europe"
-                                    ),
-                                    selector.SelectOptionDict(
-                                        value="US", label="United States"
-                                    ),
-                                    selector.SelectOptionDict(
-                                        value="CN", label="China"
-                                    ),
-                                ]
-                            )
-                        ),
-                        vol.Optional("visitor_id"): str,
-                        vol.Optional("qr_code"): str,
-                    }
-                ),
+                data_schema=_aws_iot_schema("EU"),
                 description_placeholders={
                     "qr_help": "Scan QR from app Settings → Device Sharing",
                     "visitor_help": "OR enter visitor_id from existing account",
@@ -222,36 +233,16 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
             )
 
         errors = {}
-        region = user_input.get("region", "EU")
+        region = user_input.get(CONF_REGION, "EU")
         qr_code = user_input.get("qr_code", "").strip()
-        visitor_id_input = user_input.get("visitor_id", "").strip()
+        visitor_id_input = user_input.get(CONF_VISITOR_ID, "").strip()
 
         # Require one or the other
         if not qr_code and not visitor_id_input:
             errors["base"] = "qr_or_visitor_required"
             return self.async_show_form(
                 step_id="aws_iot_auth",
-                data_schema=vol.Schema(
-                    {
-                        vol.Required("region", default=region): selector.SelectSelector(
-                            selector.SelectSelectorConfig(
-                                options=[
-                                    selector.SelectOptionDict(
-                                        value="EU", label="Europe"
-                                    ),
-                                    selector.SelectOptionDict(
-                                        value="US", label="United States"
-                                    ),
-                                    selector.SelectOptionDict(
-                                        value="CN", label="China"
-                                    ),
-                                ]
-                            )
-                        ),
-                        vol.Optional("visitor_id"): str,
-                        vol.Optional("qr_code"): str,
-                    }
-                ),
+                data_schema=_aws_iot_schema(region),
                 errors=errors,
             )
 
@@ -268,12 +259,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
                     errors["qr_code"] = "invalid_qr_format"
                     return self.async_show_form(
                         step_id="aws_iot_auth",
-                        data_schema=vol.Schema(
-                            {
-                                vol.Optional("qr_code"): str,
-                                vol.Optional("visitor_id"): str,
-                            }
-                        ),
+                        data_schema=_aws_iot_schema(region),
                         errors=errors,
                     )
 
@@ -294,12 +280,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
                         errors["qr_code"] = "binding_failed"
                         return self.async_show_form(
                             step_id="aws_iot_auth",
-                            data_schema=vol.Schema(
-                                {
-                                    vol.Optional("qr_code"): str,
-                                    vol.Optional("visitor_id"): str,
-                                }
-                            ),
+                            data_schema=_aws_iot_schema(region),
                             errors=errors,
                         )
                 except Exception as bind_err:
@@ -307,12 +288,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
                     errors["qr_code"] = "binding_failed"
                     return self.async_show_form(
                         step_id="aws_iot_auth",
-                        data_schema=vol.Schema(
-                            {
-                                vol.Optional("qr_code"): str,
-                                vol.Optional("visitor_id"): str,
-                            }
-                        ),
+                        data_schema=_aws_iot_schema(region),
                         errors=errors,
                     )
             else:
@@ -343,12 +319,12 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(
                     title=f"Bestway Spa (V02 - {region})",
                     data={
-                        "backend": Backend.AWS_IOT,
-                        "visitor_id": visitor_id,
-                        "token": token,
-                        "location": "GB",  # Legacy field
-                        "region": region,
-                        "api_base": api_base,
+                        CONF_BACKEND: Backend.AWS_IOT,
+                        CONF_VISITOR_ID: visitor_id,
+                        CONF_TOKEN: token,
+                        CONF_LOCATION: "GB",
+                        CONF_REGION: region,
+                        CONF_API_BASE: api_base,
                     },
                 )
 
@@ -361,23 +337,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
 
         return self.async_show_form(
             step_id="aws_iot_auth",
-            data_schema=vol.Schema(
-                {
-                    vol.Required("region", default=region): selector.SelectSelector(
-                        selector.SelectSelectorConfig(
-                            options=[
-                                selector.SelectOptionDict(value="EU", label="Europe"),
-                                selector.SelectOptionDict(
-                                    value="US", label="United States"
-                                ),
-                                selector.SelectOptionDict(value="CN", label="China"),
-                            ]
-                        )
-                    ),
-                    vol.Optional("visitor_id"): str,
-                    vol.Optional("qr_code"): str,
-                }
-            ),
+            data_schema=_aws_iot_schema(region),
             errors=errors,
         )
 
@@ -443,7 +403,7 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
                 return self.async_create_entry(
                     title=f"Bestway ({account})",
                     data={
-                        "backend": Backend.SMARTSPA,
+                        CONF_BACKEND: Backend.SMARTSPA,
                         CONF_SMARTSPA_ACCOUNT: account,
                         CONF_SMARTSPA_PASSWORD: password,
                         CONF_SMARTSPA_REGION: region,
