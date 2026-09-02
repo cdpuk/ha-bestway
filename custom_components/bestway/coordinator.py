@@ -63,16 +63,12 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
             raise ConfigEntryAuthFailed(str(err)) from err
 
     def handle_websocket_update(self, device_id: str, attrs: dict[str, Any]) -> None:
-        """Handle real-time device update from WebSocket.
+        """Handle a real-time device update from a WebSocket.
 
         Delegates the merge-and-translate work to the backend, which owns
         the raw state cache these deltas are partial updates against, then
         triggers immediate entity updates. This provides sub-second update
         latency compared to 30-second polling.
-
-        Args:
-            device_id: Device ID (DID) that was updated
-            attrs: Device attributes from WebSocket s2c_noti message
         """
         _LOGGER.debug(
             "WebSocket update for device %s with %d attributes", device_id, len(attrs)

@@ -39,18 +39,10 @@ class GizwitsWebSocket(BaseWebSocketClient):
         disconnect_callback: Callable[[], None] | None = None,
         connect_callback: Callable[[], None] | None = None,
     ) -> None:
-        """Initialize WebSocket client.
-
-        Args:
-            uid: User ID from Gizwits login API
-            token: User token from Gizwits login API
-            ws_host: WebSocket hostname (from device bindings response)
-            ws_port: WebSocket port (from device bindings response)
-            update_callback: Called with (device_id, attrs) on device updates
-            disconnect_callback: Called on connection loss, including a failed
-                initial connection attempt (optional)
-            connect_callback: Called once a connection is established and
-                authenticated (optional)
+        """Initialize the client. ws_host/ws_port come from the device
+        bindings response; update_callback is called with (device_id, attrs)
+        on each device update; disconnect_callback also fires on a failed
+        initial connection attempt.
         """
         super().__init__(disconnect_callback, connect_callback)
         self._uid = uid
@@ -60,13 +52,9 @@ class GizwitsWebSocket(BaseWebSocketClient):
         self._authenticated = False
 
     async def connect(self) -> None:
-        """Connect to WebSocket and authenticate.
-
-        Establishes SSL connection to Gizwits WebSocket API, sends login
-        message with user credentials, and starts listening for device updates.
-
-        Raises:
-            GizwitsWebSocketException: If connection or authentication fails
+        """Connect to the Gizwits WebSocket API, log in, and start listening
+        for device updates. Raises GizwitsWebSocketException if the
+        connection or login fails.
         """
         if self._running:
             _LOGGER.warning("WebSocket already running")
@@ -245,13 +233,8 @@ class GizwitsWebSocket(BaseWebSocketClient):
                 await self._handle_disconnect()
 
     def _handle_device_update(self, data: dict[str, Any]) -> None:
-        """Process device status update notification.
-
-        Extracts device ID and attributes from s2c_noti message and
-        invokes update callback.
-
-        Args:
-            data: Parsed JSON message with cmd='s2c_noti'
+        """Extract the device ID and attrs from an s2c_noti message and
+        invoke the update callback.
         """
         device_data = data.get("data", {})
         device_id = device_data.get("did")
@@ -312,9 +295,5 @@ class GizwitsWebSocket(BaseWebSocketClient):
 
     @property
     def is_connected(self) -> bool:
-        """Return True if WebSocket is connected and authenticated.
-
-        Returns:
-            True if connection is active and login successful
-        """
+        """Return True if the connection is active and login succeeded."""
         return self._running and self._authenticated

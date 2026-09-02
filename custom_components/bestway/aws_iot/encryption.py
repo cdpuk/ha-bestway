@@ -10,7 +10,6 @@ Algorithm Details:
 - Output: Base64(IV + ciphertext)
 
 Source: Decompiled from com/rongwei/library/utils/AESEncrypt.java
-Reference: layzspa-aws-iot/bestway_spa_client.py
 """
 
 from __future__ import annotations
@@ -41,21 +40,14 @@ FIXED_IV = bytes(
 
 
 def encrypt_command_payload(sign: str, app_secret: str, plaintext: str) -> str:
-    """Encrypt command payload using Bestway's AES-256-CBC scheme.
+    """Encrypt an already-serialized JSON command payload with Bestway's
+    AES-256-CBC scheme, returning Base64(IV + ciphertext).
 
-    EXACT copy of working implementation from New_bestway_spa/encryption.py
-    Signature: (sign, app_secret, plaintext_string) - NOT (data, sign, app_secret)!
+    Argument order is (sign, app_secret, plaintext) - `sign` is the
+    request's own MD5 signature (uppercase hex), used as key material
+    alongside `app_secret`, not the data being encrypted.
 
-    Args:
-        sign: MD5 signature from current request (uppercase hex)
-        app_secret: APP_SECRET constant (same for all users, from APK)
-        plaintext: Command payload as JSON string (already serialized!)
-
-    Returns:
-        Base64-encoded encrypted payload: Base64(IV + ciphertext)
-
-    Raises:
-        RuntimeError: If pycryptodome is not installed
+    Raises RuntimeError if pycryptodome is not installed.
     """
     if not HAS_PYCRYPTODOME:
         raise RuntimeError(
@@ -80,20 +72,11 @@ def encrypt_command_payload(sign: str, app_secret: str, plaintext: str) -> str:
 
 
 def decrypt_command_payload(sign: str, app_secret: str, ciphertext: str) -> str:
-    """Decrypt command payload (inverse of encrypt_command_payload).
+    """Decrypt a Base64(IV + ciphertext) payload back to plaintext - the
+    inverse of `encrypt_command_payload`, with the same `sign` and
+    `app_secret` used to encrypt it.
 
-    EXACT copy of reference signature and behavior.
-
-    Args:
-        sign: Same MD5 signature used for encryption
-        app_secret: Same APP_SECRET constant
-        ciphertext: Base64-encoded encrypted data
-
-    Returns:
-        Decrypted plaintext string
-
-    Raises:
-        RuntimeError: If pycryptodome is not installed
+    Raises RuntimeError if pycryptodome is not installed.
     """
     if not HAS_PYCRYPTODOME:
         raise RuntimeError(

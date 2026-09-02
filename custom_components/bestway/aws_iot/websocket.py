@@ -57,17 +57,10 @@ class AwsIotWebSocket(BaseWebSocketClient):
         token_refresh_callback: Callable[[], Awaitable[str]] | None = None,
         connect_callback: Callable[[], None] | None = None,
     ) -> None:
-        """Initialize per-device WebSocket client.
-
-        Args:
-            device_id: Device ID for shadow subscription
-            service_region: AWS region (e.g., "eu-central-1")
-            token: JWT authentication token
-            update_callback: Called with (device_id, normalized_attrs) on updates
-            disconnect_callback: Called on connection loss, including a failed
-                initial connection attempt (optional)
-            token_refresh_callback: Called to refresh token on HTTP 400 (optional)
-            connect_callback: Called once a connection is established (optional)
+        """Initialize the client for one device's shadow subscription.
+        update_callback is called with (device_id, normalized_attrs) on each
+        update; disconnect_callback also fires on a failed initial connection
+        attempt; token_refresh_callback is used to recover from an HTTP 400.
         """
         super().__init__(disconnect_callback, connect_callback)
         self._device_id = device_id
@@ -125,7 +118,7 @@ class AwsIotWebSocket(BaseWebSocketClient):
             self._running = True
             self._reconnect_count = 0  # Reset on successful connection
 
-            _LOGGER.info("✓ WebSocket connected for device %s", self._device_id[:12])
+            _LOGGER.info("WebSocket connected for device %s", self._device_id[:12])
             self._notify_connected()
 
             # Start background tasks
@@ -168,7 +161,7 @@ class AwsIotWebSocket(BaseWebSocketClient):
         _LOGGER.info("Disconnecting WebSocket for device %s", self._device_id[:12])
         self._running = False
         await self._cancel_and_close()
-        _LOGGER.info("✓ WebSocket disconnected for device %s", self._device_id[:12])
+        _LOGGER.info("WebSocket disconnected for device %s", self._device_id[:12])
 
     async def _listen_loop(self) -> None:
         """Listen for incoming shadow update messages.
