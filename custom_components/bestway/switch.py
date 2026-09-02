@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
-from time import monotonic
 from typing import Any
 
 from homeassistant.components.switch import SwitchEntity, SwitchEntityDescription
@@ -12,18 +11,12 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import BestwayUpdateCoordinator
 from .backend import BackendApi
 from .const import DOMAIN, Icon
-from .entity import BestwayEntity
+from .coordinator import BestwayUpdateCoordinator
+from .entity import BestwayEntity, OptimisticValue
 from .features import BubblesStyle, DeviceKind, features_for
 from .model import BubblesLevel, DeviceStatus
-
-# Maximum time an optimistic value is trusted before the entity falls back
-# to whatever the cloud last reported. Long enough to ride out a normal
-# Bestway/AWS round trip, short enough that a stuck UI self-heals quickly
-# when commands fail or get processed out of order.
-_OPTIMISTIC_TIMEOUT_S = 8.0
 
 
 @dataclass(frozen=True, kw_only=True)
@@ -155,19 +148,13 @@ class BestwaySwitch(BestwayEntity, SwitchEntity):
         super().__init__(coordinator, config_entry, device_id)
         self.entity_description = description
         self._attr_unique_id = f"{device_id}_{description.key}"
-        self._optimistic_state: bool | None = None
-        self._optimistic_set_at: float = 0.0
-
-    def _set_optimistic(self, value: bool) -> None:
-        """Set the optimistic value and stamp it for the timeout check."""
-        self._optimistic_state = value
-        self._optimistic_set_at = monotonic()
+        self._optimistic = OptimisticValue[bool]()
 
     @property
     def is_on(self) -> bool | None:
         """Return true if the switch is on."""
-        if self._optimistic_state is not None:
-            return self._optimistic_state
+        if self._optimistic.value is not None:
+            return self._optimistic.value
         if status := self.status:
             return self.entity_description.value_fn(status)
 
@@ -184,24 +171,20 @@ class BestwaySwitch(BestwayEntity, SwitchEntity):
         the switch stuck on the unconfirmed value indefinitely because
         the real state never matches.
         """
-        if self._optimistic_state is not None and self.status is not None:
-            actual = self.entity_description.value_fn(self.status)
-            confirmed = actual == self._optimistic_state
-            timed_out = monotonic() - self._optimistic_set_at >= _OPTIMISTIC_TIMEOUT_S
-            if confirmed or timed_out:
-                self._optimistic_state = None
+        if self.status is not None:
+            self._optimistic.confirm(self.entity_description.value_fn(self.status))
         super()._handle_coordinator_update()
 
     async def async_turn_on(self, **kwargs: Any) -> None:
         """Turn the switch on."""
-        self._set_optimistic(True)
+        self._optimistic.set(True)
         self.async_write_ha_state()
         await self.entity_description.turn_on_fn(self.coordinator.api, self.device_id)
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off."""
-        self._set_optimistic(False)
+        self._optimistic.set(False)
         self.async_write_ha_state()
         await self.entity_description.turn_off_fn(self.coordinator.api, self.device_id)
         await self.coordinator.async_request_refresh()

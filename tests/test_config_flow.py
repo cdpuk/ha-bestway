@@ -199,6 +199,39 @@ async def test_aws_iot_qr_validation(hass):
     assert result["errors"]["qr_code"] == "invalid_qr_format"
 
 
+async def test_aws_iot_qr_validation_preserves_region_selector(hass):
+    """Regression test: re-rendering the AWS IoT step after an error must
+    not drop the region selector.
+
+    The step originally re-rendered several of its error paths (invalid QR
+    format, QR binding failure) with a schema that only had qr_code/
+    visitor_id - silently dropping the region field a user had already
+    selected. All re-renders now go through one _aws_iot_schema() helper.
+    """
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": config_entries.SOURCE_USER}
+    )
+
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"], user_input={"backend": "aws_iot"}
+    )
+
+    # Pick a non-default region, then submit an invalid QR code.
+    result = await hass.config_entries.flow.async_configure(
+        result["flow_id"],
+        user_input={"region": "US", "qr_code": "INVALID_QR_123"},
+    )
+
+    assert result["type"] == FlowResultType.FORM
+    assert result["errors"]["qr_code"] == "invalid_qr_format"
+
+    schema_keys = {str(key): key for key in result["data_schema"].schema}
+    assert "region" in schema_keys, "region selector was dropped on re-render"
+    assert schema_keys["region"].default() == "US", (
+        "region selector reset instead of preserving the user's selection"
+    )
+
+
 async def test_backend_selection_shows_both_options(hass):
     """Test backend selection displays both V01 and V02 options."""
     result = await hass.config_entries.flow.async_init(

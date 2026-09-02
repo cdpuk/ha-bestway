@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-from time import monotonic
 from typing import Any
 
 from homeassistant.components.climate import ClimateEntity, ClimateEntityFeature
@@ -12,13 +11,11 @@ from homeassistant.const import ATTR_TEMPERATURE, PRECISION_WHOLE, UnitOfTempera
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import BestwayUpdateCoordinator
 from .const import DOMAIN
-from .entity import BestwayEntity
+from .coordinator import BestwayUpdateCoordinator
+from .entity import BestwayEntity, OptimisticValue
 from .features import features_for
 from .model import HeaterState, TemperatureUnit
-
-_OPTIMISTIC_TIMEOUT_S = 8.0
 
 _SPA_MIN_TEMP_C = 20
 _SPA_MIN_TEMP_F = 68
@@ -72,18 +69,8 @@ class SpaThermostat(BestwayEntity, ClimateEntity):
         """Initialize thermostat."""
         super().__init__(coordinator, config_entry, device_id)
         self._attr_unique_id = f"{device_id}_thermostat"
-        self._optimistic_heat: bool | None = None
-        self._optimistic_heat_set_at: float = 0.0
-        self._optimistic_tset: int | None = None
-        self._optimistic_tset_set_at: float = 0.0
-
-    def _set_optimistic_heat(self, value: bool) -> None:
-        self._optimistic_heat = value
-        self._optimistic_heat_set_at = monotonic()
-
-    def _set_optimistic_tset(self, value: int) -> None:
-        self._optimistic_tset = value
-        self._optimistic_tset_set_at = monotonic()
+        self._optimistic_heat = OptimisticValue[bool]()
+        self._optimistic_tset = OptimisticValue[int]()
 
     def _handle_coordinator_update(self) -> None:
         """Clear optimistic state once real data confirms it, or after a
@@ -94,29 +81,21 @@ class SpaThermostat(BestwayEntity, ClimateEntity):
         timeout, rapid input (or a dropped/reordered command) leaves the
         UI stuck on a value the cloud never reaches.
         """
-        now = monotonic()
         if self.status is not None:
-            if self._optimistic_heat is not None:
-                actual_on = self.status.heater not in (None, HeaterState.OFF)
-                timed_out = now - self._optimistic_heat_set_at >= _OPTIMISTIC_TIMEOUT_S
-                if self._optimistic_heat == actual_on or timed_out:
-                    self._optimistic_heat = None
-            if self._optimistic_tset is not None:
-                timed_out = now - self._optimistic_tset_set_at >= _OPTIMISTIC_TIMEOUT_S
-                actual_tset = self.status.target_temperature
-                matched = (
-                    actual_tset is not None
-                    and int(actual_tset) == self._optimistic_tset
-                )
-                if matched or timed_out:
-                    self._optimistic_tset = None
+            actual_on = self.status.heater not in (None, HeaterState.OFF)
+            self._optimistic_heat.confirm(actual_on)
+
+            actual_tset = self.status.target_temperature
+            self._optimistic_tset.confirm(
+                int(actual_tset) if actual_tset is not None else None
+            )
         super()._handle_coordinator_update()
 
     @property
     def hvac_mode(self) -> HVACMode | None:
         """Return the current mode (HEAT or OFF)."""
-        if self._optimistic_heat is not None:
-            return HVACMode.HEAT if self._optimistic_heat else HVACMode.OFF
+        if self._optimistic_heat.value is not None:
+            return HVACMode.HEAT if self._optimistic_heat.value else HVACMode.OFF
         if not self.status or self.status.heater is None:
             return None
         return HVACMode.OFF if self.status.heater is HeaterState.OFF else HVACMode.HEAT
@@ -124,8 +103,10 @@ class SpaThermostat(BestwayEntity, ClimateEntity):
     @property
     def hvac_action(self) -> HVACAction | None:
         """Return the current running action (HEATING or IDLE)."""
-        if self._optimistic_heat is not None:
-            return HVACAction.HEATING if self._optimistic_heat else HVACAction.IDLE
+        if self._optimistic_heat.value is not None:
+            return (
+                HVACAction.HEATING if self._optimistic_heat.value else HVACAction.IDLE
+            )
         if not self.status or self.status.heater is None:
             return None
         return (
@@ -142,8 +123,8 @@ class SpaThermostat(BestwayEntity, ClimateEntity):
     @property
     def target_temperature(self) -> float | None:
         """Return the temperature we try to reach."""
-        if self._optimistic_tset is not None:
-            return float(self._optimistic_tset)
+        if self._optimistic_tset.value is not None:
+            return float(self._optimistic_tset.value)
         return self.status.target_temperature if self.status else None
 
     @property
@@ -182,7 +163,7 @@ class SpaThermostat(BestwayEntity, ClimateEntity):
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set new target hvac mode."""
         want_heat = hvac_mode == HVACMode.HEAT
-        self._set_optimistic_heat(want_heat)
+        self._optimistic_heat.set(want_heat)
         self.async_write_ha_state()
         await self.coordinator.api.set_heat(self.device_id, want_heat)
         await self.coordinator.async_request_refresh()
@@ -195,10 +176,10 @@ class SpaThermostat(BestwayEntity, ClimateEntity):
 
         if hvac_mode := kwargs.get(ATTR_HVAC_MODE):
             want_heat = hvac_mode == HVACMode.HEAT
-            self._set_optimistic_heat(want_heat)
+            self._optimistic_heat.set(want_heat)
             await self.coordinator.api.set_heat(self.device_id, want_heat)
 
-        self._set_optimistic_tset(int(target_temperature))
+        self._optimistic_tset.set(int(target_temperature))
         self.async_write_ha_state()
         await self.coordinator.api.set_target_temperature(
             self.device_id, target_temperature

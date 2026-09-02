@@ -10,7 +10,6 @@ Algorithm Details:
 - Output: Base64(IV + ciphertext)
 
 Source: Decompiled from com/rongwei/library/utils/AESEncrypt.java
-Reference: layzspa-aws-iot/bestway_spa_client.py
 """
 
 from __future__ import annotations
@@ -19,19 +18,10 @@ import base64
 import hashlib
 import logging
 
+from Crypto.Cipher import AES
+from Crypto.Util.Padding import pad, unpad
+
 _LOGGER = logging.getLogger(__name__)
-
-try:
-    from Crypto.Cipher import AES
-    from Crypto.Util.Padding import pad, unpad
-
-    HAS_PYCRYPTODOME = True
-except ImportError:
-    HAS_PYCRYPTODOME = False
-    _LOGGER.error(
-        "pycryptodome not installed - AWS IoT encryption unavailable. "
-        "Install with: pip install pycryptodome>=3.20.0"
-    )
 
 # Fixed IV from decompiled APK (never changes)
 # Source: AESEncrypt.java in com.rongwei.library.utils
@@ -41,27 +31,13 @@ FIXED_IV = bytes(
 
 
 def encrypt_command_payload(sign: str, app_secret: str, plaintext: str) -> str:
-    """Encrypt command payload using Bestway's AES-256-CBC scheme.
+    """Encrypt an already-serialized JSON command payload with Bestway's
+    AES-256-CBC scheme, returning Base64(IV + ciphertext).
 
-    EXACT copy of working implementation from New_bestway_spa/encryption.py
-    Signature: (sign, app_secret, plaintext_string) - NOT (data, sign, app_secret)!
-
-    Args:
-        sign: MD5 signature from current request (uppercase hex)
-        app_secret: APP_SECRET constant (same for all users, from APK)
-        plaintext: Command payload as JSON string (already serialized!)
-
-    Returns:
-        Base64-encoded encrypted payload: Base64(IV + ciphertext)
-
-    Raises:
-        RuntimeError: If pycryptodome is not installed
+    Argument order is (sign, app_secret, plaintext) - `sign` is the
+    request's own MD5 signature (uppercase hex), used as key material
+    alongside `app_secret`, not the data being encrypted.
     """
-    if not HAS_PYCRYPTODOME:
-        raise RuntimeError(
-            "pycryptodome not installed. Install with: pip install pycryptodome>=3.20.0"
-        )
-
     # Key derivation: SHA-256(f"{sign},{app_secret}")[:32] as UTF-8 bytes
     key_material = f"{sign},{app_secret}".encode()
     key_hex = hashlib.sha256(key_material).hexdigest()[:32]
@@ -80,26 +56,10 @@ def encrypt_command_payload(sign: str, app_secret: str, plaintext: str) -> str:
 
 
 def decrypt_command_payload(sign: str, app_secret: str, ciphertext: str) -> str:
-    """Decrypt command payload (inverse of encrypt_command_payload).
-
-    EXACT copy of reference signature and behavior.
-
-    Args:
-        sign: Same MD5 signature used for encryption
-        app_secret: Same APP_SECRET constant
-        ciphertext: Base64-encoded encrypted data
-
-    Returns:
-        Decrypted plaintext string
-
-    Raises:
-        RuntimeError: If pycryptodome is not installed
+    """Decrypt a Base64(IV + ciphertext) payload back to plaintext - the
+    inverse of `encrypt_command_payload`, with the same `sign` and
+    `app_secret` used to encrypt it.
     """
-    if not HAS_PYCRYPTODOME:
-        raise RuntimeError(
-            "pycryptodome not installed. Install with: pip install pycryptodome>=3.20.0"
-        )
-
     # Derive key same way as encryption
     key_material = f"{sign},{app_secret}".encode()
     key_hex = hashlib.sha256(key_material).hexdigest()[:32]

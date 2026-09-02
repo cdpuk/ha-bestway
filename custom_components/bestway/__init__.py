@@ -13,29 +13,44 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from .aws_iot.api import API_ENDPOINTS, AwsIotApi, AwsIotAuthException
+from .aws_iot.websocket import AwsIotWebSocket
 from .backend import BackendApi
 from .bestway.api import BestwayApi
 from .bestway.websocket import GizwitsWebSocket
 from .const import (
     BUBBLES_MODE_3WAY,
     BUBBLES_MODE_DEFAULT,
+    CONF_API_BASE,
     CONF_API_ROOT,
     CONF_API_ROOT_EU,
+    CONF_BACKEND,
     CONF_BUBBLES_MODE,
+    CONF_LOCATION,
     CONF_PASSWORD,
+    CONF_REGION,
     CONF_SMARTSPA_ACCOUNT,
     CONF_SMARTSPA_PASSWORD,
     CONF_SMARTSPA_REGION,
     CONF_SMARTSPA_TOKEN,
+    CONF_TOKEN,
     CONF_UID,
     CONF_USER_TOKEN,
     CONF_USER_TOKEN_EXPIRY,
     CONF_USERNAME,
+    CONF_VISITOR_ID,
     DOMAIN,
     Backend,
 )
 from .coordinator import BestwayUpdateCoordinator
 from .features import bubbles_mode_dependent
+from .smartspa.api import (
+    SMARTSPA_ENDPOINTS,
+    SmartSpaApi,
+    SmartSpaAuthException,
+    SmartSpaException,
+)
+from .websocket_base import BaseWebSocketClient
 
 _LOGGER = getLogger(__name__)
 _PLATFORMS: list[Platform] = [
@@ -84,7 +99,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Set up bestway from a config entry."""
 
     # Detect backend (default to Gizwits for backwards compatibility)
-    backend = entry.data.get("backend", Backend.GIZWITS)
+    backend = entry.data.get(CONF_BACKEND, Backend.GIZWITS)
     _LOGGER.info("Setting up Bestway integration with %s backend", backend)
 
     session = async_get_clientsession(hass)
@@ -195,8 +210,8 @@ async def _async_setup_gizwits(
     else:
         _LOGGER.info("No UID in config, WebSocket disabled (polling only)")
 
-    # Store WebSocket on coordinator to avoid data structure change
-    coordinator.websocket = ws_client
+    if ws_client is not None:
+        coordinator.websockets = [ws_client]
 
     _async_remove_orphaned_bubbles_entities(hass, entry, api)
 
@@ -211,19 +226,14 @@ async def _async_setup_aws_iot(
     hass: HomeAssistant, entry: ConfigEntry, session: ClientSession
 ) -> bool:
     """Set up AWS IoT V02 backend."""
-    from .aws_iot.api import AwsIotApi, AwsIotAuthException
-    from .aws_iot.websocket import AwsIotWebSocket
-
-    visitor_id = entry.data["visitor_id"]
-    token = entry.data.get("token")
-    location = entry.data.get("location", "GB")
-    api_base = entry.data.get("api_base")  # Regional endpoint from config flow
+    visitor_id = entry.data[CONF_VISITOR_ID]
+    token = entry.data.get(CONF_TOKEN)
+    location = entry.data.get(CONF_LOCATION, "GB")
+    api_base = entry.data.get(CONF_API_BASE)  # Regional endpoint from config flow
 
     # Fallback for existing configs without api_base
     if not api_base:
-        from .aws_iot.api import API_ENDPOINTS
-
-        region = entry.data.get("region", "EU")
+        region = entry.data.get(CONF_REGION, "EU")
         api_base = API_ENDPOINTS.get(region, API_ENDPOINTS["EU"])
 
     _LOGGER.info(
@@ -244,7 +254,7 @@ async def _async_setup_aws_iot(
         token = await AwsIotApi.authenticate(session, visitor_id, location, api_base)
         # Update entry with fresh token
         hass.config_entries.async_update_entry(
-            entry, data={**entry.data, "token": token}
+            entry, data={**entry.data, CONF_TOKEN: token}
         )
         api._token = token
     except AwsIotAuthException as ex:
@@ -256,7 +266,7 @@ async def _async_setup_aws_iot(
     await coordinator.async_config_entry_first_refresh()
 
     # Initialize per-device WebSockets
-    websockets = []
+    websockets: list[BaseWebSocketClient] = []
     if api.devices:
         for device_id, device in api.devices.items():
             try:
@@ -267,7 +277,7 @@ async def _async_setup_aws_iot(
                     )
                     api._token = new_token
                     hass.config_entries.async_update_entry(
-                        entry, data={**entry.data, "token": new_token}
+                        entry, data={**entry.data, CONF_TOKEN: new_token}
                     )
                     return new_token
 
@@ -307,7 +317,6 @@ async def _async_setup_aws_iot(
     else:
         _LOGGER.warning("No devices found, WebSocket not initialized")
 
-    # Store WebSockets list on coordinator
     coordinator.websockets = websockets
 
     _async_remove_orphaned_bubbles_entities(hass, entry, api)
@@ -328,13 +337,6 @@ async def _async_setup_smartspa(
     default of the coordinator applies. The API client transparently
     re-authenticates when the gateway invalidates the token (code 505).
     """
-    from .smartspa.api import (
-        SMARTSPA_ENDPOINTS,
-        SmartSpaApi,
-        SmartSpaAuthException,
-        SmartSpaException,
-    )
-
     account = str(entry.data[CONF_SMARTSPA_ACCOUNT])
     password = str(entry.data[CONF_SMARTSPA_PASSWORD])
     region = str(entry.data.get(CONF_SMARTSPA_REGION, "EU"))
@@ -386,23 +388,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if coordinator is None:
             return unload_ok
 
-        # Cleanup WebSocket connection(s)
-        # Gizwits: Single websocket
-        if coordinator.websocket:
-            await coordinator.websocket.disconnect()
-            _LOGGER.info("Gizwits WebSocket disconnected")
-
-        # AWS IoT: Multiple websockets (list)
+        # Cleanup WebSocket connection(s), if any (Gizwits: one; AWS IoT:
+        # one per device; SmartSpa: none).
+        for ws in coordinator.websockets:
+            try:
+                await ws.disconnect()
+            except Exception as ex:
+                _LOGGER.warning("Error disconnecting WebSocket: %s", ex)
         if coordinator.websockets:
-            for ws in coordinator.websockets:
-                try:
-                    await ws.disconnect()
-                except Exception as ex:
-                    _LOGGER.warning("Error disconnecting WebSocket: %s", ex)
-            _LOGGER.info(
-                "AWS IoT WebSockets disconnected (%d devices)",
-                len(coordinator.websockets),
-            )
+            _LOGGER.info("%d WebSocket(s) disconnected", len(coordinator.websockets))
 
     return unload_ok
 

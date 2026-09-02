@@ -27,8 +27,8 @@ from custom_components.bestway.const import (
 from custom_components.bestway.model import (
     BestwayApiResults,
     BestwayDevice,
-    BestwayDeviceStatus,
     BestwayDeviceType,
+    DeviceStatus,
 )
 
 _ENTRY_ID = "test_entry"
@@ -90,7 +90,7 @@ def _make_device(device_type: BestwayDeviceType) -> BestwayDevice:
     )
 
 
-def _make_status() -> BestwayDeviceStatus:
+def _make_status() -> DeviceStatus:
     """A status payload with every attribute any platform might read.
 
     Entity setup itself never reads attrs (only entity properties do, and
@@ -98,7 +98,7 @@ def _make_status() -> BestwayDeviceStatus:
     that lookups used at *construction* time (there are none) wouldn't
     raise.
     """
-    return BestwayDeviceStatus(timestamp=1000, attrs={})
+    return DeviceStatus(timestamp=1000, attrs={})
 
 
 async def _setup_all_platforms(

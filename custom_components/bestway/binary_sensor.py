@@ -15,8 +15,8 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import BestwayUpdateCoordinator
 from .const import DOMAIN, Icon
+from .coordinator import BestwayUpdateCoordinator
 from .entity import BestwayEntity
 from .features import DeviceKind, features_for
 
@@ -107,19 +107,15 @@ class DeviceConnectivitySensor(BestwayEntity, BinarySensorEntity):
         entity_description: BinarySensorEntityDescription,
     ) -> None:
         """Initialize sensor."""
+        super().__init__(coordinator, config_entry, device_id)
         self.entity_description = entity_description
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_unique_id = f"{device_id}_{self.entity_description.key}"
-        super().__init__(
-            coordinator,
-            config_entry,
-            device_id,
-        )
 
     @property
     def is_on(self) -> bool | None:
         """Return True if the spa is online."""
-        return self.bestway_device is not None and self.bestway_device.is_online
+        return (device := self.bestway_device) is not None and device.is_online
 
     @property
     def available(self) -> bool:
@@ -138,14 +134,10 @@ class DeviceErrorsSensor(BestwayEntity, BinarySensorEntity):
         entity_description: BinarySensorEntityDescription,
     ) -> None:
         """Initialize sensor."""
+        super().__init__(coordinator, config_entry, device_id)
         self.entity_description = entity_description
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_unique_id = f"{device_id}_{self.entity_description.key}"
-        super().__init__(
-            coordinator,
-            config_entry,
-            device_id,
-        )
 
     @property
     def is_on(self) -> bool | None:
@@ -172,16 +164,12 @@ class PoolFilterChangeRequiredSensor(BestwayEntity, BinarySensorEntity):
         device_id: str,
     ) -> None:
         """Initialize sensor."""
+        super().__init__(coordinator, config_entry, device_id)
         self.entity_description = _POOL_FILTER_CHANGE_SENSOR_DESCRIPTION
         self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_unique_id = f"{device_id}_{self.entity_description.key}"
-        super().__init__(
-            coordinator,
-            config_entry,
-            device_id,
-        )
 
     @property
     def is_on(self) -> bool | None:
-        """Return true if the spa is online."""
+        """Return true if the pool filter requires a change."""
         return self.status is not None and self.status.filter_change_required

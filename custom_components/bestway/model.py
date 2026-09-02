@@ -36,21 +36,15 @@ class BestwayDeviceType(Enum):
     @staticmethod
     def from_api_product_name(product_name: str) -> BestwayDeviceType:
         """Get the enum value based on the 'product_name' field in the API response."""
-
-        if product_name == "Airjet":
-            return BestwayDeviceType.AIRJET_SPA
-        if product_name == "Airjet_V01":
-            return BestwayDeviceType.AIRJET_V01_SPA
-        if product_name == "UltraFit":
-            return BestwayDeviceType.ULTRAFIT_SPA
-        if product_name == "Hydrojet":
-            return BestwayDeviceType.HYDROJET_SPA
-        if product_name == "Hydrojet_Pro":
-            return BestwayDeviceType.HYDROJET_PRO_SPA
-        if product_name == "泳池过滤器":
-            # Chinese translates to "pool filter"
-            return BestwayDeviceType.POOL_FILTER
-        return BestwayDeviceType.UNKNOWN
+        mapping = {
+            "Airjet": BestwayDeviceType.AIRJET_SPA,
+            "Airjet_V01": BestwayDeviceType.AIRJET_V01_SPA,
+            "UltraFit": BestwayDeviceType.ULTRAFIT_SPA,
+            "Hydrojet": BestwayDeviceType.HYDROJET_SPA,
+            "Hydrojet_Pro": BestwayDeviceType.HYDROJET_PRO_SPA,
+            "泳池过滤器": BestwayDeviceType.POOL_FILTER,  # Chinese for "pool filter"
+        }
+        return mapping.get(product_name, BestwayDeviceType.UNKNOWN)
 
     @staticmethod
     def from_aws_product_series(product_series: str) -> BestwayDeviceType:
@@ -166,11 +160,6 @@ class DeviceStatus:
     wifi_version: str | int | None = None
     trd_version: str | int | None = None
     ota_status: str | int | None = None
-
-
-# Alias kept importable as BestwayDeviceStatus for call sites that use that
-# name.
-BestwayDeviceStatus = DeviceStatus
 
 
 @dataclass

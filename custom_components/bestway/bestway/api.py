@@ -17,7 +17,8 @@ from ..model import (
     BubblesLevel,
     RawSnapshot,
 )
-from ..translation import bubbles_map_for, status_from_attrs
+from ..raw_state import RawStateApi
+from ..translation import bubbles_map_for
 from .model import BestwayUserToken, HydrojetFilter, HydrojetHeat
 
 _LOGGER = getLogger(__name__)
@@ -76,6 +77,7 @@ async def _raise_for_status(response: ClientResponse) -> None:
             api_error = await response.json()
         except Exception:  # pylint: disable=broad-except
             response.raise_for_status()
+            return
 
         error_code = api_error.get("error_code", 0)
         if error_code == 9004:
@@ -91,58 +93,22 @@ async def _raise_for_status(response: ClientResponse) -> None:
     response.raise_for_status()
 
 
-class BestwayApi:
-    """Bestway API."""
+class BestwayApi(RawStateApi):
+    """Bestway API.
+
+    The raw-state cache (`self._raw_state`) works around an annoyance where
+    changes to settings via a POST request are not immediately reflected in
+    a subsequent GET request: when updating state via HA, the cache is
+    updated and returned until the API provides a response with a
+    timestamp more recent than the local update.
+    """
 
     def __init__(self, session: ClientSession, user_token: str, api_root: str) -> None:
         """Initialize the API with a user token."""
+        super().__init__()
         self._session = session
         self._user_token = user_token
         self._api_root = api_root
-
-        # Maps device IDs to device info
-        self.devices: dict[str, BestwayDevice] = {}
-
-        # Cache containing state information for each device received from the API
-        # This is used to work around an annoyance where changes to settings via
-        # a POST request are not immediately reflected in a subsequent GET request.
-        #
-        # When updating state via HA, we update the cache and return this value
-        # until the API can provide us with a response containing a timestamp
-        # more recent than the local update. Merge substrate for polled +
-        # WebSocket-delta state, prior to translation into the typed
-        # DeviceStatus entities read.
-        self._raw_state: dict[str, RawSnapshot] = {}
-
-    def _results(self) -> BestwayApiResults:
-        """Translate the raw state cache into typed results.
-
-        A raw entry with no matching device (e.g. a WebSocket delta that
-        arrives before refresh_bindings() has run) translates against
-        UNKNOWN rather than being dropped, so it still surfaces as a status
-        with raw attrs even though no entity can be attached to it yet.
-        """
-        return BestwayApiResults(
-            devices={
-                did: status_from_attrs(
-                    self.devices[did].device_type
-                    if did in self.devices
-                    else BestwayDeviceType.UNKNOWN,
-                    snapshot.timestamp,
-                    snapshot.attrs,
-                )
-                for did, snapshot in self._raw_state.items()
-            }
-        )
-
-    def handle_partial_update(
-        self, device_id: str, attrs: dict[str, Any]
-    ) -> BestwayApiResults:
-        """Merge a partial WebSocket delta and return freshly translated results."""
-        existing = self._raw_state.get(device_id)
-        merged = {**existing.attrs, **attrs} if existing else dict(attrs)
-        self._raw_state[device_id] = RawSnapshot(int(time()), merged)
-        return self._results()
 
     @staticmethod
     async def get_user_token(
@@ -490,11 +456,11 @@ class BestwayApi:
         for device in sanitized.get("devices", {}):
             if (did := device.get("did")) is not None:
                 device["did"] = "*" * len(did)
-            if (mac := device.get("passcode")) is not None:
-                device["passcode"] = "*" * len(mac)
-            if (mac := device.get("product_key")) is not None:
-                device["product_key"] = "*" * len(mac)
-            if (mac := device.get("mac")) is not None:
-                device["mac"] = "*" * len(mac)
+            if (value := device.get("passcode")) is not None:
+                device["passcode"] = "*" * len(value)
+            if (value := device.get("product_key")) is not None:
+                device["product_key"] = "*" * len(value)
+            if (value := device.get("mac")) is not None:
+                device["mac"] = "*" * len(value)
 
         return sanitized

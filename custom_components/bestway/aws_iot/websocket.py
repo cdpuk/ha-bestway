@@ -21,9 +21,9 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 import websockets
-from websockets.asyncio.client import ClientConnection
 
 from ..translation import v01_attrs_from_shadow
+from ..websocket_base import OPEN_TIMEOUT, BaseWebSocketClient
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -34,20 +34,12 @@ ENDPOINTS = {
     "cn-north-1": "wss://fu9gsv4dxh.execute-api.cn-north-1.amazonaws.com.cn/prod",
 }
 
-# Reconnection delays (exponential backoff)
-RECONNECT_DELAYS = [3, 6, 12, 24, 48, 60]  # seconds
-
-# Time to allow for TCP connect + TLS + opening handshake before giving up.
-# Without this, a firewall that silently drops packets (rather than refusing
-# the connection) leaves connect() hanging on the OS-level TCP timeout.
-OPEN_TIMEOUT = 10
-
 
 class AwsIotWebSocketException(Exception):
     """Base exception for AWS IoT WebSocket operations."""
 
 
-class AwsIotWebSocket:
+class AwsIotWebSocket(BaseWebSocketClient):
     """Per-device WebSocket client for AWS IoT shadow updates.
 
     Each device requires its own WebSocket connection to receive real-time
@@ -65,35 +57,18 @@ class AwsIotWebSocket:
         token_refresh_callback: Callable[[], Awaitable[str]] | None = None,
         connect_callback: Callable[[], None] | None = None,
     ) -> None:
-        """Initialize per-device WebSocket client.
-
-        Args:
-            device_id: Device ID for shadow subscription
-            service_region: AWS region (e.g., "eu-central-1")
-            token: JWT authentication token
-            update_callback: Called with (device_id, normalized_attrs) on updates
-            disconnect_callback: Called on connection loss, including a failed
-                initial connection attempt (optional)
-            token_refresh_callback: Called to refresh token on HTTP 400 (optional)
-            connect_callback: Called once a connection is established (optional)
+        """Initialize the client for one device's shadow subscription.
+        update_callback is called with (device_id, normalized_attrs) on each
+        update; disconnect_callback also fires on a failed initial connection
+        attempt; token_refresh_callback is used to recover from an HTTP 400.
         """
+        super().__init__(disconnect_callback, connect_callback)
         self._device_id = device_id
         self._service_region = service_region
         self._token = token
         self._update_callback = update_callback
-        self._disconnect_callback = disconnect_callback
         self._token_refresh_callback = token_refresh_callback
-        self._connect_callback = connect_callback
-
-        self._websocket: ClientConnection | None = None
-        self._listen_task: asyncio.Task[Any] | None = None
-        self._heartbeat_task: asyncio.Task[Any] | None = None
-        self._running = False
-        self._reconnect_count = 0
         self._seq_id = int(time.time() * 1000)
-        # Ensures disconnect_callback fires once per disconnected period,
-        # rather than on every retry while backing off.
-        self._notified_disconnect = False
 
     @property
     def ws_url(self) -> str:
@@ -143,7 +118,7 @@ class AwsIotWebSocket:
             self._running = True
             self._reconnect_count = 0  # Reset on successful connection
 
-            _LOGGER.info("✓ WebSocket connected for device %s", self._device_id[:12])
+            _LOGGER.info("WebSocket connected for device %s", self._device_id[:12])
             self._notify_connected()
 
             # Start background tasks
@@ -185,33 +160,8 @@ class AwsIotWebSocket:
         """
         _LOGGER.info("Disconnecting WebSocket for device %s", self._device_id[:12])
         self._running = False
-
-        # Cancel listen task
-        if self._listen_task and not self._listen_task.done():
-            self._listen_task.cancel()
-            try:
-                await self._listen_task
-            except asyncio.CancelledError:
-                pass
-
-        # Cancel heartbeat task
-        if self._heartbeat_task and not self._heartbeat_task.done():
-            self._heartbeat_task.cancel()
-            try:
-                await self._heartbeat_task
-            except asyncio.CancelledError:
-                pass
-
-        # Close WebSocket
-        if self._websocket:
-            try:
-                await self._websocket.close()
-            except Exception as ex:
-                _LOGGER.debug("Error closing WebSocket: %s", ex)
-            finally:
-                self._websocket = None
-
-        _LOGGER.info("✓ WebSocket disconnected for device %s", self._device_id[:12])
+        await self._cancel_and_close()
+        _LOGGER.info("WebSocket disconnected for device %s", self._device_id[:12])
 
     async def _listen_loop(self) -> None:
         """Listen for incoming shadow update messages.
@@ -334,9 +284,7 @@ class AwsIotWebSocket:
         if not self._running:
             return
 
-        # Get delay based on reconnect count
-        delay_index = min(self._reconnect_count, len(RECONNECT_DELAYS) - 1)
-        delay = RECONNECT_DELAYS[delay_index]
+        delay = self._next_reconnect_delay()
 
         _LOGGER.info(
             "Reconnecting device %s in %ds (attempt %d)",
@@ -353,28 +301,3 @@ class AwsIotWebSocket:
 
         if self._running:
             await self.connect()
-
-    def _notify_connected(self) -> None:
-        """Invoke connect callback and re-arm the disconnect notification."""
-        self._notified_disconnect = False
-        if self._connect_callback:
-            try:
-                self._connect_callback()
-            except Exception as err:
-                _LOGGER.error("Error in connect callback: %s", err)
-
-    def _notify_disconnected(self) -> None:
-        """Invoke disconnect callback at most once per disconnected period.
-
-        connect() is retried repeatedly while backing off, so without this
-        guard a persistently unreachable endpoint would fire the callback
-        (and its log warning) on every attempt.
-        """
-        if self._notified_disconnect:
-            return
-        self._notified_disconnect = True
-        if self._disconnect_callback:
-            try:
-                self._disconnect_callback()
-            except Exception as err:
-                _LOGGER.error("Error in disconnect callback: %s", err)

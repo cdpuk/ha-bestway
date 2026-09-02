@@ -9,23 +9,16 @@ from typing import Any
 import websockets
 
 from ..const import GIZWITS_APP_ID
+from ..websocket_base import OPEN_TIMEOUT, BaseWebSocketClient
 
 _LOGGER = getLogger(__name__)
-
-# Reconnection delays (exponential backoff): 3s → 6s → 12s → 24s → 48s → 60s max
-_RECONNECT_DELAYS = [3, 6, 12, 24, 48, 60]
-
-# Time to allow for TCP connect + TLS + opening handshake before giving up.
-# Without this, a firewall that silently drops packets (rather than refusing
-# the connection) leaves connect() hanging on the OS-level TCP timeout.
-_OPEN_TIMEOUT = 10
 
 
 class GizwitsWebSocketException(Exception):
     """Base exception for WebSocket operations."""
 
 
-class GizwitsWebSocket:
+class GizwitsWebSocket(BaseWebSocketClient):
     """Gizwits WebSocket client for real-time device updates.
 
     Connects to Gizwits IoT platform WebSocket API to receive real-time
@@ -46,44 +39,22 @@ class GizwitsWebSocket:
         disconnect_callback: Callable[[], None] | None = None,
         connect_callback: Callable[[], None] | None = None,
     ) -> None:
-        """Initialize WebSocket client.
-
-        Args:
-            uid: User ID from Gizwits login API
-            token: User token from Gizwits login API
-            ws_host: WebSocket hostname (from device bindings response)
-            ws_port: WebSocket port (from device bindings response)
-            update_callback: Called with (device_id, attrs) on device updates
-            disconnect_callback: Called on connection loss, including a failed
-                initial connection attempt (optional)
-            connect_callback: Called once a connection is established and
-                authenticated (optional)
+        """Initialize the client. ws_host/ws_port come from the device
+        bindings response; update_callback is called with (device_id, attrs)
+        on each device update; disconnect_callback also fires on a failed
+        initial connection attempt.
         """
+        super().__init__(disconnect_callback, connect_callback)
         self._uid = uid
         self._token = token
         self._ws_url = f"wss://{ws_host}:{ws_port}/ws/app/v1"
         self._update_callback = update_callback
-        self._disconnect_callback = disconnect_callback
-        self._connect_callback = connect_callback
-
-        self._websocket: Any = None
-        self._listen_task: asyncio.Task[Any] | None = None
-        self._heartbeat_task: asyncio.Task[Any] | None = None
-        self._running = False
         self._authenticated = False
-        self._reconnect_count = 0
-        # Ensures disconnect_callback fires once per disconnected period,
-        # rather than on every retry while backing off.
-        self._notified_disconnect = False
 
     async def connect(self) -> None:
-        """Connect to WebSocket and authenticate.
-
-        Establishes SSL connection to Gizwits WebSocket API, sends login
-        message with user credentials, and starts listening for device updates.
-
-        Raises:
-            GizwitsWebSocketException: If connection or authentication fails
+        """Connect to the Gizwits WebSocket API, log in, and start listening
+        for device updates. Raises GizwitsWebSocketException if the
+        connection or login fails.
         """
         if self._running:
             _LOGGER.warning("WebSocket already running")
@@ -104,7 +75,7 @@ class GizwitsWebSocket:
                 ssl=ssl_context,
                 ping_interval=30,  # Keep connection alive
                 ping_timeout=10,
-                open_timeout=_OPEN_TIMEOUT,
+                open_timeout=OPEN_TIMEOUT,
             )
 
             _LOGGER.debug("WebSocket connected, sending login")
@@ -157,30 +128,7 @@ class GizwitsWebSocket:
         _LOGGER.debug("Disconnecting WebSocket")
         self._running = False
         self._authenticated = False
-
-        # Cancel background tasks
-        if self._listen_task and not self._listen_task.done():
-            self._listen_task.cancel()
-            try:
-                await self._listen_task
-            except asyncio.CancelledError:
-                pass
-
-        if self._heartbeat_task and not self._heartbeat_task.done():
-            self._heartbeat_task.cancel()
-            try:
-                await self._heartbeat_task
-            except asyncio.CancelledError:
-                pass
-
-        # Close WebSocket connection
-        if self._websocket:
-            try:
-                await self._websocket.close()
-            except Exception as ex:
-                _LOGGER.debug("Error closing WebSocket: %s", ex)
-            finally:
-                self._websocket = None
+        await self._cancel_and_close()
 
     async def _send_login(self) -> None:
         """Send login message to authenticate WebSocket connection.
@@ -285,13 +233,8 @@ class GizwitsWebSocket:
                 await self._handle_disconnect()
 
     def _handle_device_update(self, data: dict[str, Any]) -> None:
-        """Process device status update notification.
-
-        Extracts device ID and attributes from s2c_noti message and
-        invokes update callback.
-
-        Args:
-            data: Parsed JSON message with cmd='s2c_noti'
+        """Extract the device ID and attrs from an s2c_noti message and
+        invoke the update callback.
         """
         device_data = data.get("data", {})
         device_id = device_data.get("did")
@@ -326,31 +269,6 @@ class GizwitsWebSocket:
         # Schedule reconnection
         await self._schedule_reconnect()
 
-    def _notify_connected(self) -> None:
-        """Invoke connect callback and re-arm the disconnect notification."""
-        self._notified_disconnect = False
-        if self._connect_callback:
-            try:
-                self._connect_callback()
-            except Exception as ex:
-                _LOGGER.error("Error in connect callback: %s", ex)
-
-    def _notify_disconnected(self) -> None:
-        """Invoke disconnect callback at most once per disconnected period.
-
-        connect() is retried repeatedly while backing off, so without this
-        guard a persistently unreachable endpoint would fire the callback
-        (and its log warning) on every attempt.
-        """
-        if self._notified_disconnect:
-            return
-        self._notified_disconnect = True
-        if self._disconnect_callback:
-            try:
-                self._disconnect_callback()
-            except Exception as ex:
-                _LOGGER.error("Error in disconnect callback: %s", ex)
-
     async def _schedule_reconnect(self) -> None:
         """Schedule reconnection attempt with exponential backoff.
 
@@ -362,12 +280,7 @@ class GizwitsWebSocket:
         - Attempt 5: 48 seconds
         - Attempt 6+: 60 seconds (maximum delay)
         """
-        # Determine delay based on reconnection attempt count
-        if self._reconnect_count < len(_RECONNECT_DELAYS):
-            delay = _RECONNECT_DELAYS[self._reconnect_count]
-        else:
-            delay = _RECONNECT_DELAYS[-1]  # Use maximum delay
-
+        delay = self._next_reconnect_delay()
         self._reconnect_count += 1
 
         _LOGGER.info(
@@ -382,9 +295,5 @@ class GizwitsWebSocket:
 
     @property
     def is_connected(self) -> bool:
-        """Return True if WebSocket is connected and authenticated.
-
-        Returns:
-            True if connection is active and login successful
-        """
+        """Return True if the connection is active and login succeeded."""
         return self._running and self._authenticated

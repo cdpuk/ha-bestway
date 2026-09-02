@@ -11,11 +11,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .aws_iot.websocket import AwsIotWebSocket
 from .backend import BackendApi
-from .bestway.websocket import GizwitsWebSocket
 from .model import BestwayApiResults
 from .smartspa.api import SmartSpaAuthException
+from .websocket_base import BaseWebSocketClient
 
 _LOGGER = getLogger(__name__)
 
@@ -39,8 +38,9 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
         )
         self.api = api
         self._ws_last_update: dict[str, float] = {}  # Track WebSocket update times
-        self.websocket: GizwitsWebSocket | None = None
-        self.websockets: list[AwsIotWebSocket] = []
+        # One entry per backend connection: a single Gizwits socket, or one
+        # AWS IoT socket per device.
+        self.websockets: list[BaseWebSocketClient] = []
 
     async def _async_update_data(self) -> BestwayApiResults:
         """Fetch data from API endpoint.
@@ -63,16 +63,12 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
             raise ConfigEntryAuthFailed(str(err)) from err
 
     def handle_websocket_update(self, device_id: str, attrs: dict[str, Any]) -> None:
-        """Handle real-time device update from WebSocket.
+        """Handle a real-time device update from a WebSocket.
 
         Delegates the merge-and-translate work to the backend, which owns
         the raw state cache these deltas are partial updates against, then
         triggers immediate entity updates. This provides sub-second update
         latency compared to 30-second polling.
-
-        Args:
-            device_id: Device ID (DID) that was updated
-            attrs: Device attributes from WebSocket s2c_noti message
         """
         _LOGGER.debug(
             "WebSocket update for device %s with %d attributes", device_id, len(attrs)

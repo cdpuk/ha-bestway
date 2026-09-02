@@ -22,6 +22,14 @@ class Backend(StrEnum):
     SMARTSPA = "smartspa"
 
 
+CONF_BACKEND = "backend"
+
+CONF_VISITOR_ID = "visitor_id"
+CONF_TOKEN = "token"
+CONF_LOCATION = "location"  # sent to the AWS IoT auth endpoint, e.g. "GB"
+CONF_REGION = "region"
+CONF_API_BASE = "api_base"
+
 CONF_SMARTSPA_ACCOUNT = "smartspa_account"
 CONF_SMARTSPA_PASSWORD = "smartspa_password"
 CONF_SMARTSPA_REGION = "smartspa_region"

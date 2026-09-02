@@ -1,9 +1,5 @@
 """AWS IoT API client for V02 Bestway devices.
 
-This module implements the AWS IoT backend API client that matches the Gizwits
-BestwayApi interface, enabling seamless integration with the existing coordinator
-and entity infrastructure.
-
 Backend: AWS IoT (smarthub-eu.bestwaycorp.com)
 Apps: Bestway Smart Spa app
 Devices: V02 models (Airjet V02, Hydrojet V02, etc)
@@ -13,22 +9,20 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
+import random
 import secrets
+import string
 from time import time
 from typing import Any
 
 from aiohttp import ClientSession
 
 from ..const import Backend
-from ..model import (
-    BestwayApiResults,
-    BestwayDevice,
-    BestwayDeviceType,
-    BubblesLevel,
-    RawSnapshot,
-)
-from ..translation import status_from_attrs, v01_attrs_from_shadow
+from ..model import BestwayApiResults, BestwayDevice, BubblesLevel, RawSnapshot
+from ..raw_state import RawStateApi
+from ..translation import v01_attrs_from_shadow
 from .encryption import encrypt_command_payload
 
 _LOGGER = logging.getLogger(__name__)
@@ -56,17 +50,12 @@ class AwsIotAuthException(AwsIotException):
     """Authentication error."""
 
 
-class AwsIotApi:
-    """AWS IoT API client matching Gizwits BestwayApi interface.
+class AwsIotApi(RawStateApi):
+    """AWS IoT API client, implementing the BackendApi protocol.
 
-    This client provides the same interface as Gizwits BestwayApi, enabling
-    drop-in replacement in the coordinator and entity infrastructure.
-
-    Key responsibilities:
-    - Device discovery via homes → rooms → devices
-    - State fetching with field normalization
-    - Control commands with encryption
-    - Token refresh handling
+    Device discovery goes via homes -> rooms -> devices; state fetching
+    normalizes shadow fields onto the shared V01 vocabulary; control
+    commands are AES-encrypted; and the token is refreshed on demand.
     """
 
     def __init__(
@@ -77,65 +66,19 @@ class AwsIotApi:
         location: str = "GB",
         api_base: str = DEFAULT_API_BASE,
     ) -> None:
-        """Initialize AWS IoT API client.
-
-        Args:
-            session: aiohttp ClientSession for HTTP requests
-            visitor_id: Visitor ID from QR code or existing account
-            token: Authentication token (optional, will authenticate if None)
-            location: Location code (e.g., "GB", "US") for API routing
-            api_base: API endpoint base URL (defaults to EU endpoint)
+        """Initialize the API client. Authenticates on first use if no token
+        is supplied.
         """
+        super().__init__()
         self._session = session
         self._visitor_id = visitor_id
         self._token = token
         self._location = location
         self._api_base = api_base
 
-        # Device registry (matches Gizwits interface)
-        self.devices: dict[str, BestwayDevice] = {}
-
-        # Merge substrate for polled + WebSocket-delta state, prior to
-        # translation into the typed DeviceStatus entities read.
-        self._raw_state: dict[str, RawSnapshot] = {}
-
-    def _results(self) -> BestwayApiResults:
-        """Translate the raw state cache into typed results.
-
-        A raw entry with no matching device (e.g. a WebSocket delta that
-        arrives before refresh_bindings() has run) translates against
-        UNKNOWN rather than being dropped, so it still surfaces as a status
-        with raw attrs even though no entity can be attached to it yet.
-        """
-        return BestwayApiResults(
-            devices={
-                device_id: status_from_attrs(
-                    self.devices[device_id].device_type
-                    if device_id in self.devices
-                    else BestwayDeviceType.UNKNOWN,
-                    snapshot.timestamp,
-                    snapshot.attrs,
-                )
-                for device_id, snapshot in self._raw_state.items()
-            }
-        )
-
-    def handle_partial_update(
-        self, device_id: str, attrs: dict[str, Any]
-    ) -> BestwayApiResults:
-        """Merge a partial WebSocket delta and return freshly translated results."""
-        existing = self._raw_state.get(device_id)
-        merged = {**existing.attrs, **attrs} if existing else dict(attrs)
-        self._raw_state[device_id] = RawSnapshot(int(time()), merged)
-        return self._results()
-
     @staticmethod
     def generate_visitor_id() -> str:
-        """Generate random visitor_id for new account.
-
-        Returns:
-            16-character hex visitor_id
-        """
+        """Generate a random 16-character hex visitor_id for a new account."""
         return secrets.token_hex(8)  # 16 hex chars
 
     @staticmethod
@@ -145,27 +88,13 @@ class AwsIotApi:
         location: str = "GB",
         api_base: str = DEFAULT_API_BASE,
     ) -> str:
-        """Authenticate visitor and get token.
+        """Authenticate a visitor and return the auth token.
 
-        EXACT copy of working implementation from New_bestway_spa/spa_api.py
-        Do NOT modify without testing against real API!
-
-        Args:
-            session: aiohttp ClientSession
-            visitor_id: Visitor ID from QR binding or existing account
-            location: Location code (e.g., "GB", "US")
-            api_base: API endpoint base URL (defaults to EU endpoint)
-
-        Returns:
-            Authentication token
-
-        Raises:
-            AwsIotAuthException: If authentication fails
+        visitor_id may come from a QR binding or an existing account;
+        location is a routing code like "GB" or "US". Raises
+        AwsIotAuthException if authentication fails.
         """
-        import random
-        import string
-
-        # Generate nonce EXACTLY as reference (lowercase + digits, NOT hex!)
+        # Generate nonce (lowercase letters + digits, not hex)
         nonce = "".join(random.choices(string.ascii_lowercase + string.digits, k=32))
         timestamp = str(int(time()))
         signature_data = f"{APP_ID}{APP_SECRET}{nonce}{timestamp}"
@@ -173,27 +102,24 @@ class AwsIotApi:
 
         push_type = "fcm"
 
-        # Payload field order EXACTLY as reference
         payload = {
             "app_id": APP_ID,
-            "brand": "",  # CRITICAL: Required by API
+            "brand": "",  # Required by the endpoint even though it's always empty
             "lan_code": "en",
             "location": location,
-            "marketing_notification": 0,  # CRITICAL: Required by API
+            "marketing_notification": 0,  # Required by the endpoint
             "push_type": push_type,
             "timezone": "GMT",
             "visitor_id": visitor_id,
             "registration_id": "",
         }
 
-        # Add client_id conditionally (reference logic)
         if push_type == "fcm":
             client_id = (
                 secrets.token_urlsafe(11)[:15].replace("-", "").replace("_", "").lower()
             )
             payload["client_id"] = client_id
 
-        # Headers EXACTLY as reference
         headers = {
             "pushtype": push_type,
             "appid": APP_ID,
@@ -239,22 +165,11 @@ class AwsIotApi:
         token: str,
         api_base: str = DEFAULT_API_BASE,
     ) -> dict[str, Any] | None:
-        """Bind device to visitor account using QR code.
-
-        Args:
-            session: aiohttp ClientSession
-            qr_code: QR code from spa (must start with "RW_Share_")
-            visitor_id: Visitor ID for binding
-            token: Authentication token
-            api_base: API endpoint base URL (defaults to EU endpoint)
-
-        Returns:
-            Device info dict if successful, None otherwise
-
-        Raises:
-            AwsIotException: If binding fails
+        """Bind a device to the visitor account using a QR code (must start
+        with "RW_Share_"). Returns the device info dict, or None if the
+        gateway didn't return one. Raises AwsIotException if the QR code is
+        malformed or binding fails.
         """
-        # Validate QR format
         if not qr_code.startswith("RW_Share_"):
             raise AwsIotException("Invalid QR code format")
 
@@ -294,17 +209,8 @@ class AwsIotApi:
             return dict(result) if result else None
 
     def _generate_auth_headers(self) -> dict[str, str]:
-        """Generate authentication headers for API requests.
-
-        EXACT copy of reference implementation.
-
-        Returns:
-            Headers dict with signature and authentication
-        """
-        import random
-        import string
-
-        # Generate nonce EXACTLY as reference
+        """Generate a fresh signed headers dict for an API request."""
+        # Generate nonce (lowercase letters + digits, not hex)
         nonce = "".join(random.choices(string.ascii_lowercase + string.digits, k=32))
         timestamp = str(int(time()))
         signature = (
@@ -313,7 +219,6 @@ class AwsIotApi:
             .upper()
         )
 
-        # Headers EXACTLY as reference (order matters!)
         return {
             "pushtype": "fcm",
             "appid": APP_ID,
@@ -321,7 +226,8 @@ class AwsIotApi:
             "ts": timestamp,
             "accept-language": "en",
             "sign": signature,
-            "Authorization": f"token {self._token}",  # "token" not "Bearer"!
+            # Auth scheme is the literal word "token", not "Bearer".
+            "Authorization": f"token {self._token}",
             "Host": "smarthub-eu.bestwaycorp.com",
             "Connection": "Keep-Alive",
             "User-Agent": "okhttp/4.9.0",
@@ -329,17 +235,10 @@ class AwsIotApi:
         }
 
     async def _do_get(self, path: str) -> dict[str, Any]:
-        """Execute GET request with authentication.
+        """GET an authenticated endpoint and return the parsed JSON body.
 
-        Args:
-            path: API endpoint path
-
-        Returns:
-            Response JSON data
-
-        Raises:
-            AwsIotAuthException: On HTTP 401 (invalid token)
-            AwsIotException: On other errors
+        Raises AwsIotAuthException on HTTP 401 (token expired or invalid),
+        AwsIotException on any other non-200 response.
         """
         url = f"{self._api_base}{path}"
         headers = self._generate_auth_headers()
@@ -350,7 +249,6 @@ class AwsIotApi:
             async with self._session.get(url, headers=headers, ssl=False) as response:
                 data = await response.json()
 
-                # Check for errors
                 if response.status in (400, 401):
                     raise AwsIotAuthException("Token expired or invalid")
 
@@ -360,18 +258,9 @@ class AwsIotApi:
                 return dict(data)
 
     async def _do_post(self, path: str, data: dict[str, Any]) -> dict[str, Any]:
-        """Execute POST request with authentication.
+        """POST to an authenticated endpoint and return the parsed JSON body.
 
-        Args:
-            path: API endpoint path
-            data: Request body data
-
-        Returns:
-            Response JSON data
-
-        Raises:
-            AwsIotAuthException: On HTTP 401 (invalid token)
-            AwsIotException: On other errors
+        Same error handling as `_do_get`.
         """
         url = f"{self._api_base}{path}"
         headers = self._generate_auth_headers()
@@ -388,7 +277,6 @@ class AwsIotApi:
                     "POST %s response (status=%d): %s", path, response.status, result
                 )
 
-                # Check for errors
                 if response.status in (400, 401):
                     raise AwsIotAuthException("Token expired or invalid")
 
@@ -398,20 +286,15 @@ class AwsIotApi:
                 return dict(result)
 
     async def refresh_bindings(self) -> None:
-        """Discover and store all devices under visitor account.
-
-        Implements the same interface as Gizwits BestwayApi.refresh_bindings().
-        Populates self.devices with all discovered devices.
+        """Discover and store all devices under the visitor account.
 
         Discovery flow:
-        1. GET /api/enduser/homes → list of homes
-        2. For each home: GET /api/enduser/home/rooms?home_id=X → rooms
-        3. For each room: GET /api/enduser/home/room/devices?room_id=Y → devices
-        4. Create BestwayDevice for each device with backend=Backend.AWS_IOT
+        1. GET /api/enduser/homes -> list of homes
+        2. For each home: GET /api/enduser/home/rooms?home_id=X -> rooms
+        3. For each room: GET /api/enduser/home/room/devices?room_id=Y -> devices
 
-        Note: Device discovery is cached after first successful run.
-        Devices are only re-discovered if device list is empty.
-        This reduces API load from N calls every 5min to N calls once per session.
+        Cached after the first successful run - devices are only
+        re-discovered if the device list is currently empty.
         """
         # Skip discovery if we already have devices (cache)
         if self.devices:
@@ -422,7 +305,7 @@ class AwsIotApi:
 
         discovered_devices = []
 
-        # Step 1: Get homes
+        # Devices are nested three levels deep: homes -> rooms -> devices.
         homes_response = await self._do_get("/api/enduser/homes")
         _LOGGER.debug("Homes API response: %s", homes_response)
 
@@ -434,9 +317,8 @@ class AwsIotApi:
         homes = homes_response.get("data", {}).get("list", [])
         _LOGGER.debug("Found %d homes", len(homes))
 
-        # Step 2 & 3: Get rooms and devices for each home
         for home in homes:
-            home_id = home.get("id")  # EXACT reference field name
+            home_id = home.get("id")
             home_name = home.get("name", "Unknown")
             _LOGGER.debug("Processing home: %s (id=%s)", home_name, home_id)
 
@@ -454,7 +336,7 @@ class AwsIotApi:
             _LOGGER.debug("Found %d room(s) in home %s", len(rooms), home_name)
 
             for room in rooms:
-                room_id = room.get("id")  # EXACT reference field name
+                room_id = room.get("id")
                 room_name = room.get("name", "Unknown")
                 _LOGGER.debug("Processing room: %s (id=%s)", room_name, room_id)
 
@@ -500,8 +382,8 @@ class AwsIotApi:
                 ),  # Store region in ws_host
                 ws_port=443,  # AWS IoT WebSocket uses standard HTTPS port
                 backend=Backend.AWS_IOT,
-                product_id=product_id,  # NEW: Model ID for shadow fetch
-                product_series=product_series,  # NEW: Series for device_type
+                product_id=product_id,  # Model ID, used when fetching the shadow
+                product_series=product_series,  # Drives device_type
             )
 
             _LOGGER.info(
@@ -517,33 +399,24 @@ class AwsIotApi:
     async def fetch_data(self) -> BestwayApiResults:
         """Fetch latest state for all devices.
 
-        For each device:
-        1. POST /api/device/thing_shadow/ with device_id + product_id
-        2. Parse shadow.state.reported or shadow.state.desired
-        3. Return raw AWS field names (water_temperature, temperature_setting, etc.)
-        4. Store in state cache
-
-        Returns:
-            BestwayApiResults with devices dict
+        For each device: POST /api/device/thing_shadow/ with device_id and
+        product_id, parse shadow.state.reported/desired, and store the raw
+        AWS field names (water_temperature, temperature_setting, etc.) in
+        the state cache.
         """
         for device_id in self.devices:
             try:
-                # Get device metadata
                 device = self.devices[device_id]
 
-                # Build payload with device_id and product_id (EXACT reference format)
                 payload = {
                     "device_id": device_id,
-                    "product_id": device.product_id
-                    or device.product_name,  # Model ID (e.g., "T53NN8")
+                    "product_id": device.product_id or device.product_name,
                 }
 
-                # Fetch device shadow using POST (EXACT reference endpoint!)
                 shadow_response = await self._do_post(
                     "/api/device/thing_shadow/", payload
                 )
 
-                # Extract state (EXACT reference logic!)
                 raw_data = shadow_response.get("data", {})
 
                 # Merge reported + desired so HA reflects the target state
@@ -600,25 +473,16 @@ class AwsIotApi:
     async def set_device_state(
         self, device_id: str, state_updates: dict[str, Any]
     ) -> bool:
-        """Set device state fields using shadow update.
-
-        Args:
-            device_id: Target device ID
-            state_updates: Dict of AWS field names and values
-                         (e.g., "power_state", "heater_state", "temperature_setting")
-
-        Returns:
-            True if successful
-
-        Example:
-            await api.set_device_state("abc123", {"power_state": 1, "heater_state": 3})
+        """Write a shadow update for the given AWS field names and values
+        (e.g. {"power_state": 1, "heater_state": 3}). Returns True if the
+        gateway accepted the command.
         """
-        # Convert bool/enum to int (commands use AWS field names!)
+        # Command values are plain ints; unwrap bool/IntEnum to match.
         aws_updates = {}
         for key, value in state_updates.items():
             if isinstance(value, bool):
                 value = 1 if value else 0
-            elif hasattr(value, "value"):  # Extract from IntEnum
+            elif hasattr(value, "value"):  # IntEnum
                 value = int(value.value)
             elif not isinstance(value, int):
                 value = int(value)
@@ -627,45 +491,41 @@ class AwsIotApi:
         if not aws_updates:
             return False
 
-        # Get fresh signature for encryption
-        import json as json_module
-
         headers = self._generate_auth_headers()
         sign = headers["sign"]
 
         _LOGGER.debug("Using sign for encryption: %s", sign[:16])
 
-        # Build shadow payload using AWS field names (nested JSON string format!)
+        # The shadow payload's "desired" field is a JSON string, not a
+        # nested object.
         shadow_payload = {"state": {"desired": aws_updates}}
-        desired_json_string = json_module.dumps(shadow_payload, separators=(",", ":"))
+        desired_json_string = json.dumps(shadow_payload, separators=(",", ":"))
 
-        # Build command payload
         device = self.devices[device_id]
         command_payload = {
             "device_id": device_id,
-            "product_id": device.product_id,  # Use exact product_id
-            "desired": desired_json_string,  # JSON string!
+            "product_id": device.product_id,
+            "desired": desired_json_string,
         }
 
-        # Serialize to JSON string
-        plaintext = json_module.dumps(command_payload, separators=(",", ":"))
+        plaintext = json.dumps(command_payload, separators=(",", ":"))
 
         _LOGGER.info(
             "v2 command: fields=%s, product_id=%s", aws_updates, device.product_id
         )
         _LOGGER.debug("v2 plaintext: %s", plaintext)
 
-        # Encrypt plaintext string (EXACT reference signature!)
         encrypted_payload = encrypt_command_payload(sign, APP_SECRET, plaintext)
-
-        # Send command - use SAME headers that contain the sign we encrypted with!
         body = {"encrypted_data": encrypted_payload}
 
-        # Try v2 API first (encrypted) - pass headers explicitly to ensure sign matches
+        # Reuse the same headers the plaintext was encrypted with: they
+        # carry the "sign" value the encryption key is derived from, so
+        # regenerating headers here would encrypt with one sign and send
+        # another.
         try:
             async with self._session.post(
                 f"{self._api_base}/api/v2/device/command",
-                headers=headers,  # Use SAME headers with matching sign!
+                headers=headers,
                 json=body,
                 ssl=False,
             ) as response:
@@ -675,7 +535,7 @@ class AwsIotApi:
                 )
 
                 if result.get("code") == 0:
-                    _LOGGER.info("✓ v2 API command sent to device %s", device_id[:12])
+                    _LOGGER.info("v2 API command sent to device %s", device_id[:12])
                     return True
                 else:
                     _LOGGER.warning(
@@ -686,14 +546,14 @@ class AwsIotApi:
         except Exception as err:
             _LOGGER.warning("v2 API error (%s), falling back to v1", str(err))
 
-        # v1 API fallback (unencrypted, reference implementation)
+        # v1 fallback: same payload shape, sent unencrypted.
         _LOGGER.info("v1 fallback: using AWS field names")
 
         device = self.devices[device_id]
         v1_payload = {
             "device_id": device_id,
             "product_id": device.product_id,
-            "desired": {"state": {"desired": aws_updates}},  # AWS field names!
+            "desired": {"state": {"desired": aws_updates}},
         }
 
         _LOGGER.debug("v1 payload: %s", v1_payload)
@@ -704,7 +564,7 @@ class AwsIotApi:
             )
 
             if v1_result.get("code") == 0:
-                _LOGGER.info("✓ v1 API command sent to device %s", device_id[:12])
+                _LOGGER.info("v1 API command sent to device %s", device_id[:12])
                 return True
             else:
                 _LOGGER.error("v1 API also failed with code %s", v1_result.get("code"))
