@@ -44,6 +44,7 @@ from .smartspa.api import (
     SmartSpaAuthException,
     SmartSpaException,
 )
+from .websocket_base import BaseWebSocketClient
 
 _LOGGER = getLogger(__name__)
 _PLATFORMS: list[Platform] = [
@@ -203,8 +204,8 @@ async def _async_setup_gizwits(
     else:
         _LOGGER.info("No UID in config, WebSocket disabled (polling only)")
 
-    # Store WebSocket on coordinator to avoid data structure change
-    coordinator.websocket = ws_client
+    if ws_client is not None:
+        coordinator.websockets = [ws_client]
 
     _async_remove_orphaned_bubbles_entities(hass, entry, api)
 
@@ -259,7 +260,7 @@ async def _async_setup_aws_iot(
     await coordinator.async_config_entry_first_refresh()
 
     # Initialize per-device WebSockets
-    websockets = []
+    websockets: list[BaseWebSocketClient] = []
     if api.devices:
         for device_id, device in api.devices.items():
             try:
@@ -310,7 +311,6 @@ async def _async_setup_aws_iot(
     else:
         _LOGGER.warning("No devices found, WebSocket not initialized")
 
-    # Store WebSockets list on coordinator
     coordinator.websockets = websockets
 
     _async_remove_orphaned_bubbles_entities(hass, entry, api)
@@ -382,23 +382,15 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         if coordinator is None:
             return unload_ok
 
-        # Cleanup WebSocket connection(s)
-        # Gizwits: Single websocket
-        if coordinator.websocket:
-            await coordinator.websocket.disconnect()
-            _LOGGER.info("Gizwits WebSocket disconnected")
-
-        # AWS IoT: Multiple websockets (list)
+        # Cleanup WebSocket connection(s), if any (Gizwits: one; AWS IoT:
+        # one per device; SmartSpa: none).
+        for ws in coordinator.websockets:
+            try:
+                await ws.disconnect()
+            except Exception as ex:
+                _LOGGER.warning("Error disconnecting WebSocket: %s", ex)
         if coordinator.websockets:
-            for ws in coordinator.websockets:
-                try:
-                    await ws.disconnect()
-                except Exception as ex:
-                    _LOGGER.warning("Error disconnecting WebSocket: %s", ex)
-            _LOGGER.info(
-                "AWS IoT WebSockets disconnected (%d devices)",
-                len(coordinator.websockets),
-            )
+            _LOGGER.info("%d WebSocket(s) disconnected", len(coordinator.websockets))
 
     return unload_ok
 

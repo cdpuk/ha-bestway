@@ -11,11 +11,10 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
-from .aws_iot.websocket import AwsIotWebSocket
 from .backend import BackendApi
-from .bestway.websocket import GizwitsWebSocket
 from .model import BestwayApiResults
 from .smartspa.api import SmartSpaAuthException
+from .websocket_base import BaseWebSocketClient
 
 _LOGGER = getLogger(__name__)
 
@@ -39,8 +38,9 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
         )
         self.api = api
         self._ws_last_update: dict[str, float] = {}  # Track WebSocket update times
-        self.websocket: GizwitsWebSocket | None = None
-        self.websockets: list[AwsIotWebSocket] = []
+        # One entry per backend connection: a single Gizwits socket, or one
+        # AWS IoT socket per device.
+        self.websockets: list[BaseWebSocketClient] = []
 
     async def _async_update_data(self) -> BestwayApiResults:
         """Fetch data from API endpoint.
