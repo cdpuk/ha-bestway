@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from custom_components.bestway.model import (
     BestwayApiResults,
     BestwayDevice,
-    BestwayDeviceStatus,
+    DeviceStatus,
     TemperatureUnit,
 )
 
@@ -35,7 +35,7 @@ def _make_device(is_online: bool = True) -> BestwayDevice:
     )
 
 
-def _make_status(attrs: dict[str, Any] | None = None) -> BestwayDeviceStatus:
+def _make_status(attrs: dict[str, Any] | None = None) -> DeviceStatus:
     default_attrs = {
         "power": True,
         "filter": 0,
@@ -50,10 +50,10 @@ def _make_status(attrs: dict[str, Any] | None = None) -> BestwayDeviceStatus:
     }
     if attrs:
         default_attrs.update(attrs)
-    return BestwayDeviceStatus(timestamp=1000, attrs=default_attrs)
+    return DeviceStatus(timestamp=1000, attrs=default_attrs)
 
 
-def _make_coordinator(device: BestwayDevice, status: BestwayDeviceStatus):
+def _make_coordinator(device: BestwayDevice, status: DeviceStatus):
     """Create a mock coordinator with the given device and status."""
     coordinator = MagicMock()
     coordinator.api = MagicMock()
@@ -179,7 +179,7 @@ class TestSwitchOptimistic:
         assert switch.is_on is False
 
         # Set optimistic state directly (mirrors what async_turn_on does)
-        switch._optimistic_state = True
+        switch._optimistic.set(True)
         assert switch.is_on is True
 
     def test_switch_optimistic_cleared_when_real_state_matches(self):
@@ -203,12 +203,12 @@ class TestSwitchOptimistic:
         config_entry = MagicMock()
 
         switch = BestwaySwitch(coordinator, config_entry, "test_device", desc)
-        switch._optimistic_state = True
+        switch._optimistic.set(True)
 
         with patch.object(switch, "async_write_ha_state"):
             switch._handle_coordinator_update()
 
-        assert switch._optimistic_state is None  # Cleared on confirmation
+        assert switch._optimistic.value is None  # Cleared on confirmation
         assert switch.is_on is True  # Reads from coordinator now
 
     def test_switch_optimistic_kept_when_real_state_lags(self):
@@ -237,16 +237,14 @@ class TestSwitchOptimistic:
         config_entry = MagicMock()
 
         switch = BestwaySwitch(coordinator, config_entry, "test_device", desc)
-        switch._optimistic_state = True  # User pressed ON
-        # Stamp recent so the timeout safety net doesn't fire
-        from time import monotonic
-
-        switch._optimistic_set_at = monotonic()
+        # Setting stamps a fresh timestamp, so the timeout safety net
+        # doesn't fire.
+        switch._optimistic.set(True)  # User pressed ON
 
         with patch.object(switch, "async_write_ha_state"):
             switch._handle_coordinator_update()
 
-        assert switch._optimistic_state is True  # Kept, no flicker
+        assert switch._optimistic.value is True  # Kept, no flicker
         assert switch.is_on is True
 
     def test_switch_optimistic_cleared_after_timeout(self):
@@ -258,7 +256,6 @@ class TestSwitchOptimistic:
         the timeout self-heals the UI back to reality.
         """
         from custom_components.bestway.switch import (
-            _OPTIMISTIC_TIMEOUT_S,
             BestwaySwitch,
             BestwaySwitchEntityDescription,
         )
@@ -277,17 +274,91 @@ class TestSwitchOptimistic:
         config_entry = MagicMock()
 
         switch = BestwaySwitch(coordinator, config_entry, "test_device", desc)
-        switch._optimistic_state = True
+        switch._optimistic.set(True)
         from time import monotonic
 
         # Stamp far enough in the past that the timeout has elapsed.
-        switch._optimistic_set_at = monotonic() - _OPTIMISTIC_TIMEOUT_S - 1
+        switch._optimistic._set_at = monotonic() - switch._optimistic._timeout_s - 1
 
         with patch.object(switch, "async_write_ha_state"):
             switch._handle_coordinator_update()
 
-        assert switch._optimistic_state is None  # Cleared by timeout
+        assert switch._optimistic.value is None  # Cleared by timeout
         assert switch.is_on is False  # Falls back to real cloud state
+
+
+# ---------------------------------------------------------------------------
+# select.py: bubbles select uses the same optimistic-value machinery
+# ---------------------------------------------------------------------------
+
+
+class TestBubblesSelectOptimistic:
+    """The three-way bubbles select shares switch.py's OptimisticValue, so
+    it no longer flickers back to the pre-command level on a refresh that
+    lands before the cloud has acked async_select_option().
+
+    ThreeWaySpaBubblesSelect.current_option reads the typed
+    DeviceStatus.bubbles field (not .attrs, which switch.py's tests use via
+    a custom value_fn) - so these statuses set bubbles directly.
+    """
+
+    def test_select_shows_new_option_immediately(self):
+        """Selecting a level shows it before the API/coordinator responds."""
+        from custom_components.bestway.model import BubblesLevel
+        from custom_components.bestway.select import ThreeWaySpaBubblesSelect
+
+        device = _make_device()
+        status = DeviceStatus(timestamp=1000, bubbles=BubblesLevel.OFF)
+        coordinator = _make_coordinator(device, status)
+        config_entry = MagicMock()
+
+        select = ThreeWaySpaBubblesSelect(coordinator, config_entry, "test_device")
+        assert select.current_option == "OFF"
+
+        # Mirrors what async_select_option does, without the awaited API call.
+        select._optimistic.set(BubblesLevel.MAX)
+        assert select.current_option == "MAX"
+
+    def test_select_optimistic_kept_when_real_state_lags(self):
+        """A refresh that hasn't caught up yet must not flicker the select
+        back to the old level.
+        """
+        from custom_components.bestway.model import BubblesLevel
+        from custom_components.bestway.select import ThreeWaySpaBubblesSelect
+
+        device = _make_device()
+        # Shadow still has the old value while the command is in flight
+        status = DeviceStatus(timestamp=1000, bubbles=BubblesLevel.OFF)
+        coordinator = _make_coordinator(device, status)
+        config_entry = MagicMock()
+
+        select = ThreeWaySpaBubblesSelect(coordinator, config_entry, "test_device")
+        select._optimistic.set(BubblesLevel.MAX)
+
+        with patch.object(select, "async_write_ha_state"):
+            select._handle_coordinator_update()
+
+        assert select._optimistic.value == BubblesLevel.MAX  # Kept, no flicker
+        assert select.current_option == "MAX"
+
+    def test_select_optimistic_cleared_when_real_state_matches(self):
+        """Optimistic state clears once the cloud confirms the new level."""
+        from custom_components.bestway.model import BubblesLevel
+        from custom_components.bestway.select import ThreeWaySpaBubblesSelect
+
+        device = _make_device()
+        status = DeviceStatus(timestamp=1000, bubbles=BubblesLevel.MAX)
+        coordinator = _make_coordinator(device, status)
+        config_entry = MagicMock()
+
+        select = ThreeWaySpaBubblesSelect(coordinator, config_entry, "test_device")
+        select._optimistic.set(BubblesLevel.MAX)
+
+        with patch.object(select, "async_write_ha_state"):
+            select._handle_coordinator_update()
+
+        assert select._optimistic.value is None  # Cleared on confirmation
+        assert select.current_option == "MAX"  # Now reads from the coordinator
 
 
 # ---------------------------------------------------------------------------

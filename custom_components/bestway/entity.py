@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from time import monotonic
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
@@ -9,6 +11,53 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN
 from .coordinator import BestwayUpdateCoordinator
 from .model import BestwayDevice, DeviceStatus
+
+# Maximum time an optimistic value is trusted before an entity falls back
+# to whatever the cloud last reported. Long enough to ride out a normal
+# Bestway/AWS round trip, short enough that a stuck UI self-heals quickly
+# when a command fails or gets processed out of order.
+OPTIMISTIC_TIMEOUT_S = 8.0
+
+
+class OptimisticValue[T]:
+    """A value written locally so an entity reflects a command immediately,
+    rather than waiting for the next coordinator refresh to confirm it.
+
+    Without the confirmation check in `confirm()`, a refresh that lands
+    before the cloud has acked the command would flash the entity back to
+    its pre-command state. Without the timeout, a command the cloud drops
+    or reorders would leave the entity stuck showing an unconfirmed value
+    forever. Entities call `set()` when they write a value optimistically,
+    and `confirm()` from `_handle_coordinator_update()` with whatever the
+    latest real data says.
+    """
+
+    def __init__(self, timeout_s: float = OPTIMISTIC_TIMEOUT_S) -> None:
+        """Initialize with no optimistic value set."""
+        self._timeout_s = timeout_s
+        self._value: T | None = None
+        self._set_at: float = 0.0
+
+    @property
+    def value(self) -> T | None:
+        """The optimistic value, or None if there isn't one right now."""
+        return self._value
+
+    def set(self, value: T) -> None:
+        """Record a value written locally, stamped for the timeout check."""
+        self._value = value
+        self._set_at = monotonic()
+
+    def confirm(self, actual: T | None) -> None:
+        """Clear the optimistic value once `actual` matches it, or once the
+        timeout has elapsed - whichever comes first. A no-op if there is no
+        optimistic value pending.
+        """
+        if self._value is None:
+            return
+        timed_out = monotonic() - self._set_at >= self._timeout_s
+        if actual == self._value or timed_out:
+            self._value = None
 
 
 class BestwayEntity(CoordinatorEntity[BestwayUpdateCoordinator]):

@@ -165,7 +165,9 @@ async def test_bubbles_switch_on_off_calls_set_bubbles():
 async def test_select_option_calls_set_bubbles(option, level):
     coordinator = _make_coordinator(_make_device(), _make_status())
     config_entry = MagicMock()
-    select = ThreeWaySpaBubblesSelect(coordinator, config_entry, "test_device")
+    select = _without_ha_state_writes(
+        ThreeWaySpaBubblesSelect(coordinator, config_entry, "test_device")
+    )
 
     await select.async_select_option(option)
 

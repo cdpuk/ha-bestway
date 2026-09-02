@@ -9,7 +9,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .const import DOMAIN, Icon
 from .coordinator import BestwayUpdateCoordinator
-from .entity import BestwayEntity
+from .entity import BestwayEntity, OptimisticValue
 from .features import BubblesStyle, features_for
 from .model import BubblesLevel
 
@@ -18,6 +18,7 @@ _BUBBLES_OPTIONS = {
     BubblesLevel.MEDIUM: "MEDIUM",
     BubblesLevel.MAX: "MAX",
 }
+_BUBBLES_LEVELS = {option: level for level, option in _BUBBLES_OPTIONS.items()}
 
 # Which bubbles map (Airjet-style vs. Hydrojet-style MEDIUM value) a device
 # uses is decided by bubbles_map_for() in translation.py; the entity
@@ -53,6 +54,7 @@ class ThreeWaySpaBubblesSelect(BestwayEntity, SelectEntity):
     """Bubbles selection for spa devices that support 3 levels."""
 
     entity_description: SelectEntityDescription = _BUBBLES_SELECT_DESCRIPTION
+    _attr_assumed_state = True
 
     def __init__(
         self,
@@ -63,21 +65,30 @@ class ThreeWaySpaBubblesSelect(BestwayEntity, SelectEntity):
         """Initialize select."""
         super().__init__(coordinator, config_entry, device_id)
         self._attr_unique_id = f"{device_id}_{self.entity_description.key}"
+        self._optimistic = OptimisticValue[BubblesLevel]()
 
     @property
     def current_option(self) -> str | None:
         """Return the selected entity option."""
+        if self._optimistic.value is not None:
+            return _BUBBLES_OPTIONS.get(self._optimistic.value)
         if (status := self.status) and status.bubbles is not None:
             return _BUBBLES_OPTIONS.get(status.bubbles)
         return None
 
+    def _handle_coordinator_update(self) -> None:
+        """Clear optimistic state once real data confirms it, or after a
+        short timeout - see BestwaySwitch in switch.py for why this is
+        needed.
+        """
+        if self.status is not None:
+            self._optimistic.confirm(self.status.bubbles)
+        super()._handle_coordinator_update()
+
     async def async_select_option(self, option: str) -> None:
         """Change the selected option."""
-        bubbles_level = BubblesLevel.OFF
-        if option == _BUBBLES_OPTIONS[BubblesLevel.MEDIUM]:
-            bubbles_level = BubblesLevel.MEDIUM
-        elif option == _BUBBLES_OPTIONS[BubblesLevel.MAX]:
-            bubbles_level = BubblesLevel.MAX
-
+        bubbles_level = _BUBBLES_LEVELS[option]
+        self._optimistic.set(bubbles_level)
+        self.async_write_ha_state()
         await self.coordinator.api.set_bubbles(self.device_id, bubbles_level)
         await self.coordinator.async_request_refresh()
