@@ -77,6 +77,7 @@ async def _raise_for_status(response: ClientResponse) -> None:
             api_error = await response.json()
         except Exception:  # pylint: disable=broad-except
             response.raise_for_status()
+            return
 
         error_code = api_error.get("error_code", 0)
         if error_code == 9004:
@@ -455,11 +456,11 @@ class BestwayApi(RawStateApi):
         for device in sanitized.get("devices", {}):
             if (did := device.get("did")) is not None:
                 device["did"] = "*" * len(did)
-            if (mac := device.get("passcode")) is not None:
-                device["passcode"] = "*" * len(mac)
-            if (mac := device.get("product_key")) is not None:
-                device["product_key"] = "*" * len(mac)
-            if (mac := device.get("mac")) is not None:
-                device["mac"] = "*" * len(mac)
+            if (value := device.get("passcode")) is not None:
+                device["passcode"] = "*" * len(value)
+            if (value := device.get("product_key")) is not None:
+                device["product_key"] = "*" * len(value)
+            if (value := device.get("mac")) is not None:
+                device["mac"] = "*" * len(value)
 
         return sanitized

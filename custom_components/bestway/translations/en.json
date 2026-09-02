@@ -41,14 +41,11 @@
       "user_does_not_exist": "User account does not exist",
       "incorrect_password": "Incorrect password",
       "unknown_connection_error": "Unexpected connector error - check logs for details",
-      "invalid_auth": "Invalid authentication",
       "auth_failed": "Authentication failed. Please try again.",
       "qr_or_visitor_required": "Either provide an existing visitor_id OR scan a QR code. One option is required.",
       "invalid_qr_format": "Invalid QR code format. QR code must start with 'RW_Share_'.",
-      "invalid_format": "Invalid QR code format. QR code must start with 'RW_Share_'.",
       "binding_failed": "QR code binding failed. The code may be expired or already used. Generate a fresh QR code from your spa.",
       "no_devices_found": "No devices found. Please check your spa is powered on and connected.",
-      "qr_code_required": "Either provide an existing visitor_id OR scan a QR code. One option is required.",
       "unknown": "Unknown error"
     }
   },

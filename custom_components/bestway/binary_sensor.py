@@ -115,7 +115,7 @@ class DeviceConnectivitySensor(BestwayEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool | None:
         """Return True if the spa is online."""
-        return self.bestway_device is not None and self.bestway_device.is_online
+        return (device := self.bestway_device) is not None and device.is_online
 
     @property
     def available(self) -> bool:
@@ -171,5 +171,5 @@ class PoolFilterChangeRequiredSensor(BestwayEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool | None:
-        """Return true if the spa is online."""
+        """Return true if the pool filter requires a change."""
         return self.status is not None and self.status.filter_change_required

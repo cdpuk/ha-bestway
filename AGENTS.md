@@ -29,7 +29,7 @@ uv run pytest tests/test_aws_iot_api.py
 Type check:
 
 ```bash
-uv run mypy custom_components/
+uv run mypy custom_components/ tests/
 ```
 
 Lint and auto-fix with ruff (version is pinned in `.pre-commit-config.yaml`, not `pyproject.toml`, so always run it via `pre-commit` rather than a separately-installed `ruff` binary):

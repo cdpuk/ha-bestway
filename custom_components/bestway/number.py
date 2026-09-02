@@ -8,7 +8,7 @@ from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from .const import DOMAIN
+from .const import DOMAIN, Icon
 from .coordinator import BestwayUpdateCoordinator
 from .entity import BestwayEntity
 from .features import features_for
@@ -16,7 +16,7 @@ from .features import features_for
 _POOL_FILTER_TIME = NumberEntityDescription(
     key="pool_filter_time",
     name="Pool Filter Timer",
-    icon="mdi:image-filter-tilt-shift",
+    icon=Icon.FILTER,
     native_unit_of_measurement=UnitOfTime.HOURS,
     native_max_value=24,
 )

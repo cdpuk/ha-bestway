@@ -96,7 +96,6 @@ def v01_attrs_from_shadow(shadow: dict[str, Any]) -> dict[str, Any]:
     warning = shadow.get("warning")
     error_code = shadow.get("error_code")
     power_state = shadow.get("power_state")
-    temperature_unit = shadow.get("temperature_unit", 1)
 
     normalized = {}
 
@@ -114,7 +113,7 @@ def v01_attrs_from_shadow(shadow: dict[str, Any]) -> dict[str, Any]:
 
     # Control state
     if power_state is not None:
-        normalized["power"] = bool(power_state == 1)
+        normalized["power"] = power_state == 1
     if shadow.get("heater_state") is not None:
         # Heater state values (same for V01 and V02):
         # 0 = OFF
@@ -132,7 +131,7 @@ def v01_attrs_from_shadow(shadow: dict[str, Any]) -> dict[str, Any]:
     if shadow.get("filter_state") is not None:
         normalized["filter"] = shadow["filter_state"]
     if shadow.get("hydrojet_state") is not None:
-        normalized["jet"] = bool(shadow["hydrojet_state"] == 1)
+        normalized["jet"] = shadow["hydrojet_state"] == 1
     if shadow.get("locked") is not None:
         normalized["locked"] = shadow["locked"]
 
@@ -142,7 +141,7 @@ def v01_attrs_from_shadow(shadow: dict[str, Any]) -> dict[str, Any]:
     if shadow.get("temperature_setting") is not None:
         normalized["Tset"] = shadow["temperature_setting"]
     if "temperature_unit" in shadow:
-        normalized["Tunit"] = temperature_unit
+        normalized["Tunit"] = shadow["temperature_unit"]
 
     # Errors
     if "warning" in shadow:
