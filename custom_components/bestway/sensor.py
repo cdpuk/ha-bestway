@@ -12,8 +12,8 @@ from homeassistant.helpers.entity import EntityCategory
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import StateType
 
-from . import BestwayUpdateCoordinator
 from .const import DOMAIN, Icon
+from .coordinator import BestwayUpdateCoordinator
 from .entity import BestwayEntity
 from .features import VersionSensorSet, features_for
 from .model import BestwayDevice, DeviceStatus

@@ -8,8 +8,8 @@ from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import BestwayUpdateCoordinator
 from .const import DOMAIN
+from .coordinator import BestwayUpdateCoordinator
 from .entity import BestwayEntity
 from .features import features_for
 

@@ -13,6 +13,8 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from .aws_iot.api import API_ENDPOINTS, AwsIotApi, AwsIotAuthException
+from .aws_iot.websocket import AwsIotWebSocket
 from .backend import BackendApi
 from .bestway.api import BestwayApi
 from .bestway.websocket import GizwitsWebSocket
@@ -36,6 +38,12 @@ from .const import (
 )
 from .coordinator import BestwayUpdateCoordinator
 from .features import bubbles_mode_dependent
+from .smartspa.api import (
+    SMARTSPA_ENDPOINTS,
+    SmartSpaApi,
+    SmartSpaAuthException,
+    SmartSpaException,
+)
 
 _LOGGER = getLogger(__name__)
 _PLATFORMS: list[Platform] = [
@@ -211,9 +219,6 @@ async def _async_setup_aws_iot(
     hass: HomeAssistant, entry: ConfigEntry, session: ClientSession
 ) -> bool:
     """Set up AWS IoT V02 backend."""
-    from .aws_iot.api import AwsIotApi, AwsIotAuthException
-    from .aws_iot.websocket import AwsIotWebSocket
-
     visitor_id = entry.data["visitor_id"]
     token = entry.data.get("token")
     location = entry.data.get("location", "GB")
@@ -221,8 +226,6 @@ async def _async_setup_aws_iot(
 
     # Fallback for existing configs without api_base
     if not api_base:
-        from .aws_iot.api import API_ENDPOINTS
-
         region = entry.data.get("region", "EU")
         api_base = API_ENDPOINTS.get(region, API_ENDPOINTS["EU"])
 
@@ -328,13 +331,6 @@ async def _async_setup_smartspa(
     default of the coordinator applies. The API client transparently
     re-authenticates when the gateway invalidates the token (code 505).
     """
-    from .smartspa.api import (
-        SMARTSPA_ENDPOINTS,
-        SmartSpaApi,
-        SmartSpaAuthException,
-        SmartSpaException,
-    )
-
     account = str(entry.data[CONF_SMARTSPA_ACCOUNT])
     password = str(entry.data[CONF_SMARTSPA_PASSWORD])
     region = str(entry.data.get(CONF_SMARTSPA_REGION, "EU"))

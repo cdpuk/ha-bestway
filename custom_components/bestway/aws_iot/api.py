@@ -13,8 +13,11 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import json
 import logging
+import random
 import secrets
+import string
 from time import time
 from typing import Any
 
@@ -162,10 +165,7 @@ class AwsIotApi:
         Raises:
             AwsIotAuthException: If authentication fails
         """
-        import random
-        import string
-
-        # Generate nonce EXACTLY as reference (lowercase + digits, NOT hex!)
+        # Generate nonce (lowercase letters + digits, not hex)
         nonce = "".join(random.choices(string.ascii_lowercase + string.digits, k=32))
         timestamp = str(int(time()))
         signature_data = f"{APP_ID}{APP_SECRET}{nonce}{timestamp}"
@@ -301,10 +301,7 @@ class AwsIotApi:
         Returns:
             Headers dict with signature and authentication
         """
-        import random
-        import string
-
-        # Generate nonce EXACTLY as reference
+        # Generate nonce (lowercase letters + digits, not hex)
         nonce = "".join(random.choices(string.ascii_lowercase + string.digits, k=32))
         timestamp = str(int(time()))
         signature = (
@@ -628,8 +625,6 @@ class AwsIotApi:
             return False
 
         # Get fresh signature for encryption
-        import json as json_module
-
         headers = self._generate_auth_headers()
         sign = headers["sign"]
 
@@ -637,7 +632,7 @@ class AwsIotApi:
 
         # Build shadow payload using AWS field names (nested JSON string format!)
         shadow_payload = {"state": {"desired": aws_updates}}
-        desired_json_string = json_module.dumps(shadow_payload, separators=(",", ":"))
+        desired_json_string = json.dumps(shadow_payload, separators=(",", ":"))
 
         # Build command payload
         device = self.devices[device_id]
@@ -648,7 +643,7 @@ class AwsIotApi:
         }
 
         # Serialize to JSON string
-        plaintext = json_module.dumps(command_payload, separators=(",", ":"))
+        plaintext = json.dumps(command_payload, separators=(",", ":"))
 
         _LOGGER.info(
             "v2 command: fields=%s, product_id=%s", aws_updates, device.product_id

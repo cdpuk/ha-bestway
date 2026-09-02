@@ -18,7 +18,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .aws_iot.api import AwsIotAuthException
+from .aws_iot.api import API_ENDPOINTS, AwsIotApi, AwsIotAuthException
 from .bestway.api import (
     BestwayApi,
     BestwayIncorrectPasswordException,
@@ -43,6 +43,12 @@ from .const import (
     CONF_USERNAME,
     DOMAIN,
     Backend,
+)
+from .smartspa.api import (
+    SMARTSPA_ENDPOINTS,
+    SmartSpaApi,
+    SmartSpaAuthException,
+    SmartSpaException,
 )
 
 _LOGGER = getLogger(__name__)
@@ -250,8 +256,6 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
             )
 
         try:
-            from .aws_iot.api import API_ENDPOINTS, AwsIotApi
-
             session = async_get_clientsession(self.hass)
 
             # Map region to API endpoint
@@ -384,13 +388,6 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
 
         Uses plain account login against smart-spa-{region}-app.bestwaycorp.com.
         """
-        from .smartspa.api import (
-            SMARTSPA_ENDPOINTS,
-            SmartSpaApi,
-            SmartSpaAuthException,
-            SmartSpaException,
-        )
-
         schema = vol.Schema(
             {
                 vol.Required(CONF_SMARTSPA_ACCOUNT): str,

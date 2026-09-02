@@ -6,8 +6,8 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from . import BestwayUpdateCoordinator
 from .const import DOMAIN
+from .coordinator import BestwayUpdateCoordinator
 from .model import BestwayDevice, DeviceStatus
 
 
