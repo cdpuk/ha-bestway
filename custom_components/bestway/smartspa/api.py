@@ -47,14 +47,9 @@ from typing import Any
 from aiohttp import ClientSession
 
 from ..const import Backend
-from ..model import (
-    BestwayApiResults,
-    BestwayDevice,
-    BestwayDeviceType,
-    BubblesLevel,
-    RawSnapshot,
-)
-from ..translation import status_from_attrs, v01_attrs_from_shadow
+from ..model import BestwayApiResults, BestwayDevice, BubblesLevel, RawSnapshot
+from ..raw_state import RawStateApi
+from ..translation import v01_attrs_from_shadow
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -89,12 +84,14 @@ def _envelope(data: Any) -> dict[str, Any]:
     return {"appKey": SMARTSPA_APP_ID, "data": data, "version": "1.0"}
 
 
-class SmartSpaApi:
+class SmartSpaApi(RawStateApi):
     """SmartSpa gateway client implementing the BackendApi protocol.
 
     Drop-in for the coordinator and entity layer: exposes .devices,
     refresh_bindings(), fetch_data(), handle_partial_update(),
     set_device_state() and the semantic setters (set_power, set_filter, ...).
+    This backend has no WebSocket today, so handle_partial_update (inherited
+    from RawStateApi) is only ever driven by fetch_data's own polled state.
     """
 
     def __init__(
@@ -106,53 +103,15 @@ class SmartSpaApi:
         token: str | None = None,
     ) -> None:
         """Initialize the client. Credentials are kept for re-login."""
+        super().__init__()
         self._session = session
         self._account = account
         self._password = password
         self._api_base = api_base.rstrip("/")
         self._token = token
 
-        # Interface expected by coordinator/entities
-        self.devices: dict[str, BestwayDevice] = {}
-        # Merge substrate for polled + WebSocket-delta state, prior to
-        # translation into the typed DeviceStatus entities read.
-        self._raw_state: dict[str, RawSnapshot] = {}
-
         # device_id -> (productKey, mac) for URL building
         self._routing: dict[str, tuple[str, str]] = {}
-
-    def _results(self) -> BestwayApiResults:
-        """Translate the raw state cache into typed results.
-
-        A raw entry with no matching device translates against UNKNOWN
-        rather than being dropped, so it still surfaces as a status with
-        raw attrs even though no entity can be attached to it yet.
-        """
-        return BestwayApiResults(
-            devices={
-                device_id: status_from_attrs(
-                    self.devices[device_id].device_type
-                    if device_id in self.devices
-                    else BestwayDeviceType.UNKNOWN,
-                    snapshot.timestamp,
-                    snapshot.attrs,
-                )
-                for device_id, snapshot in self._raw_state.items()
-            }
-        )
-
-    def handle_partial_update(
-        self, device_id: str, attrs: dict[str, Any]
-    ) -> BestwayApiResults:
-        """Merge a partial state delta and return freshly translated results.
-
-        This backend has no WebSocket today, but implements the same
-        interface as the other two for uniformity.
-        """
-        existing = self._raw_state.get(device_id)
-        merged = {**existing.attrs, **attrs} if existing else dict(attrs)
-        self._raw_state[device_id] = RawSnapshot(int(time()), merged)
-        return self._results()
 
     # ------------------------------------------------------------------ auth
 

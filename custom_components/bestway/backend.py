@@ -25,9 +25,10 @@ class BackendApi(Protocol):
         self, device_id: str, attrs: dict[str, Any]
     ) -> BestwayApiResults:
         """Merge a partial WebSocket delta into backend state and return
-        freshly translated results. Each backend owns its own raw-state
-        merge substrate; this is the only mutation the coordinator performs
-        through the protocol rather than reaching into backend internals.
+        freshly translated results. The raw-state merge substrate is shared
+        by all three backends (see raw_state.RawStateApi); this is the only
+        mutation the coordinator performs through the protocol rather than
+        reaching into backend internals.
         """
         ...
 

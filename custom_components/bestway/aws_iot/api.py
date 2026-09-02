@@ -24,14 +24,9 @@ from typing import Any
 from aiohttp import ClientSession
 
 from ..const import Backend
-from ..model import (
-    BestwayApiResults,
-    BestwayDevice,
-    BestwayDeviceType,
-    BubblesLevel,
-    RawSnapshot,
-)
-from ..translation import status_from_attrs, v01_attrs_from_shadow
+from ..model import BestwayApiResults, BestwayDevice, BubblesLevel, RawSnapshot
+from ..raw_state import RawStateApi
+from ..translation import v01_attrs_from_shadow
 from .encryption import encrypt_command_payload
 
 _LOGGER = logging.getLogger(__name__)
@@ -59,17 +54,12 @@ class AwsIotAuthException(AwsIotException):
     """Authentication error."""
 
 
-class AwsIotApi:
-    """AWS IoT API client matching Gizwits BestwayApi interface.
+class AwsIotApi(RawStateApi):
+    """AWS IoT API client, implementing the BackendApi protocol.
 
-    This client provides the same interface as Gizwits BestwayApi, enabling
-    drop-in replacement in the coordinator and entity infrastructure.
-
-    Key responsibilities:
-    - Device discovery via homes → rooms → devices
-    - State fetching with field normalization
-    - Control commands with encryption
-    - Token refresh handling
+    Device discovery goes via homes -> rooms -> devices; state fetching
+    normalizes shadow fields onto the shared V01 vocabulary; control
+    commands are AES-encrypted; and the token is refreshed on demand.
     """
 
     def __init__(
@@ -89,48 +79,12 @@ class AwsIotApi:
             location: Location code (e.g., "GB", "US") for API routing
             api_base: API endpoint base URL (defaults to EU endpoint)
         """
+        super().__init__()
         self._session = session
         self._visitor_id = visitor_id
         self._token = token
         self._location = location
         self._api_base = api_base
-
-        # Device registry (matches Gizwits interface)
-        self.devices: dict[str, BestwayDevice] = {}
-
-        # Merge substrate for polled + WebSocket-delta state, prior to
-        # translation into the typed DeviceStatus entities read.
-        self._raw_state: dict[str, RawSnapshot] = {}
-
-    def _results(self) -> BestwayApiResults:
-        """Translate the raw state cache into typed results.
-
-        A raw entry with no matching device (e.g. a WebSocket delta that
-        arrives before refresh_bindings() has run) translates against
-        UNKNOWN rather than being dropped, so it still surfaces as a status
-        with raw attrs even though no entity can be attached to it yet.
-        """
-        return BestwayApiResults(
-            devices={
-                device_id: status_from_attrs(
-                    self.devices[device_id].device_type
-                    if device_id in self.devices
-                    else BestwayDeviceType.UNKNOWN,
-                    snapshot.timestamp,
-                    snapshot.attrs,
-                )
-                for device_id, snapshot in self._raw_state.items()
-            }
-        )
-
-    def handle_partial_update(
-        self, device_id: str, attrs: dict[str, Any]
-    ) -> BestwayApiResults:
-        """Merge a partial WebSocket delta and return freshly translated results."""
-        existing = self._raw_state.get(device_id)
-        merged = {**existing.attrs, **attrs} if existing else dict(attrs)
-        self._raw_state[device_id] = RawSnapshot(int(time()), merged)
-        return self._results()
 
     @staticmethod
     def generate_visitor_id() -> str:
