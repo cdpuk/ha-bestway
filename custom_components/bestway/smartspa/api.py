@@ -358,14 +358,15 @@ class SmartSpaApi(RawStateApi):
                 mapped = v01_attrs_from_shadow(shadow)
 
                 # Read-back quirk: this gateway reads wave_state back as
-                # binary (1, sometimes 2) while running, but the 3-way
-                # bubbles select expects 0/40/100 and renders an unrecognized
-                # value as OFF - making OFF unselectable (no state change)
-                # while bubbles physically run. Map any binary "on" to 100 so
-                # the select shows MAX and OFF becomes a real change. Writes
-                # are unaffected (non-zero -> 1). Verified live on F12D9Q
-                # (HydroJet Pro, EU); explains the "bubbles turn on but not
-                # off" reports on on/off hardware.
+                # binary (1, sometimes 2) while running, even on panels
+                # (e.g. F12D9Q San Francisco HydroJet Pro) that expose real
+                # OFF/MEDIUM/MAX levels on the touch panel and accept
+                # 0/40/100 writes. The 3-way bubbles select expects 0/40/100
+                # and renders an unrecognized value as OFF - making OFF
+                # unselectable (no state change) while bubbles physically
+                # run. Map any binary "on" to 100 so the select shows MAX
+                # and OFF becomes a real change; genuine 40/100 read-backs
+                # pass through untouched.
                 #
                 # No equivalent patch is needed for the heater_state == 2
                 # readback quirk: the shared V01 translator already treats
@@ -419,16 +420,24 @@ class SmartSpaApi(RawStateApi):
         else:
             numeric = int(value)
 
+        if key == "wave_state":
+            # Hydrojet panels (e.g. F12D9Q San Francisco HydroJet Pro) expose
+            # real OFF/MEDIUM/MAX levels (0/40/100) on the touch panel even
+            # though the Bestway app only offers on/off, and the gateway
+            # otherwise writes plain 1/0. Preserve an explicit 0/40/100 level
+            # so a MEDIUM (40) or MAX (100) command is not collapsed onto the
+            # generic on (1); plain bools still map to 1/0 for on/off-only
+            # hardware.
+            if numeric in (0, 40, 100):
+                return numeric
+            return 1 if numeric else 0
         if key in (
             "filter_state",
             "heater_state",
-            "wave_state",
             "power_state",
             "hydrojet_state",
             "locked",
         ):
-            # NOTE: if a 3-level-bubbles model ever shows up on this backend,
-            # wave_state may need 0/40/100 passthrough — only 1/0 is confirmed.
             return 1 if numeric else 0
         return numeric
 
@@ -505,12 +514,33 @@ class SmartSpaApi(RawStateApi):
     async def set_bubbles(self, device_id: str, bubbles: BubblesLevel) -> None:
         """Set bubbles from a BubblesLevel.
 
-        Bubbles are binary on this gateway (three-way is lost): any non-OFF
-        level becomes on.
+        Hydrojet panels cycle OFF -> MAX -> MEDIUM -> OFF and ignore a direct
+        MEDIUM (40) command while OFF, so to reach MEDIUM reliably we first
+        step to MAX (100), let it settle, then send MEDIUM (40). MAX and OFF
+        are sent directly. On on/off-only hardware any non-OFF level still
+        just turns bubbles on.
         """
-        await self.set_device_state(
-            device_id, {"wave_state": bubbles != BubblesLevel.OFF}
-        )
+        value_map = {
+            BubblesLevel.OFF: 0,
+            BubblesLevel.MEDIUM: 40,
+            BubblesLevel.MAX: 100,
+        }
+        target = value_map[bubbles]
+
+        # MEDIUM from OFF: the panel ignores a direct 40, so step MAX first.
+        if bubbles == BubblesLevel.MEDIUM:
+            try:
+                cached = self._raw_state.get(device_id)
+                current_wave = cached.attrs.get("wave") if cached else None
+            except Exception:
+                current_wave = None
+            if current_wave in (None, 0, "0"):
+                await self.set_device_state(device_id, {"wave_state": 100})
+                # Let the MAX command reach the panel before stepping down to
+                # MEDIUM; a cancellation here propagates as it should.
+                await asyncio.sleep(1)
+
+        await self.set_device_state(device_id, {"wave_state": target})
 
     async def set_pool_timer(self, device_id: str, hours: int) -> None:
         """Set pool filter timer (untested on this backend)."""
