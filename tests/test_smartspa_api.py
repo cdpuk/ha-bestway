@@ -10,7 +10,7 @@ documented in https://github.com/cdpuk/ha-bestway/issues/135:
 """
 
 import json
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -284,10 +284,11 @@ async def test_fetch_data_normalizes_shadow(api):
 async def test_fetch_data_binary_wave_maps_to_max(api):
     """Binary wave_state read-back maps to 100 for the 3-way select.
 
-    On/off bubble hardware (F12D9Q HydroJet Pro, UltraFit) reads back
-    wave_state 1 while running. The 3-way select renders unknown values
-    as OFF, which makes OFF unselectable while bubbles physically run.
-    Mapping binary "on" to 100 shows MAX and keeps OFF selectable.
+    This gateway reads wave_state back as binary (1, sometimes 2) even
+    on panels (F12D9Q HydroJet Pro) that have real OFF/MEDIUM/MAX on the
+    touch panel. The 3-way select renders unknown values as OFF, which
+    makes OFF unselectable while bubbles physically run. Mapping binary
+    "on" to 100 shows MAX and keeps OFF selectable.
     """
     api._request = AsyncMock(
         return_value={
@@ -380,9 +381,10 @@ async def test_control_data_is_stringified_json(api):
     assert "attrs" not in body
 
 
-async def test_control_semantic_setters_collapse_to_1_0(api):
-    """The semantic setters pass plain bool/BubblesLevel; this gateway
-    writes plain 1/0 for every state datapoint regardless.
+async def test_control_semantic_setters(api):
+    """The semantic setters pass plain bool/BubblesLevel; state datapoints
+    collapse to 1/0 except wave_state, which preserves explicit 0/40/100
+    levels for panels with real OFF/MEDIUM/MAX (e.g. F12D9Q HydroJet Pro).
     """
     api._request = AsyncMock(return_value={"code": "200", "data": True})
 
@@ -394,7 +396,7 @@ async def test_control_semantic_setters_collapse_to_1_0(api):
     sent = [json.loads(call[0][2]["data"]) for call in api._request.call_args_list]
     assert sent[0] == {"filter_state": 1}
     assert sent[1] == {"heater_state": 1}
-    assert sent[2] == {"wave_state": 1}
+    assert sent[2] == {"wave_state": 100}
     # temperature passes through untranslated
     assert sent[3] == {"temperature_setting": 39}
 
@@ -468,15 +470,34 @@ async def test_set_target_temperature_semantic(api):
     assert sent == {"temperature_setting": 39}
 
 
-@pytest.mark.parametrize(
-    "level", [BubblesLevel.OFF, BubblesLevel.MEDIUM, BubblesLevel.MAX]
-)
-async def test_set_bubbles_semantic_is_binary(api, level: BubblesLevel):
-    """Three-way bubbles are lost on this backend: only OFF writes 0."""
+async def test_set_bubbles_preserves_levels(api):
+    """wave_state writes preserve explicit 0/40/100 levels (not 1/0) so
+    panels with real OFF/MEDIUM/MAX (e.g. F12D9Q HydroJet Pro) can be
+    commanded to each level. MAX and OFF are single writes.
+    """
     api._request = AsyncMock(return_value={"code": "200", "data": True})
-    await api.set_bubbles("6879c4d585ab", level)
+
+    await api.set_bubbles("6879c4d585ab", BubblesLevel.MAX)
     sent = json.loads(api._request.call_args[0][2]["data"])
-    assert sent == {"wave_state": 0 if level is BubblesLevel.OFF else 1}
+    assert sent == {"wave_state": 100}
+
+    api._request.reset_mock()
+    await api.set_bubbles("6879c4d585ab", BubblesLevel.OFF)
+    sent = json.loads(api._request.call_args[0][2]["data"])
+    assert sent == {"wave_state": 0}
+
+
+@patch("custom_components.bestway.smartspa.api.asyncio.sleep", new=AsyncMock())
+async def test_set_bubbles_medium_from_off_steps_max_then_medium(api):
+    """A direct MEDIUM (40) from OFF is ignored by the panel (physical cycle
+    OFF -> MAX -> MEDIUM), so the backend steps MAX (100) first, then MEDIUM.
+    """
+    api._request = AsyncMock(return_value={"code": "200", "data": True})
+
+    await api.set_bubbles("6879c4d585ab", BubblesLevel.MEDIUM)
+
+    sent = [json.loads(call[0][2]["data"]) for call in api._request.call_args_list]
+    assert sent == [{"wave_state": 100}, {"wave_state": 40}]
 
 
 async def test_set_pool_timer_semantic(api):
@@ -498,7 +519,9 @@ def test_write_value_returns_int():
     """_to_write_value always returns int (mypy: no Any leaks)."""
     assert SmartSpaApi._to_write_value("filter_state", True) == 1
     assert SmartSpaApi._to_write_value("filter_state", 2) == 1
-    assert SmartSpaApi._to_write_value("wave_state", 100) == 1
+    # wave_state preserves explicit levels; other keys collapse to 1/0.
+    assert SmartSpaApi._to_write_value("wave_state", 100) == 100
+    assert SmartSpaApi._to_write_value("wave_state", 40) == 40
     assert SmartSpaApi._to_write_value("wave_state", 0) == 0
     assert SmartSpaApi._to_write_value("temperature_setting", 39) == 39
     for value in (True, 2, 100, 0):

@@ -607,7 +607,10 @@ class AwsIotApi(RawStateApi):
         """Set bubbles level.
 
         V02 reports absolute wave_state values: OFF=0, MEDIUM=40, MAX=100.
-        Physical button cycles OFF -> MAX -> MEDIUM -> OFF.
+        Physical button cycles OFF -> MAX -> MEDIUM -> OFF. Hydrojet panels
+        (e.g. F12D9Q San Francisco HydroJet Pro) ignore a direct MEDIUM (40)
+        command while OFF, so to reach MEDIUM reliably we first step to
+        MAX (100), let it settle, then send MEDIUM (40).
         """
         value_map = {
             BubblesLevel.OFF: 0,
@@ -615,6 +618,20 @@ class AwsIotApi(RawStateApi):
             BubblesLevel.MAX: 100,
         }
         target_value = value_map[bubbles]
+
+        # MEDIUM from OFF: the panel ignores a direct 40, so step MAX first.
+        if bubbles == BubblesLevel.MEDIUM:
+            try:
+                cached = self._raw_state.get(device_id)
+                current_wave = cached.attrs.get("wave") if cached else None
+            except Exception:
+                current_wave = None
+            if current_wave in (None, 0, "0"):
+                await self.set_device_state(device_id, {"wave_state": 100})
+                # Let the MAX command reach the panel before stepping down to
+                # MEDIUM; a cancellation here propagates as it should.
+                await asyncio.sleep(1)
+
         await self.set_device_state(device_id, {"wave_state": target_value})
         _LOGGER.debug("Set bubbles to %s (wave_state=%d)", bubbles.name, target_value)
 

@@ -1,6 +1,6 @@
 """Tests for AWS IoT API client."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, call, patch
 
 import pytest
 
@@ -8,7 +8,7 @@ from custom_components.bestway.aws_iot.api import (
     AwsIotApi,
     AwsIotAuthException,
 )
-from custom_components.bestway.model import BestwayDevice, BubblesLevel
+from custom_components.bestway.model import BestwayDevice, BubblesLevel, RawSnapshot
 
 
 def create_mock_response(status: int, json_data: dict):
@@ -314,15 +314,43 @@ async def test_set_target_temperature(aws_api):
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     ("level", "wave_state"),
-    [(BubblesLevel.OFF, 0), (BubblesLevel.MEDIUM, 40), (BubblesLevel.MAX, 100)],
+    [(BubblesLevel.OFF, 0), (BubblesLevel.MAX, 100)],
 )
 async def test_set_bubbles(aws_api, level: BubblesLevel, wave_state: int):
-    """V02 uses 40 for MEDIUM, not the V01 map's 50."""
+    """V02 uses 40 for MEDIUM, not the V01 map's 50. MAX/OFF are single
+    writes."""
     aws_api.set_device_state = AsyncMock()
     await aws_api.set_bubbles("device1", level)
     aws_api.set_device_state.assert_awaited_once_with(
         "device1", {"wave_state": wave_state}
     )
+
+
+@pytest.mark.asyncio
+@patch("custom_components.bestway.aws_iot.api.asyncio.sleep", new=AsyncMock())
+async def test_set_bubbles_medium_from_off_steps_max_then_medium(aws_api):
+    """A direct MEDIUM (40) from OFF is ignored by Hydrojet panels (physical
+    cycle OFF -> MAX -> MEDIUM), so the backend steps MAX (100) first, then
+    MEDIUM (40)."""
+    aws_api.set_device_state = AsyncMock()
+    await aws_api.set_bubbles("device1", BubblesLevel.MEDIUM)
+    assert aws_api.set_device_state.await_count == 2
+    aws_api.set_device_state.assert_has_awaits(
+        [
+            call("device1", {"wave_state": 100}),
+            call("device1", {"wave_state": 40}),
+        ]
+    )
+
+
+@pytest.mark.asyncio
+async def test_set_bubbles_medium_when_already_medium_is_single_write(aws_api):
+    """If the device is already running (wave != 0), MEDIUM is a single direct
+    write - no MAX step needed."""
+    aws_api._raw_state["device1"] = RawSnapshot(timestamp=0, attrs={"wave": 40})
+    aws_api.set_device_state = AsyncMock()
+    await aws_api.set_bubbles("device1", BubblesLevel.MEDIUM)
+    aws_api.set_device_state.assert_awaited_once_with("device1", {"wave_state": 40})
 
 
 @pytest.mark.asyncio
