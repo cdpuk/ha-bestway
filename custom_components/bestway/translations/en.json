@@ -62,5 +62,16 @@
         }
       }
     }
+  },
+  "entity": {
+    "select": {
+      "bubbles": {
+        "state": {
+          "off": "Off",
+          "medium": "Medium",
+          "max": "Max"
+        }
+      }
+    }
   }
 }

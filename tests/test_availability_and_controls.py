@@ -313,11 +313,11 @@ class TestBubblesSelectOptimistic:
         config_entry = MagicMock()
 
         select = ThreeWaySpaBubblesSelect(coordinator, config_entry, "test_device")
-        assert select.current_option == "OFF"
+        assert select.current_option == "off"
 
         # Mirrors what async_select_option does, without the awaited API call.
         select._optimistic.set(BubblesLevel.MAX)
-        assert select.current_option == "MAX"
+        assert select.current_option == "max"
 
     def test_select_optimistic_kept_when_real_state_lags(self):
         """A refresh that hasn't caught up yet must not flicker the select
@@ -339,7 +339,7 @@ class TestBubblesSelectOptimistic:
             select._handle_coordinator_update()
 
         assert select._optimistic.value == BubblesLevel.MAX  # Kept, no flicker
-        assert select.current_option == "MAX"
+        assert select.current_option == "max"
 
     def test_select_optimistic_cleared_when_real_state_matches(self):
         """Optimistic state clears once the cloud confirms the new level."""
@@ -358,7 +358,7 @@ class TestBubblesSelectOptimistic:
             select._handle_coordinator_update()
 
         assert select._optimistic.value is None  # Cleared on confirmation
-        assert select.current_option == "MAX"  # Now reads from the coordinator
+        assert select.current_option == "max"  # Now reads from the coordinator
 
 
 # ---------------------------------------------------------------------------
