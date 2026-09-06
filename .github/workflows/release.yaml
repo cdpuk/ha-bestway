@@ -1,0 +1,42 @@
+---
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    name: Check manifest version
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compare manifest version against tag
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          manifest=$(jq -r .version \
+            custom_components/bestway/manifest.json)
+          expected=${TAG#v}
+          if [ "$manifest" != "$expected" ]; then
+            echo "::error::Tag $TAG expects manifest version" \
+              "$expected, but manifest.json says $manifest."
+            exit 1
+          fi
+          echo "manifest.json and $TAG both say $manifest"
+
+  validate:
+    runs-on: ubuntu-latest
+    name: Validate
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: HACS validation
+        uses: hacs/action@main
+        with:
+          category: integration
+          ignore: brands
+
+      - name: Hassfest validation
+        uses: home-assistant/actions/hassfest@master
