@@ -6,6 +6,10 @@ This file provides guidance to LLMs when working with code in this repository.
 
 A Home Assistant custom component (HACS) that integrates with Bestway cloud APIs to control devices like Lay-Z-Spa hot tubs and Flowclear pool filters. It supports two distinct hardware generations with different backends.
 
+## Python version
+
+We only support Home Assistant versions based on Python 3.14+. Always run python via `uv run` to land in the correct environment.
+
 ## Commands
 
 Install dependencies:

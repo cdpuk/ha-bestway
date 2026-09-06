@@ -78,7 +78,7 @@ class AwsIotWebSocket(BaseWebSocketClient):
             _LOGGER.warning(
                 "Unknown region %s for device %s, using EU",
                 self._service_region,
-                self._device_id[:12],
+                self._device_id,
             )
         return endpoint
 
@@ -89,14 +89,12 @@ class AwsIotWebSocket(BaseWebSocketClient):
         and starts background tasks for heartbeat and message listening.
         """
         if self._running:
-            _LOGGER.warning(
-                "WebSocket already running for device %s", self._device_id[:12]
-            )
+            _LOGGER.warning("WebSocket already running for device %s", self._device_id)
             return
 
         _LOGGER.info(
             "Connecting WebSocket for device %s (region: %s)",
-            self._device_id[:12],
+            self._device_id,
             self._service_region,
         )
 
@@ -118,7 +116,7 @@ class AwsIotWebSocket(BaseWebSocketClient):
             self._running = True
             self._reconnect_count = 0  # Reset on successful connection
 
-            _LOGGER.info("WebSocket connected for device %s", self._device_id[:12])
+            _LOGGER.info("WebSocket connected for device %s", self._device_id)
             self._notify_connected()
 
             # Start background tasks
@@ -129,7 +127,7 @@ class AwsIotWebSocket(BaseWebSocketClient):
             error_msg = str(err)
             _LOGGER.error(
                 "WebSocket connection failed for device %s: %s",
-                self._device_id[:12],
+                self._device_id,
                 error_msg,
             )
 
@@ -158,10 +156,10 @@ class AwsIotWebSocket(BaseWebSocketClient):
         Cancels background tasks and closes WebSocket connection gracefully.
         Safe to call multiple times.
         """
-        _LOGGER.info("Disconnecting WebSocket for device %s", self._device_id[:12])
+        _LOGGER.info("Disconnecting WebSocket for device %s", self._device_id)
         self._running = False
         await self._cancel_and_close()
-        _LOGGER.info("WebSocket disconnected for device %s", self._device_id[:12])
+        _LOGGER.info("WebSocket disconnected for device %s", self._device_id)
 
     async def _listen_loop(self) -> None:
         """Listen for incoming shadow update messages.
@@ -182,15 +180,13 @@ class AwsIotWebSocket(BaseWebSocketClient):
                     _LOGGER.warning("Received malformed JSON message")
 
         except websockets.exceptions.ConnectionClosed:
-            _LOGGER.warning("WebSocket closed for device %s", self._device_id[:12])
+            _LOGGER.warning("WebSocket closed for device %s", self._device_id)
             # Trigger reconnection
             if self._running:
                 await self._schedule_reconnect()
 
         except Exception as err:
-            _LOGGER.error(
-                "Listen loop error for device %s: %s", self._device_id[:12], err
-            )
+            _LOGGER.error("Listen loop error for device %s: %s", self._device_id, err)
             if self._running:
                 await self._schedule_reconnect()
 
@@ -230,13 +226,11 @@ class AwsIotWebSocket(BaseWebSocketClient):
         if not state:
             return
 
-        _LOGGER.debug(
-            "Shadow update for device %s: %d fields",
-            self._device_id[:12],
-            len(state),
-        )
+        _LOGGER.debug("Shadow update for %s: %s", self._device_id, state)
 
         normalized = v01_attrs_from_shadow(state)
+
+        _LOGGER.debug("Normalized attrs for %s: %s", self._device_id, normalized)
 
         # Call coordinator callback with (device_id, normalized_attrs)
         if self._update_callback is not None:
@@ -266,13 +260,13 @@ class AwsIotWebSocket(BaseWebSocketClient):
                     await self._websocket.ping()
 
                     self._seq_id += 1
-                    _LOGGER.debug("Heartbeat sent for device %s", self._device_id[:12])
+                    _LOGGER.debug("Heartbeat sent for device %s", self._device_id)
 
             except asyncio.CancelledError:
                 break
             except Exception as err:
                 _LOGGER.warning(
-                    "Heartbeat failed for device %s: %s", self._device_id[:12], err
+                    "Heartbeat failed for device %s: %s", self._device_id, err
                 )
                 break
 
@@ -288,7 +282,7 @@ class AwsIotWebSocket(BaseWebSocketClient):
 
         _LOGGER.info(
             "Reconnecting device %s in %ds (attempt %d)",
-            self._device_id[:12],
+            self._device_id,
             delay,
             self._reconnect_count + 1,
         )

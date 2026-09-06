@@ -1,6 +1,7 @@
 """Integration tests for WebSocket coordinator callbacks."""
 
 import asyncio
+import logging
 from datetime import timedelta
 from time import time
 from unittest.mock import MagicMock
@@ -225,3 +226,53 @@ async def test_coordinator_tracks_websocket_update_times(hass: HomeAssistant):
     # Verify time updated
     new_update_time = coordinator._ws_last_update["device1"]
     assert new_update_time > update_time
+
+
+def _make_device(device_id: str, product_name: str) -> BestwayDevice:
+    return BestwayDevice(
+        protocol_version=1,
+        device_id=device_id,
+        product_name=product_name,
+        alias="Test Spa",
+        mcu_soft_version="1.0",
+        mcu_hard_version="1.0",
+        wifi_soft_version="1.0",
+        wifi_hard_version="1.0",
+        is_online=True,
+        backend=Backend.GIZWITS,
+    )
+
+
+@pytest.mark.asyncio
+async def test_device_inventory_logged_once_per_change(
+    hass: HomeAssistant, caplog: pytest.LogCaptureFixture
+):
+    """The inventory log fires on discovery and on change, not every poll."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_API_ROOT: CONF_API_ROOT_EU},
+        entry_id="test",
+    )
+    api = _make_api()
+    coordinator = BestwayUpdateCoordinator(hass, config_entry, api)
+
+    api.devices["device123"] = _make_device("device123", "Airjet_V01")
+
+    with caplog.at_level(logging.INFO):
+        coordinator._log_device_inventory()
+    assert "device123" in caplog.text
+    assert BestwayDeviceType.AIRJET_V01_SPA.name in caplog.text
+
+    # A second poll with an unchanged device set stays quiet.
+    caplog.clear()
+    with caplog.at_level(logging.INFO):
+        coordinator._log_device_inventory()
+    assert caplog.text == ""
+
+    # A newly discovered device re-reports the whole inventory.
+    api.devices["device456"] = _make_device("device456", "Hydrojet_Pro")
+    caplog.clear()
+    with caplog.at_level(logging.INFO):
+        coordinator._log_device_inventory()
+    assert "device456" in caplog.text
+    assert BestwayDeviceType.HYDROJET_PRO_SPA.name in caplog.text

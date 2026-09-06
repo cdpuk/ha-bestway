@@ -44,6 +44,7 @@ from .const import (
 )
 from .coordinator import BestwayUpdateCoordinator
 from .features import bubbles_mode_dependent
+from .redact import redact_text
 from .smartspa.api import (
     SMARTSPA_ENDPOINTS,
     SmartSpaApi,
@@ -238,7 +239,7 @@ async def _async_setup_aws_iot(
 
     _LOGGER.info(
         "Initializing AWS IoT API for visitor %s (endpoint: %s)",
-        visitor_id[:12],
+        redact_text(visitor_id),
         api_base,
     )
 
@@ -300,19 +301,19 @@ async def _async_setup_aws_iot(
                 # the device is unreachable) cannot block startup. It is
                 # cancelled automatically when the config entry unloads.
                 entry.async_create_background_task(
-                    hass, ws.connect(), name=f"{DOMAIN}-websocket-{device_id[:12]}"
+                    hass, ws.connect(), name=f"{DOMAIN}-websocket-{device_id}"
                 )
                 websockets.append(ws)
 
                 _LOGGER.info(
                     "WebSocket initialized for device %s (region: %s)",
-                    device_id[:12],
+                    device_id,
                     device.ws_host,
                 )
 
             except Exception as ex:  # pylint: disable=broad-except
                 _LOGGER.warning(
-                    "Failed to setup WebSocket for device %s: %s", device_id[:12], ex
+                    "Failed to setup WebSocket for device %s: %s", device_id, ex
                 )
     else:
         _LOGGER.warning("No devices found, WebSocket not initialized")
@@ -342,7 +343,9 @@ async def _async_setup_smartspa(
     region = str(entry.data.get(CONF_SMARTSPA_REGION, "EU"))
     api_base = SMARTSPA_ENDPOINTS.get(region, SMARTSPA_ENDPOINTS["EU"])
 
-    _LOGGER.info("Initializing SmartSpa API for %s (%s)", account, api_base)
+    _LOGGER.info(
+        "Initializing SmartSpa API for %s (%s)", redact_text(account), api_base
+    )
 
     # Reuse the stored token when there is one: the client re-authenticates
     # transparently on code 505, so a stale token costs one retried request
@@ -367,7 +370,7 @@ async def _async_setup_smartspa(
     await coordinator.async_config_entry_first_refresh()
 
     if not api.devices:
-        _LOGGER.warning("SmartSpa account %s has no devices", account)
+        _LOGGER.warning("SmartSpa account %s has no devices", redact_text(account))
 
     _async_remove_orphaned_bubbles_entities(hass, entry, api)
 

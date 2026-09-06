@@ -22,6 +22,7 @@ from aiohttp import ClientSession
 from ..const import Backend
 from ..model import BestwayApiResults, BestwayDevice, BubblesLevel, RawSnapshot
 from ..raw_state import RawStateApi
+from ..redact import redact, redact_text
 from ..translation import v01_attrs_from_shadow
 from .encryption import encrypt_command_payload
 
@@ -136,8 +137,8 @@ class AwsIotApi(RawStateApi):
 
         url = f"{api_base}/api/enduser/visitor"
 
-        _LOGGER.debug("Authenticating visitor %s", visitor_id[:12])
-        _LOGGER.debug("Payload: %s", payload)
+        _LOGGER.debug("Authenticating visitor %s", redact_text(visitor_id))
+        _LOGGER.debug("Payload: %s", redact(payload))
         _LOGGER.debug("Nonce in headers: %s", "nonce" in headers)
         _LOGGER.debug("Sign in headers: %s", "sign" in headers)
         _LOGGER.debug("All header keys: %s", list(headers.keys()))
@@ -147,12 +148,14 @@ class AwsIotApi(RawStateApi):
                 url, headers=headers, json=payload, ssl=False
             ) as resp:
                 data = await resp.json()
-                _LOGGER.debug("Auth response: %s", data)
+                _LOGGER.debug("Auth response: %s", redact(data))
                 _LOGGER.debug("Response status: %s", resp.status)
                 token = data.get("data", {}).get("token")
 
                 if not token:
-                    _LOGGER.error("No token in response. Full response: %s", data)
+                    _LOGGER.error(
+                        "No token in response. Full response: %s", redact(data)
+                    )
                     raise AwsIotAuthException("No token in authentication response")
 
                 return str(token)
@@ -274,7 +277,10 @@ class AwsIotApi(RawStateApi):
                 result = await response.json()
 
                 _LOGGER.debug(
-                    "POST %s response (status=%d): %s", path, response.status, result
+                    "POST %s response (status=%d): %s",
+                    path,
+                    response.status,
+                    redact(result),
                 )
 
                 if response.status in (400, 401):
@@ -301,13 +307,15 @@ class AwsIotApi(RawStateApi):
             _LOGGER.debug("Using cached device list (%d devices)", len(self.devices))
             return
 
-        _LOGGER.debug("Discovering devices for visitor %s", self._visitor_id[:12])
+        _LOGGER.debug(
+            "Discovering devices for visitor %s", redact_text(self._visitor_id)
+        )
 
         discovered_devices = []
 
         # Devices are nested three levels deep: homes -> rooms -> devices.
         homes_response = await self._do_get("/api/enduser/homes")
-        _LOGGER.debug("Homes API response: %s", homes_response)
+        _LOGGER.debug("Homes API response: %s", redact(homes_response))
 
         # Check for API error code
         if homes_response.get("code") != 0:
@@ -353,8 +361,6 @@ class AwsIotApi(RawStateApi):
                 devices = devices_response.get("data", {}).get("list", [])
                 _LOGGER.debug("Found %d device(s) in room %s", len(devices), room_name)
                 discovered_devices.extend(devices)
-
-        _LOGGER.info("Discovered %d devices", len(discovered_devices))
 
         # Convert to BestwayDevice format
         self.devices = {}
@@ -432,35 +438,20 @@ class AwsIotApi(RawStateApi):
                 else:
                     device_state = raw_data
 
-                _LOGGER.debug(
-                    "Raw device_state for %s has %d fields: %s",
-                    device_id[:12],
-                    len(device_state),
-                    list(device_state.keys()),
-                )
+                _LOGGER.debug("Shadow for %s: %s", device_id, device_state)
 
                 mapped = v01_attrs_from_shadow(device_state)
 
-                _LOGGER.debug(
-                    "After normalization: %d fields: %s",
-                    len(mapped),
-                    list(mapped.keys()),
-                )
+                _LOGGER.debug("Normalized attrs for %s: %s", device_id, mapped)
 
                 # Update state cache
                 self._raw_state[device_id] = RawSnapshot(
                     timestamp=int(time()), attrs=mapped
                 )
 
-                _LOGGER.debug(
-                    "Fetched state for device %s: %d fields",
-                    device_id[:12],
-                    len(mapped),
-                )
-
             except Exception as err:
                 _LOGGER.warning(
-                    "Failed to fetch state for device %s: %s", device_id[:12], err
+                    "Failed to fetch state for device %s: %s", device_id, err
                 )
                 # Keep existing cache or mark offline
                 if device_id not in self._raw_state:
@@ -494,7 +485,7 @@ class AwsIotApi(RawStateApi):
         headers = self._generate_auth_headers()
         sign = headers["sign"]
 
-        _LOGGER.debug("Using sign for encryption: %s", sign[:16])
+        _LOGGER.debug("Using sign for encryption: %s", redact_text(sign))
 
         # The shadow payload's "desired" field is a JSON string, not a
         # nested object.
@@ -531,11 +522,11 @@ class AwsIotApi(RawStateApi):
             ) as response:
                 result = await response.json()
                 _LOGGER.debug(
-                    "v2 POST response (status=%d): %s", response.status, result
+                    "v2 POST response (status=%d): %s", response.status, redact(result)
                 )
 
                 if result.get("code") == 0:
-                    _LOGGER.info("v2 API command sent to device %s", device_id[:12])
+                    _LOGGER.info("v2 API command sent to device %s", device_id)
                     return True
                 else:
                     _LOGGER.warning(
@@ -564,16 +555,14 @@ class AwsIotApi(RawStateApi):
             )
 
             if v1_result.get("code") == 0:
-                _LOGGER.info("v1 API command sent to device %s", device_id[:12])
+                _LOGGER.info("v1 API command sent to device %s", device_id)
                 return True
             else:
                 _LOGGER.error("v1 API also failed with code %s", v1_result.get("code"))
                 return False
 
         except Exception as err:
-            _LOGGER.error(
-                "Failed to send command to device %s: %s", device_id[:12], err
-            )
+            _LOGGER.error("Failed to send command to device %s: %s", device_id, err)
             return False
 
     # AWS IoT has a single wire vocabulary, so each setter below is one

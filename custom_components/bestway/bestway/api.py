@@ -2,7 +2,6 @@
 
 import asyncio
 import json
-from copy import deepcopy
 from logging import getLogger
 from time import time
 from typing import Any
@@ -18,6 +17,7 @@ from ..model import (
     RawSnapshot,
 )
 from ..raw_state import RawStateApi
+from ..redact import redact
 from ..translation import bubbles_map_for
 from .model import BestwayUserToken, HydrojetFilter, HydrojetHeat
 
@@ -142,8 +142,7 @@ class BestwayApi(RawStateApi):
         """Get the list of devices available in the account."""
         api_data = await self._do_get(f"{self._api_root}/app/bindings")
 
-        sanitized_data = self._sanitize_bindings_response(api_data)
-        _LOGGER.debug("Device list refreshed: %s", json.dumps(sanitized_data))
+        _LOGGER.debug("Device list refreshed: %s", json.dumps(redact(api_data)))
 
         return [
             BestwayDevice(
@@ -441,26 +440,3 @@ class BestwayApi(RawStateApi):
             # We have to disable the check to avoid an exception.
             response_json: dict[str, Any] = await response.json(content_type=None)
             return response_json
-
-    @staticmethod
-    def _sanitize_bindings_response(bindings: dict[str, Any]) -> dict[str, Any]:
-        """Remove potentially sensitive data from device listings for logging purposes.
-
-        People have a habit of simply copying & pasting to online communities without
-        considering whether any of that information could be abused.
-        """
-
-        # Do all this in a safe way in case the response isn't as expected
-        # At least we'll get log output we can work with
-        sanitized = deepcopy(bindings)
-        for device in sanitized.get("devices", {}):
-            if (did := device.get("did")) is not None:
-                device["did"] = "*" * len(did)
-            if (value := device.get("passcode")) is not None:
-                device["passcode"] = "*" * len(value)
-            if (value := device.get("product_key")) is not None:
-                device["product_key"] = "*" * len(value)
-            if (value := device.get("mac")) is not None:
-                device["mac"] = "*" * len(value)
-
-        return sanitized

@@ -12,7 +12,8 @@ from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 
 from .backend import BackendApi
-from .model import BestwayApiResults
+from .features import features_for
+from .model import BestwayApiResults, BestwayDeviceType
 from .smartspa.api import SmartSpaAuthException
 from .websocket_base import BaseWebSocketClient
 
@@ -38,6 +39,7 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
         )
         self.api = api
         self._ws_last_update: dict[str, float] = {}  # Track WebSocket update times
+        self._logged_inventory: frozenset[tuple[str, BestwayDeviceType]] = frozenset()
         # One entry per backend connection: a single Gizwits socket, or one
         # AWS IoT socket per device.
         self.websockets: list[BaseWebSocketClient] = []
@@ -54,6 +56,7 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
         try:
             async with asyncio.timeout(30):
                 await self.api.refresh_bindings()
+                self._log_device_inventory()
                 return await self.api.fetch_data()
         except SmartSpaAuthException as err:
             # Re-login already failed inside the API; the stored credentials no
@@ -61,6 +64,37 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
             # should at least surface this as an auth problem rather than a
             # generic update failure.
             raise ConfigEntryAuthFailed(str(err)) from err
+
+    def _log_device_inventory(self) -> None:
+        """Log each discovered device and the entity feature set it resolves to.
+
+        `refresh_bindings()` runs every poll, so this only speaks up when the
+        set of devices or their derived types changes. `device_type` is derived
+        rather than reported (see `BestwayDevice.device_type`) and is the sole
+        input to `features_for()`, so a device landing on an unexpected type is
+        the first thing to check when entities are missing.
+        """
+        inventory = frozenset(
+            (device_id, device.device_type)
+            for device_id, device in self.api.devices.items()
+        )
+        if inventory == self._logged_inventory:
+            return
+        self._logged_inventory = inventory
+
+        options = self.config_entry.options if self.config_entry else {}
+        for device_id, device in self.api.devices.items():
+            _LOGGER.info(
+                "Device %s (%s): type=%s, protocol=v%d, backend=%s",
+                device_id,
+                device.alias,
+                device.device_type.name,
+                device.protocol_version,
+                device.backend,
+            )
+            _LOGGER.debug(
+                "Features for %s: %s", device_id, features_for(device, options)
+            )
 
     def handle_websocket_update(self, device_id: str, attrs: dict[str, Any]) -> None:
         """Handle a real-time device update from a WebSocket.

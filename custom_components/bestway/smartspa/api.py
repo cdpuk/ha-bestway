@@ -49,6 +49,7 @@ from aiohttp import ClientSession
 from ..const import Backend
 from ..model import BestwayApiResults, BestwayDevice, BubblesLevel, RawSnapshot
 from ..raw_state import RawStateApi
+from ..redact import redact, redact_text
 from ..translation import v01_attrs_from_shadow
 
 _LOGGER = logging.getLogger(__name__)
@@ -155,7 +156,7 @@ class SmartSpaApi(RawStateApi):
             raise SmartSpaAuthException(
                 f"Login succeeded but no userToken in response: {list(result['data'].keys())}"
             )
-        _LOGGER.debug("SmartSpa login OK for %s", account)
+        _LOGGER.debug("SmartSpa login OK for %s", redact_text(account))
         return str(token)
 
     async def _ensure_token(self) -> None:
@@ -267,7 +268,8 @@ class SmartSpaApi(RawStateApi):
 
         if not raw_list:
             _LOGGER.warning(
-                "SmartSpa device list empty or unrecognised shape; raw data: %s", data
+                "SmartSpa device list empty or unrecognised shape; raw data: %s",
+                redact(data),
             )
 
         for entry in raw_list:
@@ -279,7 +281,7 @@ class SmartSpaApi(RawStateApi):
             mac = self._first(entry, "mac", "deviceMac", "device_mac", "did")
             if not product_key or not mac:
                 _LOGGER.warning(
-                    "Skipping device entry without productKey/mac: %s", entry
+                    "Skipping device entry without productKey/mac: %s", redact(entry)
                 )
                 continue
             mac = str(mac).lower()  # mac is lowercase in API paths
@@ -332,8 +334,6 @@ class SmartSpaApi(RawStateApi):
                 ),
             )
 
-        _LOGGER.info("SmartSpa discovered %d device(s)", len(self.devices))
-
     # ------------------------------------------------------------------ state
 
     async def fetch_data(self) -> BestwayApiResults:
@@ -353,6 +353,8 @@ class SmartSpaApi(RawStateApi):
                     shadow.setdefault(
                         "is_online", str(connect_type).lower() == "online"
                     )
+
+                _LOGGER.debug("SmartSpa shadow for %s: %s", device_id, shadow)
 
                 # Same shadow vocabulary as the AWS IoT backend serves.
                 mapped = v01_attrs_from_shadow(shadow)
@@ -377,9 +379,7 @@ class SmartSpaApi(RawStateApi):
                 self._raw_state[device_id] = RawSnapshot(
                     timestamp=int(time()), attrs=mapped
                 )
-                _LOGGER.debug(
-                    "SmartSpa state for %s: %s", device_id, list(mapped.keys())
-                )
+                _LOGGER.debug("SmartSpa normalized attrs for %s: %s", device_id, mapped)
 
             except SmartSpaAuthException:
                 # Authentication is not a per-device problem: re-login already

@@ -9,6 +9,7 @@ from typing import Any
 import websockets
 
 from ..const import GIZWITS_APP_ID
+from ..redact import redact
 from ..websocket_base import OPEN_TIMEOUT, BaseWebSocketClient
 
 _LOGGER = getLogger(__name__)
@@ -209,7 +210,9 @@ class GizwitsWebSocket(BaseWebSocketClient):
 
                     elif cmd == "s2c_invalid_msg":
                         # Invalid message error from server
-                        _LOGGER.warning("Server reported invalid message: %s", data)
+                        _LOGGER.warning(
+                            "Server reported invalid message: %s", redact(data)
+                        )
 
                     elif cmd == "pong":
                         # Heartbeat response
