@@ -157,9 +157,9 @@ async def test_bubbles_switch_on_off_calls_set_bubbles():
 @pytest.mark.parametrize(
     ("option", "level"),
     [
-        ("OFF", BubblesLevel.OFF),
-        ("MEDIUM", BubblesLevel.MEDIUM),
-        ("MAX", BubblesLevel.MAX),
+        ("off", BubblesLevel.OFF),
+        ("medium", BubblesLevel.MEDIUM),
+        ("max", BubblesLevel.MAX),
     ],
 )
 async def test_select_option_calls_set_bubbles(option, level):
