@@ -43,6 +43,12 @@ BUBBLES_MODE_3WAY = "three_way"
 BUBBLES_MODE_ONOFF = "on_off"
 BUBBLES_MODE_DEFAULT = BUBBLES_MODE_3WAY
 
+# Hydrojet V02 panels ignore a direct MEDIUM (40) command while they are OFF
+# and only step OFF -> MAX -> MEDIUM, so both V02 backends write MAX (100)
+# first and wait this long before stepping down to MEDIUM - enough for the
+# MAX write to reach the panel, short enough not to stall the service call.
+HYDROJET_STEP_SETTLE_S = 1
+
 
 class Icon(str, Enum):
     """Icon styles."""

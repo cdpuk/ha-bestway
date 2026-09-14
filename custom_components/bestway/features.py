@@ -198,9 +198,12 @@ _FEATURES_BY_TYPE: dict[BestwayDeviceType, DeviceFeatures] = {
         filter_switch=True,
         jets_switch=True,
         bubbles=BubblesStyle.THREE_WAY,
-        # V02 Hydrojet hardware varies (F12D9Q San Francisco HydroJet Pro is
-        # on/off only), so it honours the same bubbles-mode option as the
-        # Airjet V02 family.
+        # The Bestway app only exposes on/off bubbles, but Hydrojet V02
+        # panels (e.g. F12D9Q San Francisco HydroJet Pro) have real
+        # OFF/MEDIUM/MAX levels on the touch panel, so the 3-way select is
+        # the honest control. Some hardware truly is on/off only, and the
+        # product_id doesn't tell them apart, so it honours the same
+        # bubbles-mode option as the Airjet V02 family.
         bubbles_mode_option=True,
         bubbles_onoff=BubblesStyle.SWITCH,
         connectivity_sensor=True,
