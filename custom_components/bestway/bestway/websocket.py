@@ -52,11 +52,17 @@ class GizwitsWebSocket(BaseWebSocketClient):
         self._update_callback = update_callback
         self._authenticated = False
 
-    async def connect(self) -> None:
-        """Connect to the Gizwits WebSocket API, log in, and start listening
-        for device updates. Raises GizwitsWebSocketException if the
-        connection or login fails.
+    async def _connect_once(self) -> None:
+        """Connect to the Gizwits WebSocket API and log in, once.
+
+        A failure is reported by leaving `_running` False rather than raised;
+        the retry chain in BaseWebSocketClient picks it up.
         """
+        if not self._should_run:
+            # disconnect() landed while this attempt was queued behind a backoff
+            # sleep: connecting now would resurrect a client that was stopped.
+            return
+
         if self._running:
             _LOGGER.warning("WebSocket already running")
             return
@@ -113,12 +119,16 @@ class GizwitsWebSocket(BaseWebSocketClient):
 
         except Exception as ex:
             _LOGGER.error("Failed to connect to WebSocket: %s", ex)
-            await self.disconnect()
+            # Clean up without going through disconnect(): that marks the client
+            # stopped, which is the one state the retry below must not see.
+            self._running = False
+            self._authenticated = False
+            await self._cancel_and_close()
 
-            # Schedule reconnection if still intended to be running
+            # Reported, not rescheduled: _connect_once() leaves _running False
+            # and the retry chain in the base class decides what happens next.
             if not isinstance(ex, asyncio.CancelledError):
                 self._notify_disconnected()
-                await self._schedule_reconnect()
 
     async def disconnect(self) -> None:
         """Disconnect from WebSocket and cleanup resources.
@@ -127,6 +137,7 @@ class GizwitsWebSocket(BaseWebSocketClient):
         Safe to call multiple times.
         """
         _LOGGER.debug("Disconnecting WebSocket")
+        self._should_run = False
         self._running = False
         self._authenticated = False
         await self._cancel_and_close()
@@ -173,7 +184,10 @@ class GizwitsWebSocket(BaseWebSocketClient):
                 break
             except Exception as ex:
                 _LOGGER.warning("Heartbeat failed: %s", ex)
-                # Don't break on heartbeat failure - let listen_loop detect connection issues
+                # The socket is unusable once its own heartbeat fails, and the
+                # listen loop may well sit blocked on it forever - so recover
+                # here instead of leaving it to a read that never returns.
+                await self._handle_disconnect()
                 break
 
     async def _listen_loop(self) -> None:
@@ -230,10 +244,8 @@ class GizwitsWebSocket(BaseWebSocketClient):
         except Exception as ex:
             _LOGGER.error("WebSocket listen error: %s", ex)
         finally:
-            if self._running:
-                # Connection lost while we expected it to be running
-                _LOGGER.warning("WebSocket connection lost, will attempt reconnect")
-                await self._handle_disconnect()
+            # Runs on a clean close too, where the iterator simply ends.
+            await self._handle_disconnect()
 
     def _handle_device_update(self, data: dict[str, Any]) -> None:
         """Extract the device ID and attrs from an s2c_noti message and
@@ -260,41 +272,13 @@ class GizwitsWebSocket(BaseWebSocketClient):
             _LOGGER.error("Error in update callback: %s", ex)
 
     async def _handle_disconnect(self) -> None:
-        """Handle unexpected disconnection.
+        """Clear the login state, then use the shared reconnect handling.
 
-        Cleans up connection state and schedules reconnection attempt.
+        A dropped Gizwits socket always needs a fresh login, so the client
+        stops being authenticated the moment its connection goes away.
         """
-        self._running = False
         self._authenticated = False
-
-        self._notify_disconnected()
-
-        # Schedule reconnection
-        await self._schedule_reconnect()
-
-    async def _schedule_reconnect(self) -> None:
-        """Schedule reconnection attempt with exponential backoff.
-
-        Implements exponential backoff strategy:
-        - Attempt 1: 3 seconds
-        - Attempt 2: 6 seconds
-        - Attempt 3: 12 seconds
-        - Attempt 4: 24 seconds
-        - Attempt 5: 48 seconds
-        - Attempt 6+: 60 seconds (maximum delay)
-        """
-        delay = self._next_reconnect_delay()
-        self._reconnect_count += 1
-
-        _LOGGER.info(
-            "Scheduling reconnection in %d seconds (attempt %d)",
-            delay,
-            self._reconnect_count,
-        )
-
-        # Wait for delay, then attempt reconnection
-        await asyncio.sleep(delay)
-        await self.connect()
+        await super()._handle_disconnect()
 
     @property
     def is_connected(self) -> bool:

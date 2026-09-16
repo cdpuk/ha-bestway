@@ -2,6 +2,7 @@
 
 import asyncio
 import json
+import traceback
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -384,8 +385,10 @@ async def test_websocket_disconnect_callback():
         disconnect_callback=disconnect_callback,
     )
 
-    # Test _handle_disconnect directly, stop reconnection
-    with patch.object(ws, "_schedule_reconnect", new=AsyncMock()):
+    # Test _handle_disconnect directly; connecting is mocked out so the
+    # reconnect task it schedules can't actually reach the network.
+    ws._should_run = True
+    with patch.object(ws, "connect", new=AsyncMock()) as mock_connect:
         await ws._handle_disconnect()
 
         # Verify disconnect callback invoked
@@ -394,8 +397,11 @@ async def test_websocket_disconnect_callback():
         # Verify state cleaned up
         assert not ws._running
         assert not ws._authenticated
-        # Should have called _schedule_reconnect
-        ws._schedule_reconnect.assert_called_once()
+
+        assert ws._reconnect_task is not None
+        await ws._reconnect_task
+
+    mock_connect.assert_awaited_once()
 
 
 @pytest.mark.asyncio
@@ -453,7 +459,7 @@ async def test_listen_loop_processes_messages():
     # Mock WebSocket with messages
     mock_ws = MagicMock()
     ws._websocket = mock_ws
-    ws._running = False  # Set to False to prevent _handle_disconnect in finally
+    ws._running = False  # not running, so the finally stays quiet
 
     # Create async iterator that yields messages then stops
     messages = [
@@ -494,9 +500,11 @@ async def test_schedule_reconnect_exponential_backoff():
     )
 
     # Mock sleep and connect to prevent actual delays/connections
+    ws._should_run = True
+    ws._running = True  # a successful attempt ends the retry loop
     with (
         patch("asyncio.sleep", new=AsyncMock()) as mock_sleep,
-        patch.object(ws, "connect", new=AsyncMock()),
+        patch.object(ws, "_connect_once", new=AsyncMock()),
     ):
         # Test first reconnection (3 seconds)
         ws._reconnect_count = 0
@@ -518,6 +526,50 @@ async def test_schedule_reconnect_exponential_backoff():
 
 
 @pytest.mark.asyncio
+async def test_retry_chain_does_not_grow_the_stack():
+    """Sustained failure must not nest: each attempt returns to one frame.
+
+    Regression coverage for #155, same reasoning as the AWS IoT client's test:
+    a recursive connect()/_schedule_reconnect() chain dies with a
+    RecursionError after hours offline, which is when it's needed most.
+    """
+    update_callback = MagicMock()
+    ws = GizwitsWebSocket(
+        uid="test_uid",
+        token="test_token",
+        ws_host="m2m.gizwits.com",
+        ws_port=8880,
+        update_callback=update_callback,
+    )
+
+    depths: list[int] = []
+    attempts = 0
+
+    async def refuse(*_args: object, **_kwargs: object) -> None:
+        nonlocal attempts
+        attempts += 1
+        depths.append(len(traceback.extract_stack()))
+        if attempts >= 40:
+            ws._should_run = False  # let the chain end so connect() returns
+        raise ConnectionError("Connection refused")
+
+    with (
+        patch(
+            "custom_components.bestway.bestway.websocket.websockets.connect",
+            side_effect=refuse,
+        ),
+        patch("custom_components.bestway.websocket_base.RECONNECT_DELAYS", [0]),
+    ):
+        await ws.connect()
+
+    assert attempts == 40
+    # The first attempt is one frame shallower (connect() calls it directly);
+    # every retry after that has to sit at the same depth. A recursive chain
+    # would add two frames per attempt, so this would grow instead.
+    assert depths[1:] == [depths[1]] * (len(depths) - 1)
+
+
+@pytest.mark.asyncio
 async def test_listen_loop_handles_json_decode_error():
     """Test listen loop handles malformed JSON gracefully."""
     update_callback = MagicMock()
@@ -531,7 +583,7 @@ async def test_listen_loop_handles_json_decode_error():
 
     mock_ws = MagicMock()
     ws._websocket = mock_ws
-    ws._running = False  # Prevent _handle_disconnect in finally
+    ws._running = False  # not running, so the finally stays quiet
 
     # Send malformed JSON
     async def mock_async_iter():

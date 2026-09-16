@@ -82,12 +82,19 @@ class AwsIotWebSocket(BaseWebSocketClient):
             )
         return endpoint
 
-    async def connect(self) -> None:
-        """Connect to region-specific WebSocket endpoint.
+    async def _connect_once(self) -> None:
+        """Connect to the region-specific WebSocket endpoint, once.
 
         Establishes connection to AWS API Gateway with Authorization header
-        and starts background tasks for heartbeat and message listening.
+        and starts background tasks for heartbeat and message listening. A
+        failure is reported by leaving `_running` False; the retry chain in
+        BaseWebSocketClient takes it from there.
         """
+        if not self._should_run:
+            # disconnect() landed while this attempt was queued behind a backoff
+            # sleep: connecting now would resurrect a client that was stopped.
+            return
+
         if self._running:
             _LOGGER.warning("WebSocket already running for device %s", self._device_id)
             return
@@ -139,16 +146,17 @@ class AwsIotWebSocket(BaseWebSocketClient):
                     if new_token:
                         self._token = new_token
                         _LOGGER.info("Token refreshed, immediate retry")
-                        # Immediate retry (don't increment reconnect count)
-                        await self.connect()
+                        # One extra attempt in the same call; if it fails too,
+                        # the caller's retry chain is what keeps going.
+                        await self._connect_once()
                         return
                 except Exception as refresh_err:
                     _LOGGER.error("Token refresh failed: %s", str(refresh_err))
 
-            # Schedule reconnection with backoff
+            # Reported, not rescheduled: _connect_once() leaves _running False
+            # and the retry chain in the base class decides what happens next.
             if not isinstance(err, asyncio.CancelledError):
                 self._notify_disconnected()
-                await self._schedule_reconnect()
 
     async def disconnect(self) -> None:
         """Disconnect and cleanup resources.
@@ -157,6 +165,7 @@ class AwsIotWebSocket(BaseWebSocketClient):
         Safe to call multiple times.
         """
         _LOGGER.info("Disconnecting WebSocket for device %s", self._device_id)
+        self._should_run = False
         self._running = False
         await self._cancel_and_close()
         _LOGGER.info("WebSocket disconnected for device %s", self._device_id)
@@ -181,14 +190,14 @@ class AwsIotWebSocket(BaseWebSocketClient):
 
         except websockets.exceptions.ConnectionClosed:
             _LOGGER.warning("WebSocket closed for device %s", self._device_id)
-            # Trigger reconnection
-            if self._running:
-                await self._schedule_reconnect()
 
         except Exception as err:
             _LOGGER.error("Listen loop error for device %s: %s", self._device_id, err)
-            if self._running:
-                await self._schedule_reconnect()
+
+        finally:
+            # Also covers a clean server-side close, where the iterator simply
+            # ends: the socket is gone either way, so recovery is the same.
+            await self._handle_disconnect()
 
     async def _handle_message(self, data: dict[str, Any]) -> None:
         """Process shadow update message.
@@ -268,30 +277,8 @@ class AwsIotWebSocket(BaseWebSocketClient):
                 _LOGGER.warning(
                     "Heartbeat failed for device %s: %s", self._device_id, err
                 )
+                # A failed heartbeat means the socket is dead even though the
+                # listen loop may still be blocked on it - without this the
+                # client would sit on a connection that never delivers again.
+                await self._handle_disconnect()
                 break
-
-    async def _schedule_reconnect(self) -> None:
-        """Schedule reconnection with exponential backoff.
-
-        Delays: 3s → 6s → 12s → 24s → 48s → 60s (max)
-        """
-        if not self._running:
-            return
-
-        delay = self._next_reconnect_delay()
-
-        _LOGGER.info(
-            "Reconnecting device %s in %ds (attempt %d)",
-            self._device_id,
-            delay,
-            self._reconnect_count + 1,
-        )
-
-        # Increment for next attempt
-        self._reconnect_count += 1
-
-        # Wait and reconnect
-        await asyncio.sleep(delay)
-
-        if self._running:
-            await self.connect()

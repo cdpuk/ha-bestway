@@ -31,11 +31,12 @@ class BaseWebSocketClient:
     """Shared state, teardown and notification logic for a reconnecting
     WebSocket client.
 
-    Subclasses (GizwitsWebSocket, AwsIotWebSocket) own connect(), the
+    Subclasses (GizwitsWebSocket, AwsIotWebSocket) own `_connect_once()`, the
     listen loop and the heartbeat loop - everything specific to their wire
     protocol - and use the attributes and helpers defined here:
     `_websocket`, `_listen_task`, `_heartbeat_task`, `_running`,
-    `_reconnect_count`, `_notify_connected()`, `_notify_disconnected()`,
+    `_should_run`, `_reconnect_task`, `_reconnect_count`,
+    `_notify_connected()`, `_notify_disconnected()`, `_handle_disconnect()`,
     `_cancel_and_close()`, `_next_reconnect_delay()`.
     """
 
@@ -51,7 +52,12 @@ class BaseWebSocketClient:
         self._websocket: Any = None
         self._listen_task: asyncio.Task[Any] | None = None
         self._heartbeat_task: asyncio.Task[Any] | None = None
+        # Whether the socket is live, versus whether we *want* it to be: a
+        # reconnect is exactly the case where the first is False and the second
+        # is True, so scheduling has to gate on the intent, not on _running.
         self._running = False
+        self._should_run = False
+        self._reconnect_task: asyncio.Task[Any] | None = None
         self._reconnect_count = 0
         # Ensures disconnect_callback fires once per disconnected period,
         # rather than on every retry while backing off.
@@ -65,12 +71,84 @@ class BaseWebSocketClient:
         """
         return RECONNECT_DELAYS[min(self._reconnect_count, len(RECONNECT_DELAYS) - 1)]
 
+    async def connect(self) -> None:
+        """Connect, and keep retrying until disconnect() is called.
+
+        Subclasses implement `_connect_once()`; the retry chain lives here so
+        both clients share one flat loop instead of a call chain that grows
+        with every attempt.
+        """
+        self._should_run = True
+        await self._connect_once()
+
+        if not self._running:
+            await self._schedule_reconnect()
+
+    async def _connect_once(self) -> None:
+        """Open one connection and start its tasks; subclass hook.
+
+        Reports a failed attempt by leaving `_running` False - it must not
+        schedule its own retry, which is what `_schedule_reconnect()` is for.
+        """
+
+    async def _handle_disconnect(self) -> None:
+        """React to a connection that dropped while we wanted it alive.
+
+        Called from the listen loop (and the heartbeat loop), which must not
+        become the retry driver itself: the retry path cancels the listen and
+        heartbeat tasks first, which a task cannot do to itself and survive.
+        So the reconnect runs in its own task, and this returns immediately.
+
+        A no-op when the drop happened because something called disconnect():
+        that is the only case where a lost socket must *not* be followed by a
+        reconnect, and it is precisely what `_should_run` distinguishes.
+        """
+        if not self._should_run:
+            return
+
+        self._running = False
+        self._notify_disconnected()
+
+        if self._reconnect_task is None or self._reconnect_task.done():
+            self._reconnect_task = asyncio.create_task(self.connect())
+
+    async def _schedule_reconnect(self) -> None:
+        """Keep retrying until connected again or told to stop.
+
+        This loop owns every retry: each attempt returns to it, so the call
+        stack stays flat no matter how long the endpoint stays unreachable. A
+        chain of `connect()` calling itself would add a frame per attempt and
+        eventually hit Python's recursion limit - after hours of downtime,
+        which is exactly when a device is most likely to be offline.
+        """
+        while self._should_run:
+            delay = self._next_reconnect_delay()
+            self._reconnect_count += 1
+
+            _LOGGER.info(
+                "Reconnecting in %ds (attempt %d)", delay, self._reconnect_count
+            )
+
+            await asyncio.sleep(delay)
+
+            await self._connect_once()
+
+            if self._running:
+                return
+
     async def _cancel_and_close(self) -> None:
-        """Cancel the listen/heartbeat tasks and close the socket.
+        """Cancel the listen/heartbeat/reconnect tasks and close the socket.
 
         Shared tail of disconnect() for both clients; subclasses handle
         their own flag/log bookkeeping before calling this.
         """
+        if self._reconnect_task and not self._reconnect_task.done():
+            self._reconnect_task.cancel()
+            try:
+                await self._reconnect_task
+            except asyncio.CancelledError:
+                pass
+
         if self._listen_task and not self._listen_task.done():
             self._listen_task.cancel()
             try:
