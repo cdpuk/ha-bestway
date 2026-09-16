@@ -21,7 +21,10 @@ from custom_components.bestway.model import (
     DeviceStatus,
 )
 from custom_components.bestway.number import _POOL_FILTER_TIME, PoolFilterTimeNumber
-from custom_components.bestway.select import ThreeWaySpaBubblesSelect
+from custom_components.bestway.select import (
+    _BUBBLES_OPTIONS,
+    ThreeWaySpaBubblesSelect,
+)
 from custom_components.bestway.switch import (
     _SPA_BUBBLES_SWITCH,
     _SPA_FILTER_SWITCH,
@@ -265,3 +268,63 @@ async def test_climate_optimistic_heat_renders_immediately_for_every_device_type
 
     assert thermostat.hvac_mode == HVACMode.HEAT
     assert thermostat.hvac_action == HVACAction.HEATING
+
+
+@pytest.mark.parametrize(
+    "control",
+    [
+        "switch_on",
+        "switch_off",
+        "select_option",
+        "number_value",
+        "climate_mode",
+        "climate_temperature",
+    ],
+)
+async def test_every_control_requests_a_refresh(control):
+    """Every control has to ask for a refresh after its write.
+
+    Regression coverage for #159: the pool filter timer fired its write and
+    returned, so its value could lag by a whole poll cycle - 30s, or 5 minutes
+    while a WebSocket elsewhere on the account has polling relaxed - even though
+    every other control requested a refresh immediately.
+    """
+    coordinator = _make_coordinator(_make_device(), _make_status())
+    config_entry = MagicMock()
+
+    if control == "switch_on":
+        entity = _without_ha_state_writes(
+            BestwaySwitch(coordinator, config_entry, "test_device", _SPA_POWER_SWITCH)
+        )
+        await entity.async_turn_on()
+    elif control == "switch_off":
+        entity = _without_ha_state_writes(
+            BestwaySwitch(coordinator, config_entry, "test_device", _SPA_FILTER_SWITCH)
+        )
+        await entity.async_turn_off()
+    elif control == "select_option":
+        entity = _without_ha_state_writes(
+            ThreeWaySpaBubblesSelect(coordinator, config_entry, "test_device")
+        )
+        # Through the module's own mapping: the option strings are translated
+        # slugs, so a literal value here would tie the test to one wording.
+        await entity.async_select_option(_BUBBLES_OPTIONS[BubblesLevel.MAX])
+    elif control == "number_value":
+        entity = PoolFilterTimeNumber(
+            coordinator, config_entry, "test_device", _POOL_FILTER_TIME
+        )
+        await entity.async_set_native_value(6.0)
+    elif control == "climate_mode":
+        entity = _without_ha_state_writes(
+            SpaThermostat(coordinator, config_entry, "test_device")
+        )
+        await entity.async_set_hvac_mode(HVACMode.HEAT)
+    elif control == "climate_temperature":
+        entity = _without_ha_state_writes(
+            SpaThermostat(coordinator, config_entry, "test_device")
+        )
+        await entity.async_set_temperature(**{ATTR_TEMPERATURE: 38})
+    else:
+        raise AssertionError(f"unhandled control {control}")
+
+    assert coordinator.async_request_refresh.await_count == 1
