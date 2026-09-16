@@ -1,9 +1,11 @@
 """Tests for AWS IoT API client."""
 
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
+from custom_components.bestway.aws_iot import api as aws_iot_api
 from custom_components.bestway.aws_iot.api import (
     AwsIotApi,
     AwsIotAuthException,
@@ -329,3 +331,40 @@ async def test_set_bubbles(aws_api, level: BubblesLevel, wave_state: int):
 async def test_set_pool_timer_not_supported(aws_api):
     with pytest.raises(NotImplementedError):
         await aws_api.set_pool_timer("device1", 6)
+
+
+@pytest.mark.asyncio
+async def test_do_get_keeps_tls_verification(aws_api, mock_session):
+    """Requests must not disable certificate verification (#156).
+
+    ssl=False dropped validation for authentication and control traffic alike,
+    which leaves both readable and rewritable for anyone able to intercept TLS
+    (hostile Wi-Fi, a compromised router).
+    """
+    mock_session.get = MagicMock(return_value=create_mock_response(200, {"code": 0}))
+
+    await aws_api._do_get("/api/device/list")
+
+    assert "ssl" not in mock_session.get.call_args.kwargs
+
+
+@pytest.mark.asyncio
+async def test_do_post_keeps_tls_verification(aws_api, mock_session):
+    mock_session.post = MagicMock(return_value=create_mock_response(200, {"code": 0}))
+
+    await aws_api._do_post("/api/device/command/", {"attrs": {}})
+
+    assert "ssl" not in mock_session.post.call_args.kwargs
+
+
+def test_no_request_disables_tls_verification():
+    """Guards the call sites a unit test can't easily drive.
+
+    authenticate() and bind_qr_code() carry credentials, and the v2 control
+    command encrypts its payload before posting, so exercising them here would
+    mean half a request pipeline. Scanning the module covers all of them, plus
+    any call site added later.
+    """
+    source = Path(aws_iot_api.__file__).read_text(encoding="utf-8")
+
+    assert "ssl=False" not in source

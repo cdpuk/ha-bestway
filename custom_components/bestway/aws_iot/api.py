@@ -144,9 +144,7 @@ class AwsIotApi(RawStateApi):
         _LOGGER.debug("All header keys: %s", list(headers.keys()))
 
         async with asyncio.timeout(TIMEOUT):
-            async with session.post(
-                url, headers=headers, json=payload, ssl=False
-            ) as resp:
+            async with session.post(url, headers=headers, json=payload) as resp:
                 data = await resp.json()
                 _LOGGER.debug("Auth response: %s", redact(data))
                 _LOGGER.debug("Response status: %s", resp.status)
@@ -200,7 +198,7 @@ class AwsIotApi(RawStateApi):
         url = f"{api_base}/api/enduser/grant_device"
 
         async with asyncio.timeout(TIMEOUT):
-            response = await session.post(url, headers=headers, json=payload, ssl=False)
+            response = await session.post(url, headers=headers, json=payload)
 
             if response.status in (400, 401, 4001, 4002):
                 raise AwsIotException("QR code invalid, expired, or already used")
@@ -249,7 +247,7 @@ class AwsIotApi(RawStateApi):
         _LOGGER.debug("GET %s", path)
 
         async with asyncio.timeout(TIMEOUT):
-            async with self._session.get(url, headers=headers, ssl=False) as response:
+            async with self._session.get(url, headers=headers) as response:
                 data = await response.json()
 
                 if response.status in (400, 401):
@@ -271,9 +269,7 @@ class AwsIotApi(RawStateApi):
         _LOGGER.debug("POST %s", path)
 
         async with asyncio.timeout(TIMEOUT):
-            async with self._session.post(
-                url, headers=headers, json=data, ssl=False
-            ) as response:
+            async with self._session.post(url, headers=headers, json=data) as response:
                 result = await response.json()
 
                 _LOGGER.debug(
@@ -518,7 +514,6 @@ class AwsIotApi(RawStateApi):
                 f"{self._api_base}/api/v2/device/command",
                 headers=headers,
                 json=body,
-                ssl=False,
             ) as response:
                 result = await response.json()
                 _LOGGER.debug(
