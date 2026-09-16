@@ -14,6 +14,7 @@ Also regression-tests the two bugs fixed when these setters were unified:
 
 from __future__ import annotations
 
+from time import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -26,6 +27,7 @@ from custom_components.bestway.model import (
     BubblesLevel,
     RawSnapshot,
 )
+from custom_components.bestway.raw_state import DEVICE_REDISCOVERY_INTERVAL_S
 
 _PRODUCT_NAME = {
     BestwayDeviceType.AIRJET_SPA: "Airjet",
@@ -384,3 +386,39 @@ async def test_set_power_raises_for_registered_but_unpolled_device(api):
     )
     with pytest.raises(BestwayException):
         await api.set_power("d", True)
+
+
+# ---------------------------------------------------------------------------
+# Device re-discovery throttle, shared with the V02 backends
+# ---------------------------------------------------------------------------
+
+
+async def test_refresh_bindings_is_throttled(api):
+    """The bindings endpoint is read once, and not again on every poll until
+    the cached list has aged out.
+    """
+    api._do_get = AsyncMock(
+        return_value={
+            "devices": [
+                {
+                    "protoc": 1,
+                    "did": "d",
+                    "product_name": "Airjet",
+                    "dev_alias": "Test",
+                    "mcu_soft_version": "1",
+                    "mcu_hard_version": "1",
+                    "wifi_soft_version": "1",
+                    "wifi_hard_version": "1",
+                    "is_online": True,
+                }
+            ]
+        }
+    )
+
+    await api.refresh_bindings()
+    await api.refresh_bindings()
+    api._do_get.assert_awaited_once()
+
+    api._bindings_refreshed_at = time() - DEVICE_REDISCOVERY_INTERVAL_S - 1
+    await api.refresh_bindings()
+    assert api._do_get.await_count == 2

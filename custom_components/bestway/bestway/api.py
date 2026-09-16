@@ -133,10 +133,20 @@ class BestwayApi(RawStateApi):
         )
 
     async def refresh_bindings(self) -> None:
-        """Refresh and store the list of devices available in the account."""
+        """Refresh and store the list of devices available in the account.
+
+        Throttled to DEVICE_REDISCOVERY_INTERVAL_S like the V02 backends, so
+        the bindings endpoint is not hit on every 30 s poll. See
+        RawStateApi._bindings_are_stale().
+        """
+        if not self._bindings_are_stale():
+            _LOGGER.debug("Using cached device list (%d devices)", len(self.devices))
+            return
+
         self.devices = {
             device.device_id: device for device in await self._get_devices()
         }
+        self._mark_bindings_refreshed()
 
     async def _get_devices(self) -> list[BestwayDevice]:
         """Get the list of devices available in the account."""

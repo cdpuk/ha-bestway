@@ -1,5 +1,6 @@
 """Tests for AWS IoT API client."""
 
+from time import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -9,6 +10,7 @@ from custom_components.bestway.aws_iot.api import (
     AwsIotAuthException,
 )
 from custom_components.bestway.model import BestwayDevice, BubblesLevel
+from custom_components.bestway.raw_state import DEVICE_REDISCOVERY_INTERVAL_S
 
 
 def create_mock_response(status: int, json_data: dict):
@@ -166,6 +168,35 @@ async def test_refresh_bindings_multiple_devices(aws_api, mock_session):
     assert "device2" in aws_api.devices
     assert aws_api.devices["device1"].alias == "Spa 1"
     assert aws_api.devices["device2"].alias == "Spa 2"
+
+
+@pytest.mark.asyncio
+async def test_refresh_bindings_rediscovered_when_stale(aws_api):
+    """The device list is re-discovered once it has aged out, so a device
+    added or renamed in the Bestway app shows up without an integration reload.
+    """
+    homes = {"code": 0, "data": {"list": [{"id": "home1", "name": "My Home"}]}}
+    rooms = {"code": 0, "data": {"list": [{"id": "room1", "name": "Garden"}]}}
+    devices = {
+        "code": 0,
+        "data": {
+            "list": [{"device_id": "device123", "device_alias": "Test Spa"}],
+        },
+    }
+
+    aws_api._do_get = AsyncMock(side_effect=[homes, rooms, devices])
+    await aws_api.refresh_bindings()
+    assert aws_api._do_get.await_count == 3
+
+    # Next poll: the list is still fresh, so nothing is fetched.
+    await aws_api.refresh_bindings()
+    assert aws_api._do_get.await_count == 3
+
+    # Once the interval has passed, the list is fetched again.
+    aws_api._bindings_refreshed_at = time() - DEVICE_REDISCOVERY_INTERVAL_S - 1
+    aws_api._do_get = AsyncMock(side_effect=[homes, rooms, devices])
+    await aws_api.refresh_bindings()
+    assert aws_api._do_get.await_count == 3
 
 
 @pytest.mark.asyncio

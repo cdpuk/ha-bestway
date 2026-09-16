@@ -77,6 +77,8 @@ On the read side, all three converge on `translation.py`: `status_from_attrs()` 
 
 The coordinator polls every 30 seconds by default. When a WebSocket connects successfully, polling drops to 5 minutes (`set_websocket_active()`). WebSocket updates call `handle_websocket_update()`, which delegates to the backend's `handle_partial_update()` (merges the partial delta into its raw state cache and translates it into a fresh `DeviceStatus`) and pushes the result via `async_set_updated_data()`.
 
+Every poll also calls `refresh_bindings()`. All three backends re-discover the device list at most once per `DEVICE_REDISCOVERY_INTERVAL_S` (15 minutes, in `raw_state.py`), via `RawStateApi._bindings_are_stale()`. The list therefore stays current without reloading the integration - a device added, removed or renamed in the Bestway app reaches `api.devices` within the interval - while entities and device names are still applied at platform setup, so a newly added device only gets entities on the next reload. An empty or failed discovery retries on the next poll, and no backend hits its device-list endpoint every 30 seconds.
+
 ### State cache pattern
 
 Each API class maintains `_raw_state: dict[str, RawSnapshot]` (raw/normalized wire attrs, not the typed status entities read). After sending a control command (e.g. `set_power`), the API immediately updates this cache with the new value and a fresh timestamp, then translates it (`status_from_attrs()` in `bestway/translation.py`) into the `DeviceStatus` entities read. On the next poll, if the API response timestamp is older than the cached one, the poll result is discarded. This works around the Gizwits API's latency in reflecting POSTed changes.

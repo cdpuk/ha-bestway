@@ -22,6 +22,12 @@ from typing import Any
 from .model import BestwayApiResults, BestwayDevice, BestwayDeviceType, RawSnapshot
 from .translation import status_from_attrs
 
+# refresh_bindings() runs on every coordinator poll, but the device list only
+# changes when a device is added, removed or renamed in the Bestway app.
+# Re-discovering it at most this often picks such a change up without hitting
+# the device-list endpoints every poll.
+DEVICE_REDISCOVERY_INTERVAL_S = 900
+
 
 class RawStateApi:
     """Base class providing the raw-state cache shared by every backend.
@@ -31,6 +37,10 @@ class RawStateApi:
     `handle_partial_update()`. `handle_partial_update` is the only mutation
     the coordinator performs through the `BackendApi` protocol rather than
     reaching into backend internals.
+
+    `devices` is populated by each backend's `refresh_bindings()`, which all
+    three throttle through `_bindings_are_stale()` so the list ages out the
+    same way on every backend.
     """
 
     def __init__(self) -> None:
@@ -38,6 +48,21 @@ class RawStateApi:
         # Populated by refresh_bindings(); entities read it via coordinator.api.devices.
         self.devices: dict[str, BestwayDevice] = {}
         self._raw_state: dict[str, RawSnapshot] = {}
+        self._bindings_refreshed_at: float | None = None
+
+    def _bindings_are_stale(self) -> bool:
+        """True when the cached device list is due for a re-discovery.
+
+        An empty list always counts as stale, so the first poll discovers, and
+        a discovery that failed or came back empty is retried on the next one.
+        """
+        if not self.devices or self._bindings_refreshed_at is None:
+            return True
+        return (time() - self._bindings_refreshed_at) >= DEVICE_REDISCOVERY_INTERVAL_S
+
+    def _mark_bindings_refreshed(self) -> None:
+        """Stamp the device list as freshly discovered."""
+        self._bindings_refreshed_at = time()
 
     def _results(self) -> BestwayApiResults:
         """Translate the raw state cache into typed results.

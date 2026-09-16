@@ -10,12 +10,14 @@ documented in https://github.com/cdpuk/ha-bestway/issues/135:
 """
 
 import json
+from time import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
 from custom_components.bestway.const import Backend
 from custom_components.bestway.model import BestwayDevice, BubblesLevel, HeaterState
+from custom_components.bestway.raw_state import DEVICE_REDISCOVERY_INTERVAL_S
 from custom_components.bestway.smartspa.api import (
     SMARTSPA_APP_ID,
     SmartSpaApi,
@@ -244,6 +246,25 @@ async def test_refresh_bindings_cached_after_success(api):
     await api.refresh_bindings()
     await api.refresh_bindings()
     api._request.assert_awaited_once()
+
+
+async def test_refresh_bindings_rediscovered_when_stale(api):
+    """A device added or renamed upstream is picked up once the cache ages
+    out, so no integration reload is needed.
+    """
+    api._routing.clear()
+    api._request = AsyncMock(
+        return_value={
+            "code": "200",
+            "data": [{"productKey": "F12D9Q", "mac": "6879c4d585ab"}],
+        }
+    )
+
+    await api.refresh_bindings()
+    api._bindings_refreshed_at = time() - DEVICE_REDISCOVERY_INTERVAL_S - 1
+    await api.refresh_bindings()
+
+    assert api._request.await_count == 2
 
 
 # --------------------------------------------------------------------- state

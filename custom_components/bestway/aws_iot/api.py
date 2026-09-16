@@ -299,11 +299,11 @@ class AwsIotApi(RawStateApi):
         2. For each home: GET /api/enduser/home/rooms?home_id=X -> rooms
         3. For each room: GET /api/enduser/home/room/devices?room_id=Y -> devices
 
-        Cached after the first successful run - devices are only
-        re-discovered if the device list is currently empty.
+        Re-discovery is throttled to DEVICE_REDISCOVERY_INTERVAL_S, so a device
+        added, removed or renamed in the Bestway app is picked up without an
+        integration reload.
         """
-        # Skip discovery if we already have devices (cache)
-        if self.devices:
+        if not self._bindings_are_stale():
             _LOGGER.debug("Using cached device list (%d devices)", len(self.devices))
             return
 
@@ -401,6 +401,8 @@ class AwsIotApi(RawStateApi):
             )
 
             self.devices[device_id] = device
+
+        self._mark_bindings_refreshed()
 
     async def fetch_data(self) -> BestwayApiResults:
         """Fetch latest state for all devices.

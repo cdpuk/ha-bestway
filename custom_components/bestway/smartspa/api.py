@@ -248,8 +248,14 @@ class SmartSpaApi(RawStateApi):
         return "AIRJET"
 
     async def refresh_bindings(self) -> None:
-        """Discover devices on the account (cached after first success)."""
-        if self.devices:
+        """Discover devices on the account.
+
+        Re-discovery is throttled to DEVICE_REDISCOVERY_INTERVAL_S, so a device
+        added, removed or renamed in the Bestway app is picked up without an
+        integration reload.
+        """
+        if not self._bindings_are_stale():
+            _LOGGER.debug("Using cached device list (%d devices)", len(self.devices))
             return
 
         result = await self._request("GET", "app/smart_home/users/devices")
@@ -333,6 +339,8 @@ class SmartSpaApi(RawStateApi):
                     str(product_key), self._series_from_name(product_name)
                 ),
             )
+
+        self._mark_bindings_refreshed()
 
     # ------------------------------------------------------------------ state
 
