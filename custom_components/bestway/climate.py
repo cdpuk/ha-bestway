@@ -165,7 +165,9 @@ class SpaThermostat(BestwayEntity, ClimateEntity):
         want_heat = hvac_mode == HVACMode.HEAT
         self._optimistic_heat.set(want_heat)
         self.async_write_ha_state()
-        await self.coordinator.api.set_heat(self.device_id, want_heat)
+        await self.async_control(
+            self.coordinator.api.set_heat(self.device_id, want_heat)
+        )
         await self.coordinator.async_request_refresh()
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
@@ -177,11 +179,15 @@ class SpaThermostat(BestwayEntity, ClimateEntity):
         if hvac_mode := kwargs.get(ATTR_HVAC_MODE):
             want_heat = hvac_mode == HVACMode.HEAT
             self._optimistic_heat.set(want_heat)
-            await self.coordinator.api.set_heat(self.device_id, want_heat)
+            await self.async_control(
+                self.coordinator.api.set_heat(self.device_id, want_heat)
+            )
 
         self._optimistic_tset.set(int(target_temperature))
         self.async_write_ha_state()
-        await self.coordinator.api.set_target_temperature(
-            self.device_id, target_temperature
+        await self.async_control(
+            self.coordinator.api.set_target_temperature(
+                self.device_id, target_temperature
+            )
         )
         await self.coordinator.async_request_refresh()

@@ -46,6 +46,7 @@ from typing import Any
 
 from aiohttp import ClientSession
 
+from ..backend import BestwayApiException
 from ..const import Backend
 from ..model import BestwayApiResults, BestwayDevice, BubblesLevel, RawSnapshot
 from ..raw_state import RawStateApi
@@ -67,7 +68,7 @@ SMARTSPA_ENDPOINTS = {
 TIMEOUT = 20  # the gateway can be slow; 10s caused spurious failures upstream
 
 
-class SmartSpaException(Exception):
+class SmartSpaException(BestwayApiException):
     """Base exception for SmartSpa API operations."""
 
 
@@ -472,35 +473,54 @@ class SmartSpaApi(RawStateApi):
         )
         return True
 
+    async def _apply_control(
+        self, device_id: str, state_updates: dict[str, Any]
+    ) -> None:
+        """Send a control write, raising if the gateway refused it.
+
+        set_device_state() reports its outcome as a bool, but the semantic
+        setters are where the BackendApi contract applies: a command that
+        didn't land has to fail the call rather than leave the entity on an
+        optimistic value. Note this can only catch what the gateway refuses
+        outright - it answers 200/data:true for writes it silently discards,
+        so an accepted envelope is still no proof the device changed.
+        """
+        if await self.set_device_state(device_id, state_updates):
+            return
+
+        device = self.devices.get(device_id)
+        raise SmartSpaException(
+            f"Device '{device.alias if device else device_id}' rejected the"
+            f" command: {state_updates}"
+        )
+
     # ------------------------------------------------------- semantic setters
     # Single implementation per feature; _to_write_value collapses every
     # state field to 1/0 regardless of what's passed in here.
 
     async def set_power(self, device_id: str, power: bool) -> None:
         """Set power state."""
-        await self.set_device_state(device_id, {"power_state": power})
+        await self._apply_control(device_id, {"power_state": power})
 
     async def set_filter(self, device_id: str, filtering: bool) -> None:
         """Set filter state."""
-        await self.set_device_state(device_id, {"filter_state": filtering})
+        await self._apply_control(device_id, {"filter_state": filtering})
 
     async def set_heat(self, device_id: str, heat: bool) -> None:
         """Set heater state."""
-        await self.set_device_state(device_id, {"heater_state": heat})
+        await self._apply_control(device_id, {"heater_state": heat})
 
     async def set_locked(self, device_id: str, locked: bool) -> None:
         """Set panel lock."""
-        await self.set_device_state(device_id, {"locked": locked})
+        await self._apply_control(device_id, {"locked": locked})
 
     async def set_jets(self, device_id: str, jets: bool) -> None:
         """Set hydrojets."""
-        await self.set_device_state(device_id, {"hydrojet_state": jets})
+        await self._apply_control(device_id, {"hydrojet_state": jets})
 
     async def set_target_temperature(self, device_id: str, temperature: int) -> None:
         """Set target temperature (device-native unit)."""
-        await self.set_device_state(
-            device_id, {"temperature_setting": int(temperature)}
-        )
+        await self._apply_control(device_id, {"temperature_setting": int(temperature)})
 
     async def set_bubbles(self, device_id: str, bubbles: BubblesLevel) -> None:
         """Set bubbles from a BubblesLevel.
@@ -508,10 +528,10 @@ class SmartSpaApi(RawStateApi):
         Bubbles are binary on this gateway (three-way is lost): any non-OFF
         level becomes on.
         """
-        await self.set_device_state(
+        await self._apply_control(
             device_id, {"wave_state": bubbles != BubblesLevel.OFF}
         )
 
     async def set_pool_timer(self, device_id: str, hours: int) -> None:
         """Set pool filter timer (untested on this backend)."""
-        await self.set_device_state(device_id, {"time": int(hours)})
+        await self._apply_control(device_id, {"time": int(hours)})

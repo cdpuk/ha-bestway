@@ -433,6 +433,50 @@ async def test_set_power_semantic(api):
     assert sent == {"power_state": 1}
 
 
+async def test_refused_write_raises(api):
+    """A write the gateway refused has to fail the call.
+
+    set_device_state() reports that as a bool and every setter used to throw
+    it away, so HA reported success while the device never changed (#157).
+    """
+    api.set_device_state = AsyncMock(return_value=False)
+
+    with pytest.raises(SmartSpaException, match="rejected the command"):
+        await api.set_power("6879c4d585ab", True)
+
+
+@pytest.mark.parametrize(
+    ("setter", "value"),
+    [
+        ("set_power", True),
+        ("set_filter", True),
+        ("set_heat", True),
+        ("set_locked", True),
+        ("set_jets", True),
+        ("set_target_temperature", 39),
+        ("set_bubbles", BubblesLevel.MAX),
+        ("set_pool_timer", 6),
+    ],
+)
+async def test_refused_write_raises_for_every_setter(api, setter, value):
+    """No setter may swallow a refusal - the contract is per setter, not per
+    backend, and the ones added later are the easy ones to miss.
+    """
+    api.set_device_state = AsyncMock(return_value=False)
+
+    with pytest.raises(SmartSpaException, match="rejected the command"):
+        await getattr(api, setter)("6879c4d585ab", value)
+
+
+async def test_refusal_message_names_the_device(api):
+    """The message ends up in the UI now, so it names the spa, not the MAC."""
+    api.devices["6879c4d585ab"] = _device("6879c4d585ab", "F12D9Q", "Hydrojet")
+    api.set_device_state = AsyncMock(return_value=False)
+
+    with pytest.raises(SmartSpaException, match="Test Spa"):
+        await api.set_power("6879c4d585ab", True)
+
+
 async def test_set_filter_semantic(api):
     api._request = AsyncMock(return_value={"code": "200", "data": True})
     await api.set_filter("6879c4d585ab", False)

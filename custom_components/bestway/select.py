@@ -90,5 +90,7 @@ class ThreeWaySpaBubblesSelect(BestwayEntity, SelectEntity):
         bubbles_level = _BUBBLES_LEVELS[option]
         self._optimistic.set(bubbles_level)
         self.async_write_ha_state()
-        await self.coordinator.api.set_bubbles(self.device_id, bubbles_level)
+        await self.async_control(
+            self.coordinator.api.set_bubbles(self.device_id, bubbles_level)
+        )
         await self.coordinator.async_request_refresh()

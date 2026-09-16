@@ -7,6 +7,7 @@ import pytest
 from custom_components.bestway.aws_iot.api import (
     AwsIotApi,
     AwsIotAuthException,
+    AwsIotException,
 )
 from custom_components.bestway.model import BestwayDevice, BubblesLevel
 
@@ -329,3 +330,39 @@ async def test_set_bubbles(aws_api, level: BubblesLevel, wave_state: int):
 async def test_set_pool_timer_not_supported(aws_api):
     with pytest.raises(NotImplementedError):
         await aws_api.set_pool_timer("device1", 6)
+
+
+@pytest.mark.asyncio
+async def test_refused_write_raises(aws_api):
+    """A write the gateway refused has to fail the call.
+
+    set_device_state() reports that as a bool and every setter used to throw
+    it away, so HA reported success while the device never changed (#157).
+    """
+    aws_api.set_device_state = AsyncMock(return_value=False)
+
+    with pytest.raises(AwsIotException, match="rejected the command"):
+        await aws_api.set_power("device1", True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("setter", "value"),
+    [
+        ("set_power", True),
+        ("set_filter", True),
+        ("set_heat", True),
+        ("set_locked", True),
+        ("set_jets", True),
+        ("set_target_temperature", 38),
+        ("set_bubbles", BubblesLevel.MAX),
+    ],
+)
+async def test_refused_write_raises_for_every_setter(aws_api, setter, value):
+    """No setter may swallow a refusal - the contract is per setter, not per
+    backend, and the ones added later are the easy ones to miss.
+    """
+    aws_api.set_device_state = AsyncMock(return_value=False)
+
+    with pytest.raises(AwsIotException, match="rejected the command"):
+        await getattr(aws_api, setter)("device1", value)

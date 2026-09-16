@@ -12,7 +12,9 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from homeassistant.components.climate.const import ATTR_HVAC_MODE, HVACAction, HVACMode
 from homeassistant.const import ATTR_TEMPERATURE
+from homeassistant.exceptions import HomeAssistantError
 
+from custom_components.bestway.backend import BestwayApiException
 from custom_components.bestway.climate import SpaThermostat
 from custom_components.bestway.model import (
     BestwayApiResults,
@@ -21,7 +23,10 @@ from custom_components.bestway.model import (
     DeviceStatus,
 )
 from custom_components.bestway.number import _POOL_FILTER_TIME, PoolFilterTimeNumber
-from custom_components.bestway.select import ThreeWaySpaBubblesSelect
+from custom_components.bestway.select import (
+    _BUBBLES_OPTIONS,
+    ThreeWaySpaBubblesSelect,
+)
 from custom_components.bestway.switch import (
     _SPA_BUBBLES_SWITCH,
     _SPA_FILTER_SWITCH,
@@ -265,3 +270,76 @@ async def test_climate_optimistic_heat_renders_immediately_for_every_device_type
 
     assert thermostat.hvac_mode == HVACMode.HEAT
     assert thermostat.hvac_action == HVACAction.HEATING
+
+
+# ---------------------------------------------------------------------------
+# Refused writes
+#
+# Backends raise their own exception type when the cloud refuses a write;
+# the entity layer is what turns that into a failed service call. Without
+# that translation HA reports the call as successful, the entity shows the
+# optimistic value for a few seconds and then silently reverts (#157).
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("description", "setter_name", "action"),
+    [
+        (_SPA_POWER_SWITCH, "set_power", "async_turn_on"),
+        (_SPA_FILTER_SWITCH, "set_filter", "async_turn_off"),
+    ],
+)
+async def test_refused_switch_write_fails_the_service_call(
+    description, setter_name, action
+):
+    coordinator = _make_coordinator(_make_device(), _make_status())
+    getattr(coordinator.api, setter_name).side_effect = BestwayApiException(
+        "Device 'Test Spa' rejected the command"
+    )
+    config_entry = MagicMock()
+    switch = _without_ha_state_writes(
+        BestwaySwitch(coordinator, config_entry, "test_device", description)
+    )
+
+    with pytest.raises(HomeAssistantError, match="rejected the command"):
+        await getattr(switch, action)()
+
+
+async def test_refused_select_write_fails_the_service_call():
+    coordinator = _make_coordinator(_make_device(), _make_status())
+    coordinator.api.set_bubbles.side_effect = BestwayApiException(
+        "Device 'Test Spa' rejected the command"
+    )
+    config_entry = MagicMock()
+    select = _without_ha_state_writes(
+        ThreeWaySpaBubblesSelect(coordinator, config_entry, "test_device")
+    )
+
+    with pytest.raises(HomeAssistantError, match="rejected the command"):
+        # Through the module's own mapping: the option strings are translated
+        # slugs, so a literal value here would tie the test to one wording.
+        await select.async_select_option(_BUBBLES_OPTIONS[BubblesLevel.MAX])
+
+
+async def test_refused_number_write_fails_the_service_call():
+    coordinator = _make_coordinator(_make_device(), _make_status())
+    coordinator.api.set_pool_timer.side_effect = BestwayApiException("nope")
+    config_entry = MagicMock()
+    number = PoolFilterTimeNumber(
+        coordinator, config_entry, "test_device", _POOL_FILTER_TIME
+    )
+
+    with pytest.raises(HomeAssistantError):
+        await number.async_set_native_value(6.0)
+
+
+async def test_refused_climate_write_fails_the_service_call():
+    coordinator = _make_coordinator(_make_device(), _make_status())
+    coordinator.api.set_heat.side_effect = BestwayApiException("nope")
+    config_entry = MagicMock()
+    thermostat = _without_ha_state_writes(
+        SpaThermostat(coordinator, config_entry, "test_device")
+    )
+
+    with pytest.raises(HomeAssistantError):
+        await thermostat.async_set_hvac_mode(HVACMode.HEAT)

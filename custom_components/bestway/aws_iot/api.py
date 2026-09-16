@@ -19,6 +19,7 @@ from typing import Any
 
 from aiohttp import ClientSession
 
+from ..backend import BestwayApiException
 from ..const import Backend
 from ..model import BestwayApiResults, BestwayDevice, BubblesLevel, RawSnapshot
 from ..raw_state import RawStateApi
@@ -43,7 +44,7 @@ API_ENDPOINTS = {
 }
 
 
-class AwsIotException(Exception):
+class AwsIotException(BestwayApiException):
     """Base exception for AWS IoT API operations."""
 
 
@@ -565,32 +566,51 @@ class AwsIotApi(RawStateApi):
             _LOGGER.error("Failed to send command to device %s: %s", device_id, err)
             return False
 
+    async def _apply_control(
+        self, device_id: str, state_updates: dict[str, Any]
+    ) -> None:
+        """Write a shadow update, raising if the gateway refused it.
+
+        set_device_state() reports its outcome as a bool because the v2 -> v1
+        fallback inside it needs one, but the semantic setters are where the
+        BackendApi contract applies: a command that didn't land has to fail
+        the call rather than leave the entity on an optimistic value.
+        """
+        if await self.set_device_state(device_id, state_updates):
+            return
+
+        device = self.devices.get(device_id)
+        raise AwsIotException(
+            f"Device '{device.alias if device else device_id}' rejected the"
+            f" command: {state_updates}"
+        )
+
     # AWS IoT has a single wire vocabulary, so each setter below is one
     # implementation with no device_type dispatch (contrast with Gizwits,
     # which has several).
     async def set_power(self, device_id: str, power: bool) -> None:
         """Set power state."""
-        await self.set_device_state(device_id, {"power_state": 1 if power else 0})
+        await self._apply_control(device_id, {"power_state": 1 if power else 0})
 
     async def set_filter(self, device_id: str, filtering: bool) -> None:
         """Set filter state."""
-        await self.set_device_state(device_id, {"filter_state": 1 if filtering else 0})
+        await self._apply_control(device_id, {"filter_state": 1 if filtering else 0})
 
     async def set_heat(self, device_id: str, heat: bool) -> None:
         """Set heater state."""
-        await self.set_device_state(device_id, {"heater_state": 1 if heat else 0})
+        await self._apply_control(device_id, {"heater_state": 1 if heat else 0})
 
     async def set_locked(self, device_id: str, locked: bool) -> None:
         """Set locked state."""
-        await self.set_device_state(device_id, {"locked": 1 if locked else 0})
+        await self._apply_control(device_id, {"locked": 1 if locked else 0})
 
     async def set_jets(self, device_id: str, jets: bool) -> None:
         """Set jets state."""
-        await self.set_device_state(device_id, {"hydrojet_state": 1 if jets else 0})
+        await self._apply_control(device_id, {"hydrojet_state": 1 if jets else 0})
 
     async def set_target_temperature(self, device_id: str, temperature: int) -> None:
         """Set target temperature (device-native unit)."""
-        await self.set_device_state(device_id, {"temperature_setting": temperature})
+        await self._apply_control(device_id, {"temperature_setting": temperature})
 
     async def set_bubbles(self, device_id: str, bubbles: BubblesLevel) -> None:
         """Set bubbles level.
@@ -604,7 +624,7 @@ class AwsIotApi(RawStateApi):
             BubblesLevel.MAX: 100,
         }
         target_value = value_map[bubbles]
-        await self.set_device_state(device_id, {"wave_state": target_value})
+        await self._apply_control(device_id, {"wave_state": target_value})
         _LOGGER.debug("Set bubbles to %s (wave_state=%d)", bubbles.name, target_value)
 
     async def set_pool_timer(self, device_id: str, hours: int) -> None:

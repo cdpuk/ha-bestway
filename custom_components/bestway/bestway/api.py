@@ -8,6 +8,7 @@ from typing import Any
 
 from aiohttp import ClientResponse, ClientSession
 
+from ..backend import BestwayApiException
 from ..const import GIZWITS_APP_ID
 from ..model import (
     BestwayApiResults,
@@ -29,7 +30,7 @@ _HEADERS = {
 _TIMEOUT = 10
 
 
-class BestwayException(Exception):
+class BestwayException(BestwayApiException):
     """An exception while using the API."""
 
 

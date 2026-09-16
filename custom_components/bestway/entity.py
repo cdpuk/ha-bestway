@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Awaitable
 from time import monotonic
 
 from homeassistant.config_entries import ConfigEntry
+from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers.entity import DeviceInfo
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
+from .backend import BestwayApiException
 from .const import DOMAIN
 from .coordinator import BestwayUpdateCoordinator
 from .model import BestwayDevice, DeviceStatus
@@ -125,3 +128,18 @@ class BestwayEntity(CoordinatorEntity[BestwayUpdateCoordinator]):
         See: https://github.com/cdpuk/ha-bestway/issues/100
         """
         return self.coordinator.last_update_success and self.bestway_device is not None
+
+    async def async_control(self, command: Awaitable[None]) -> None:
+        """Run a control command, surfacing a refused write to the user.
+
+        Backends report a write the cloud wouldn't take by raising their own
+        exception type (they carry no Home Assistant import, so the entity
+        layer can't name any single one - see backend.BestwayApiException).
+        Translating it here is what makes the failure a failed service call,
+        with the backend's message in the UI, instead of a call HA reports as
+        successful and an optimistic state that reverts seconds later.
+        """
+        try:
+            await command
+        except BestwayApiException as err:
+            raise HomeAssistantError(str(err)) from err

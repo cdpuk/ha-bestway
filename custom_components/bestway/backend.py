@@ -7,6 +7,16 @@ from typing import Any, Protocol, runtime_checkable
 from .model import BestwayApiResults, BestwayDevice, BubblesLevel
 
 
+class BestwayApiException(Exception):
+    """Base for every backend's own exception type.
+
+    Backends stay free of Home Assistant imports, so the entity layer cannot
+    name any single backend's exception. This base is what it catches: a
+    control write the cloud refused reaches the user as a failed service call
+    rather than as an optimistic state that quietly reverts.
+    """
+
+
 @runtime_checkable
 class BackendApi(Protocol):
     """The surface BestwayUpdateCoordinator and the entity layer rely on.
@@ -36,6 +46,9 @@ class BackendApi(Protocol):
     # Each backend picks its own wire encoding internally based on the
     # target device's type. Raise NotImplementedError for a feature the
     # device/backend combination doesn't support - never silently no-op.
+    # Raise BestwayApiException (or a backend-specific subclass) when the
+    # cloud refuses a write, so a command that didn't land fails the service
+    # call instead of leaving the entity on an optimistic value that reverts.
     async def set_power(self, device_id: str, power: bool) -> None: ...
     async def set_filter(self, device_id: str, filtering: bool) -> None: ...
     async def set_heat(self, device_id: str, heat: bool) -> None: ...

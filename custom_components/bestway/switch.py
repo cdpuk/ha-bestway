@@ -179,12 +179,16 @@ class BestwaySwitch(BestwayEntity, SwitchEntity):
         """Turn the switch on."""
         self._optimistic.set(True)
         self.async_write_ha_state()
-        await self.entity_description.turn_on_fn(self.coordinator.api, self.device_id)
+        await self.async_control(
+            self.entity_description.turn_on_fn(self.coordinator.api, self.device_id)
+        )
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self, **kwargs: Any) -> None:
         """Turn the switch off."""
         self._optimistic.set(False)
         self.async_write_ha_state()
-        await self.entity_description.turn_off_fn(self.coordinator.api, self.device_id)
+        await self.async_control(
+            self.entity_description.turn_off_fn(self.coordinator.api, self.device_id)
+        )
         await self.coordinator.async_request_refresh()
