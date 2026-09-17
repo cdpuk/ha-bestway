@@ -70,7 +70,9 @@ def _as_int(value: Any) -> int | None:
         return None
     try:
         return int(value)
-    except TypeError, ValueError:
+    except TypeError:
+        return None
+    except ValueError:
         return None
 
 
@@ -97,7 +99,28 @@ def v01_attrs_from_shadow(shadow: dict[str, Any]) -> dict[str, Any]:
     error_code = shadow.get("error_code")
     power_state = shadow.get("power_state")
 
-    normalized = {}
+    # Some SmartSpa Connect 2026 devices already emit Gizwits V01 field
+    # names (Tnow/Tset/heat/power) instead of AWS IoT shadow names
+    # (water_temperature/temperature_setting/heater_state/power_state).
+    # Copy those through first so they survive when the V02 keys are absent.
+    _V01_KEYS = (
+        "power",
+        "heat",
+        "wave",
+        "filter",
+        "jet",
+        "locked",
+        "Tnow",
+        "Tset",
+        "Tunit",
+        "warning",
+        "error",
+        "is_online",
+    )
+    normalized: dict[str, Any] = {}
+    for key in _V01_KEYS:
+        if key in shadow:
+            normalized[key] = shadow[key]
 
     # Version fields (diagnostic)
     if "wifivertion" in shadow:
