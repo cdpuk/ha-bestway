@@ -1,6 +1,5 @@
 """Data update coordinator for the Bestway API."""
 
-import asyncio
 from datetime import timedelta
 from logging import getLogger
 from time import time
@@ -9,8 +8,9 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
-from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
+from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
+from .aws_iot.api import AwsIotAuthException, AwsIotException
 from .backend import BackendApi
 from .features import features_for
 from .model import BestwayApiResults, BestwayDeviceType
@@ -50,20 +50,34 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
         This is the place to pre-process the data to lookup tables
         so entities can quickly look up their data.
         """
-        # 30s (was 10s): the SmartSpa backend may transparently re-login and
-        # retry inside a poll cycle, and 10s was already reported as too tight
-        # for slow paths to Bestway's cloud (upstream PR #137).
+        # No aggregate timeout: every backend already bounds each individual
+        # HTTP call (`asyncio.timeout(TIMEOUT)` in all three API clients), so
+        # nothing here can hang indefinitely. A cycle-wide cap only serves to
+        # guillotine the recovery paths - AWS IoT re-authenticating and
+        # re-polling, SmartSpa re-logging-in and retrying - which at a 20s
+        # per-call budget legitimately exceed any cap short enough to be
+        # worth having.
         try:
-            async with asyncio.timeout(30):
-                await self.api.refresh_bindings()
-                self._log_device_inventory()
-                return await self.api.fetch_data()
+            await self.api.refresh_bindings()
+            self._log_device_inventory()
+            return await self.api.fetch_data()
         except SmartSpaAuthException as err:
             # Re-login already failed inside the API; the stored credentials no
             # longer work. A re-auth config flow is out of scope for now, but HA
             # should at least surface this as an auth problem rather than a
             # generic update failure.
             raise ConfigEntryAuthFailed(str(err)) from err
+        except AwsIotAuthException as err:
+            # The token was rejected and refreshing it in place failed too.
+            # Surfacing an auth problem starts the reauth flow, which derives
+            # a new token from the stored visitor ID without asking the user.
+            raise ConfigEntryAuthFailed(str(err)) from err
+        except AwsIotException as err:
+            # Covers an unreachable cloud and the "not one device refreshed"
+            # case. UpdateFailed marks entities unavailable, which is the
+            # honest answer; the alternative is serving cached state that is
+            # known to be stale.
+            raise UpdateFailed(str(err)) from err
 
     def _log_device_inventory(self) -> None:
         """Log each discovered device and the entity feature set it resolves to.

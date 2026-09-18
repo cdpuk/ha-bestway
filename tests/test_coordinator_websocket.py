@@ -4,12 +4,18 @@ import asyncio
 import logging
 from datetime import timedelta
 from time import time
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from homeassistant.core import HomeAssistant
+from homeassistant.exceptions import ConfigEntryAuthFailed
+from homeassistant.helpers.update_coordinator import UpdateFailed
 from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.bestway.aws_iot.api import (
+    AwsIotAuthException,
+    AwsIotConnectionError,
+)
 from custom_components.bestway.bestway.api import BestwayApi
 from custom_components.bestway.const import (
     CONF_API_ROOT,
@@ -276,3 +282,39 @@ async def test_device_inventory_logged_once_per_change(
         coordinator._log_device_inventory()
     assert "device456" in caplog.text
     assert BestwayDeviceType.HYDROJET_PRO_SPA.name in caplog.text
+
+
+@pytest.mark.asyncio
+async def test_coordinator_maps_aws_iot_auth_failure_to_reauth(hass: HomeAssistant):
+    """A token the API could not refresh has to reach Home Assistant as an
+    auth problem, so the reauth flow runs instead of a silent retry loop.
+    """
+    config_entry = MockConfigEntry(
+        domain=DOMAIN, data={CONF_API_ROOT: CONF_API_ROOT_EU}, entry_id="test"
+    )
+    api = MagicMock()
+    api.devices = {}
+    api.refresh_bindings = AsyncMock()
+    api.fetch_data = AsyncMock(side_effect=AwsIotAuthException("rejected"))
+    coordinator = BestwayUpdateCoordinator(hass, config_entry, api)
+
+    with pytest.raises(ConfigEntryAuthFailed):
+        await coordinator._async_update_data()
+
+
+@pytest.mark.asyncio
+async def test_coordinator_maps_aws_iot_failure_to_update_failed(hass: HomeAssistant):
+    """A poll that refreshed nothing must mark entities unavailable rather
+    than let the last known state keep being served as current.
+    """
+    config_entry = MockConfigEntry(
+        domain=DOMAIN, data={CONF_API_ROOT: CONF_API_ROOT_EU}, entry_id="test"
+    )
+    api = MagicMock()
+    api.devices = {}
+    api.refresh_bindings = AsyncMock()
+    api.fetch_data = AsyncMock(side_effect=AwsIotConnectionError("unreachable"))
+    coordinator = BestwayUpdateCoordinator(hass, config_entry, api)
+
+    with pytest.raises(UpdateFailed):
+        await coordinator._async_update_data()

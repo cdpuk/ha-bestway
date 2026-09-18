@@ -433,3 +433,26 @@ async def test_open_timeout_passed_to_connect(aws_websocket):
 
     call_kwargs = mock_connect.call_args.kwargs
     assert call_kwargs.get("open_timeout") is not None
+
+
+@pytest.mark.asyncio
+async def test_update_token_is_used_by_the_next_connection(aws_websocket):
+    """A token refreshed at runtime must reach the next connection attempt.
+
+    Without this the socket keeps reconnecting with the token the cloud has
+    already rejected, and never recovers.
+    """
+    aws_websocket.update_token("fresh_token")
+
+    with (
+        patch("websockets.connect") as mock_connect,
+        patch("homeassistant.util.ssl.get_default_context"),
+        patch.object(aws_websocket, "_listen_loop", return_value=None),
+        patch.object(aws_websocket, "_heartbeat_loop", return_value=None),
+    ):
+        mock_connect.return_value = AsyncMock()
+
+        await aws_websocket.connect()
+
+    call_kwargs = mock_connect.call_args.kwargs
+    assert call_kwargs["additional_headers"]["Authorization"] == "fresh_token"

@@ -39,6 +39,10 @@ class BaseWebSocketClient:
     `_cancel_and_close()`, `_next_reconnect_delay()`.
     """
 
+    # Assigned by each subclass's __init__: the bearer token presented when
+    # the connection is opened.
+    _token: str
+
     def __init__(
         self,
         disconnect_callback: Callable[[], None] | None = None,
@@ -56,6 +60,16 @@ class BaseWebSocketClient:
         # Ensures disconnect_callback fires once per disconnected period,
         # rather than on every retry while backing off.
         self._notified_disconnect = False
+
+    def update_token(self, token: str) -> None:
+        """Replace the bearer token used for the next connection attempt.
+
+        Both wire protocols present the token at connect time only, so a
+        token refreshed while the integration is running has to be handed to
+        the client before it reconnects - otherwise it would keep retrying
+        with the token that was just rejected.
+        """
+        self._token = token
 
     def _next_reconnect_delay(self) -> int:
         """Backoff delay for the current reconnect attempt.

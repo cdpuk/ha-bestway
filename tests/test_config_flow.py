@@ -7,15 +7,25 @@ from unittest.mock import patch
 import pytest
 from homeassistant import config_entries
 from homeassistant.data_entry_flow import FlowResultType
+from pytest_homeassistant_custom_component.common import MockConfigEntry
 
+from custom_components.bestway.aws_iot.api import (
+    AwsIotAuthException,
+    AwsIotConnectionError,
+)
 from custom_components.bestway.bestway.model import BestwayUserToken
 from custom_components.bestway.const import (
+    CONF_API_BASE,
     CONF_API_ROOT,
     CONF_API_ROOT_EU,
+    CONF_BACKEND,
     CONF_PASSWORD,
+    CONF_TOKEN,
     CONF_USER_TOKEN,
     CONF_USERNAME,
+    CONF_VISITOR_ID,
     DOMAIN,
+    Backend,
 )
 
 # Mock user input to the config flow
@@ -243,3 +253,101 @@ async def test_backend_selection_shows_both_options(hass):
     # Schema should have backend field with options
     schema_keys = list(result["data_schema"].schema.keys())
     assert any("backend" in str(key) for key in schema_keys)
+
+
+def _aws_iot_entry() -> MockConfigEntry:
+    """Create a V02 entry with a token the cloud has since rejected."""
+    return MockConfigEntry(
+        version=2,
+        domain=DOMAIN,
+        title="Bestway Spa",
+        data={
+            CONF_BACKEND: Backend.AWS_IOT,
+            CONF_VISITOR_ID: "test_visitor",
+            CONF_TOKEN: "old_token",
+            CONF_API_BASE: "https://example.test",
+        },
+        source=config_entries.SOURCE_USER,
+    )
+
+
+async def _start_reauth(hass, entry):
+    """Start the reauth flow for an entry and return the result."""
+    entry.add_to_hass(hass)
+    return await hass.config_entries.flow.async_init(
+        DOMAIN,
+        context={
+            "source": config_entries.SOURCE_REAUTH,
+            "entry_id": entry.entry_id,
+        },
+        data=dict(entry.data),
+    )
+
+
+async def test_aws_iot_reauth_refreshes_token_without_user_input(hass):
+    """V02 reauth derives a new token from the stored visitor ID.
+
+    There is no password to re-enter, so the flow must complete on its own
+    rather than showing a form the user cannot fill in.
+    """
+    entry = _aws_iot_entry()
+
+    with patch(
+        "custom_components.bestway.config_flow.AwsIotApi.authenticate",
+        return_value="new_token",
+    ) as authenticate:
+        result = await _start_reauth(hass, entry)
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reauth_successful"
+    assert entry.data[CONF_TOKEN] == "new_token"
+    authenticate.assert_awaited_once()
+
+
+async def test_aws_iot_reauth_reports_unreachable_cloud_separately(hass):
+    """An unreachable cloud is not a credential problem."""
+    entry = _aws_iot_entry()
+
+    with patch(
+        "custom_components.bestway.config_flow.AwsIotApi.authenticate",
+        side_effect=AwsIotConnectionError("unreachable"),
+    ):
+        result = await _start_reauth(hass, entry)
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "cannot_connect"
+    assert entry.data[CONF_TOKEN] == "old_token"
+
+
+async def test_aws_iot_reauth_reports_rejection(hass):
+    """A rejected visitor ID cannot be recovered without user action."""
+    entry = _aws_iot_entry()
+
+    with patch(
+        "custom_components.bestway.config_flow.AwsIotApi.authenticate",
+        side_effect=AwsIotAuthException("rejected"),
+    ):
+        result = await _start_reauth(hass, entry)
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reauth_unsuccessful"
+
+
+async def test_reauth_aborts_for_non_aws_iot_backends(hass):
+    """Gizwits and SmartSpa need credentials this flow cannot supply."""
+    entry = MockConfigEntry(
+        version=2,
+        domain=DOMAIN,
+        title="Bestway Spa",
+        data={
+            CONF_BACKEND: Backend.GIZWITS,
+            CONF_USERNAME: "test@example.org",
+            CONF_PASSWORD: "P@asw0rd",
+        },
+        source=config_entries.SOURCE_USER,
+    )
+
+    result = await _start_reauth(hass, entry)
+
+    assert result["type"] is FlowResultType.ABORT
+    assert result["reason"] == "reauth_unsuccessful"
