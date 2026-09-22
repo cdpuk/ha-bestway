@@ -261,6 +261,14 @@ async def _async_setup_aws_iot(
     except AwsIotAuthException as ex:
         _LOGGER.error("AWS IoT authentication failed: %s", ex)
         raise ConfigEntryAuthFailed from ex
+    except Exception as ex:  # pylint: disable=broad-except
+        # Anything that isn't an auth rejection is a transient problem
+        # (timeout, connection reset, HTML error page from the gateway).
+        # ConfigEntryNotReady gets HA's retry-with-backoff; letting the
+        # exception escape instead marks the entry setup_error, which is
+        # never retried, so the spa stays dead until a manual reload.
+        _LOGGER.warning("Could not reach the AWS IoT API: %s", ex)
+        raise ConfigEntryNotReady from ex
 
     # Initialize coordinator
     coordinator = BestwayUpdateCoordinator(hass, entry, api)
@@ -359,6 +367,11 @@ async def _async_setup_smartspa(
             _LOGGER.error("SmartSpa authentication failed: %s", ex)
             raise ConfigEntryAuthFailed from ex
         except SmartSpaException as ex:
+            raise ConfigEntryNotReady from ex
+        except Exception as ex:  # pylint: disable=broad-except
+            # Same reasoning as the AWS IoT path above: a bare TimeoutError
+            # or aiohttp error would otherwise escape as setup_error.
+            _LOGGER.warning("Could not reach the SmartSpa API: %s", ex)
             raise ConfigEntryNotReady from ex
         hass.config_entries.async_update_entry(
             entry, data={**entry.data, CONF_SMARTSPA_TOKEN: token}

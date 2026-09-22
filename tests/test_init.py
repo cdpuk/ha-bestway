@@ -11,16 +11,23 @@ from pytest_homeassistant_custom_component.common import MockConfigEntry
 from custom_components.bestway import (
     BestwayUpdateCoordinator,
 )
+from custom_components.bestway.aws_iot.api import AwsIotAuthException
 from custom_components.bestway.bestway.model import BestwayUserToken
 from custom_components.bestway.const import (
+    CONF_API_BASE,
     CONF_API_ROOT,
     CONF_API_ROOT_EU,
+    CONF_BACKEND,
+    CONF_LOCATION,
     CONF_PASSWORD,
+    CONF_TOKEN,
     CONF_UID,
     CONF_USER_TOKEN,
     CONF_USER_TOKEN_EXPIRY,
     CONF_USERNAME,
+    CONF_VISITOR_ID,
     DOMAIN,
+    Backend,
 )
 from custom_components.bestway.model import BestwayDevice
 
@@ -283,3 +290,57 @@ async def test_websocket_uses_background_task(hass: HomeAssistant):
         await hass.async_block_till_done()
 
     assert len(captured_coros) == 1
+
+
+def _aws_iot_config_entry() -> MockConfigEntry:
+    """Build a config entry backed by the AWS IoT (V02) gateway."""
+    return MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_BACKEND: Backend.AWS_IOT,
+            CONF_VISITOR_ID: "v1s1t0r",
+            CONF_TOKEN: "t0k3n",
+            CONF_LOCATION: "GB",
+            CONF_API_BASE: "https://smarthub-eu.bestwaycorp.com",
+        },
+        version=2,
+        entry_id="test_aws_iot",
+    )
+
+
+async def test_aws_iot_setup_retries_when_api_unreachable(hass: HomeAssistant):
+    """Test SETUP_RETRY when the AWS IoT auth call times out.
+
+    The auth POST runs under a 10 second timeout, which is easily exceeded
+    during the Home Assistant startup storm. SETUP_ERROR is never retried,
+    so anything short of SETUP_RETRY leaves the spa unavailable until the
+    user reloads the entry by hand.
+    """
+    config_entry = _aws_iot_config_entry()
+    config_entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.bestway.aws_iot.api.AwsIotApi.authenticate",
+        side_effect=TimeoutError,
+    ):
+        await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert config_entry.state is ConfigEntryState.SETUP_RETRY
+
+
+async def test_aws_iot_setup_still_reauths_on_rejected_credentials(
+    hass: HomeAssistant,
+):
+    """Test a genuine auth rejection is not swallowed by the retry path."""
+    config_entry = _aws_iot_config_entry()
+    config_entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.bestway.aws_iot.api.AwsIotApi.authenticate",
+        side_effect=AwsIotAuthException("No token in authentication response"),
+    ):
+        await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert config_entry.state is ConfigEntryState.SETUP_ERROR
