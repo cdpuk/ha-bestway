@@ -1,6 +1,9 @@
 """Tests for AWS IoT model extensions."""
 
-from custom_components.bestway.bestway.model import HYDROJET_BUBBLES_MAP
+from custom_components.bestway.bestway.model import (
+    AIRJET_V01_BUBBLES_MAP,
+    HYDROJET_BUBBLES_MAP,
+)
 from custom_components.bestway.model import (
     BestwayDevice,
     BestwayDeviceType,
@@ -20,6 +23,21 @@ def test_hydrojet_bubbles_map_reads_medium_band():
     assert HYDROJET_BUBBLES_MAP.from_api_value(100) == BubblesLevel.MAX
     # The command sent to the device for MEDIUM is unchanged.
     assert HYDROJET_BUBBLES_MAP.to_api_value(BubblesLevel.MEDIUM) == 40
+
+
+def test_airjet_bubbles_map_reads_medium_band():
+    """Airjet V02 panels report a device-chosen MEDIUM as 38 or 39.
+
+    The app sends 40/41 and older firmware reported 50/51; recognising the
+    whole band keeps the running state from being read as OFF, while the
+    command sent for MEDIUM stays 50.
+    """
+    assert AIRJET_V01_BUBBLES_MAP.from_api_value(0) == BubblesLevel.OFF
+    for medium in (38, 39, 40, 41, 50, 51):
+        assert AIRJET_V01_BUBBLES_MAP.from_api_value(medium) == BubblesLevel.MEDIUM
+    assert AIRJET_V01_BUBBLES_MAP.from_api_value(100) == BubblesLevel.MAX
+    # The command sent to the device for MEDIUM is unchanged.
+    assert AIRJET_V01_BUBBLES_MAP.to_api_value(BubblesLevel.MEDIUM) == 50
 
 
 def test_from_aws_product_series_mappings():

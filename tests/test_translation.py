@@ -129,13 +129,15 @@ def test_v01_temperature_unit(
 @pytest.mark.parametrize(
     ("device_type", "wave", "expected"),
     [
-        # Airjet-style map: MEDIUM read as 40/41/50/51
+        # Airjet-style map: MEDIUM read as 38-41/50/51
         (BestwayDeviceType.AIRJET_V01_SPA, 0, BubblesLevel.OFF),
         (BestwayDeviceType.AIRJET_V01_SPA, 40, BubblesLevel.MEDIUM),
         (BestwayDeviceType.AIRJET_V01_SPA, 50, BubblesLevel.MEDIUM),
         (BestwayDeviceType.AIRJET_V01_SPA, 51, BubblesLevel.MEDIUM),
         (BestwayDeviceType.AIRJET_V01_SPA, 100, BubblesLevel.MAX),
         (BestwayDeviceType.AIRJET_V02, 41, BubblesLevel.MEDIUM),
+        (BestwayDeviceType.AIRJET_V02, 38, BubblesLevel.MEDIUM),
+        (BestwayDeviceType.AIRJET_V02, 39, BubblesLevel.MEDIUM),
         # Hydrojet-style map: MEDIUM read as 40-43
         (BestwayDeviceType.HYDROJET_SPA, 42, BubblesLevel.MEDIUM),
         (BestwayDeviceType.HYDROJET_PRO_V02, 43, BubblesLevel.MEDIUM),

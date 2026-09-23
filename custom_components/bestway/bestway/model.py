@@ -91,7 +91,15 @@ class BubblesMapping:
 
 
 BV = BubblesValues
-AIRJET_V01_BUBBLES_MAP = BubblesMapping(BV(0), BV(50, [40, 41, 50, 51]), BV(100))
+# Airjet V02 panels (e.g. product FTEW0E) report a MEDIUM level chosen on the
+# device itself as 38 or 39, alongside the 40/41 the app sends - the same
+# per-firmware drift that added 50/51. Without them the running state reads as
+# OFF ("Unexpected API value 38 - assuming OFF") while the blower physically
+# runs at MEDIUM, measured at ~400 W against ~800 W at MAX. The command sent
+# for MEDIUM is unchanged.
+AIRJET_V01_BUBBLES_MAP = BubblesMapping(
+    BV(0), BV(50, [38, 39, 40, 41, 50, 51]), BV(100)
+)
 # Hydrojet V02 (e.g. product T8HDVS) reports MEDIUM as 42, not 40 — the same
 # kind of per-firmware drift that PR #101 handled for Airjet (40/41/50/51).
 # Accept a 40-43 band for MEDIUM so the running state is recognised instead of
