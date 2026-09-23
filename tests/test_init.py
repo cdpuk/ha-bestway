@@ -13,8 +13,10 @@ from custom_components.bestway import (
 )
 from custom_components.bestway.bestway.model import BestwayUserToken
 from custom_components.bestway.const import (
+    BUBBLES_MODE_ONOFF,
     CONF_API_ROOT,
     CONF_API_ROOT_EU,
+    CONF_BUBBLES_MODE,
     CONF_PASSWORD,
     CONF_UID,
     CONF_USER_TOKEN,
@@ -74,6 +76,47 @@ async def test_setup_unload_and_reload_entry(hass: HomeAssistant, bypass_get_dat
     # Unload the entry and verify that the data has been removed
     assert await hass.config_entries.async_unload(config_entry.entry_id)
     assert config_entry.entry_id not in hass.data[DOMAIN]
+
+
+async def test_options_change_keeps_the_entry_loaded(
+    hass: HomeAssistant, bypass_get_data
+):
+    """An option change must leave the entry loaded, with a live coordinator.
+
+    The reload has to go through the config-entries framework: setting the
+    entry up directly leaves the framework's state untouched, and the
+    coordinator's first refresh refuses to run outside SETUP_IN_PROGRESS.
+    """
+    future = (datetime.now(UTC) + timedelta(days=31)).timestamp()
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={
+            CONF_USERNAME: "test@example.org",
+            CONF_PASSWORD: "P@asw0rd",
+            CONF_API_ROOT: CONF_API_ROOT_EU,
+            CONF_USER_TOKEN: "t0k3n",
+            CONF_USER_TOKEN_EXPIRY: int(future),
+            CONF_UID: "test_uid_123",
+        },
+        version=2,
+        entry_id="test",
+    )
+    config_entry.add_to_hass(hass)
+
+    assert await hass.config_entries.async_setup(config_entry.entry_id)
+    assert config_entry.state is ConfigEntryState.LOADED
+
+    # The bubbles UI option is the only one, and the one users change.
+    hass.config_entries.async_update_entry(
+        config_entry, options={CONF_BUBBLES_MODE: BUBBLES_MODE_ONOFF}
+    )
+    await hass.async_block_till_done()
+
+    assert config_entry.state is ConfigEntryState.LOADED
+    assert DOMAIN in hass.data and config_entry.entry_id in hass.data[DOMAIN]
+    assert isinstance(
+        hass.data[DOMAIN][config_entry.entry_id], BestwayUpdateCoordinator
+    )
 
 
 async def test_setup_entry_expired_token(hass: HomeAssistant, bypass_get_data):

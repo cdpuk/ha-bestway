@@ -20,7 +20,7 @@ A Wi-Fi enabled model is required. No custom hardware is required.
 This integration supports two main generations of devices (V1 and V2), which must be selected when adding your device to Home Assistant. Broadly speaking:
 
 - V1 covers older models up to around 2024.
-- V2 covers newer models from 2025 onwards.
+- V2 covers newer models from 2025 onwards. Bestway have moved these across two different cloud backends, so there are two V2 options to choose between; [Configuration](#configuration) explains which one your device needs.
 
 See the [supported devices](docs/supported-devices.md) list for confirmed examples of each.
 
@@ -39,13 +39,15 @@ Initial configuration must be done via the relevant mobile app. Bestway have pub
 
 - V2 models must be configured via the Bestway Connect app ([Android][bestway-connect-android]/[iOS][bestway-connect-ios]). Users have reported that the Lay-Z-Spa Wi-Fi app will control devices, but does not provide the crucial sharing QR code described below.
 
-With this done, open Home Assistant and go to **Configuration** > **Devices & Services** > **Add Integration**, then find **Bestway** in the list.
+With this done, open Home Assistant and go to **Configuration** > **Devices & Services** > **Add Integration**, then find **Bestway** in the list. The first step asks which backend to use, and the options below map onto that choice.
 
-The process varies depending on model:
+- **V1 - Bestway Smart Hub (Gizwits)** requires your Bestway username and password. You must also select the required region (EU or US).
 
-- V1 models require your Bestway username and password. You must also select the required region (EU or US).
+- **V2 - Bestway Connect (AWS IoT)** requires a scan of the sharing QR code from the Bestway Connect app (Settings > Device Sharing), plus the required region (Europe, US or China). The code decodes to text beginning `RW_Share_`. If yours decodes to a URL instead, the app that produced it has been updated since July 2026 and this backend cannot accept it - use the account-login option instead.
 
-- V2 models require a scan of the QR code from the Lay-Z-Spa app settings. You must also select the required region (Europe, US or China).
+- **V2 - Bestway Connect account login (SmartSpa gateway)** requires the email address and password of your Bestway Connect account, plus the required region (Europe, US or China). This is the option for a device paired by a Bestway Connect app updated after July 2026, where "Share device" produces a share link addressed to an account rather than an anonymous QR code, and no QR code is involved at any point. It is also the option to move to if a spa added by visitor ID stops executing commands: after the app has been logged into with a real account, the visitor session keeps looking connected while the spa ignores it.
+
+If your Bestway Connect app has only ever offered guest access, the account login needs a real account first. There is no "add email/password" setting to find: open the app's profile area, log out, log back in choosing **email** instead of **guest** - a button for it appears on the login screen - and enter your email with any password. That login fails, and the failure is what offers the **sign-up** option. Afterwards the device has to be paired again (scan the pump's barcode); a device paired to a guest identity does not carry over.
 
 All devices in your account will be automatically detected and added by the integration.
 
