@@ -87,7 +87,7 @@ All entities extend `BestwayEntity` (in `entity.py`), which extends `Coordinator
 
 - `self.status` → `DeviceStatus | None` (typed snapshot of the device's current state — see `model.py`)
 - `self.bestway_device` → `BestwayDevice | None` (device metadata)
-- `available` returns `True` as long as coordinator has data and the device is known — the `is_online` flag from the API is explicitly ignored as unreliable.
+- `available` returns `True` as long as coordinator has data and the device is known — the `is_online` flag from the API is explicitly ignored as unreliable. The one exception is a backend declaring `reports_device_heartbeat` (only SmartSpa: its shadow's `ConnectType` is the device reporting on itself, and the cloud keeps serving that cached shadow for a spa that lost power), where `DeviceStatus.is_online is False` makes entities unavailable.
 
 Platform files (`switch.py`, `climate.py`, `sensor.py`, etc.) each define entities and an `async_setup_entry` that iterates `coordinator.api.devices` to create per-device entities.
 

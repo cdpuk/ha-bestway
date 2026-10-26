@@ -120,8 +120,20 @@ class BestwayEntity(CoordinatorEntity[BestwayUpdateCoordinator]):
         data regardless of this flag. We therefore only check that the
         coordinator has data and the device is known.
 
+        The exception is a backend that carries the device's own heartbeat in
+        its state (`reports_device_heartbeat`). There an explicit "offline" is
+        real: a spa that lost power is still served from the cloud's cached
+        shadow, so without this every entity would keep displaying its last
+        known values indefinitely (issue #185).
+
         See: https://github.com/cdpuk/ha-bestway/issues/89
         See: https://github.com/cdpuk/ha-bestway/issues/93
         See: https://github.com/cdpuk/ha-bestway/issues/100
+        See: https://github.com/cdpuk/ha-bestway/issues/185
         """
-        return self.coordinator.last_update_success and self.bestway_device is not None
+        if not (self.coordinator.last_update_success and self.bestway_device):
+            return False
+        if not self.coordinator.api.reports_device_heartbeat:
+            return True
+        status = self.status
+        return status is None or status.is_online is not False

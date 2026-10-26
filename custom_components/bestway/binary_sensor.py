@@ -114,8 +114,24 @@ class DeviceConnectivitySensor(BestwayEntity, BinarySensorEntity):
 
     @property
     def is_on(self) -> bool | None:
-        """Return True if the spa is online."""
-        return (device := self.bestway_device) is not None and device.is_online
+        """Return True if the spa is online.
+
+        Where the backend carries the device's own heartbeat, that wins over
+        the device list's `onlineStatus`: the latter is an account-level flag
+        the cloud keeps serving as "online" for a spa that lost power, which
+        is exactly the case somebody watches this sensor for (issue #185).
+        """
+        device = self.bestway_device
+        if device is None:
+            return False
+        status = self.status
+        if (
+            self.coordinator.api.reports_device_heartbeat
+            and status is not None
+            and status.is_online is not None
+        ):
+            return status.is_online
+        return device.is_online
 
     @property
     def available(self) -> bool:

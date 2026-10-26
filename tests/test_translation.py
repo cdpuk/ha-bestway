@@ -363,3 +363,29 @@ def test_shadow_wave_mapping():
     shadow = {"wave_state": 100}
     normalized = v01_attrs_from_shadow(shadow)
     assert normalized["wave"] == 100
+
+
+# ---------------------------------------------------------------------------
+# Connectivity report (BackendApi.reports_device_heartbeat)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(("online", "expected"), [(True, True), (False, False)])
+def test_heartbeat_is_carried_into_the_typed_status(
+    online: bool, expected: bool
+) -> None:
+    """A backend that reports the device's connectivity gets a typed value."""
+    status = status_from_attrs(
+        BestwayDeviceType.HYDROJET_PRO_V02, 1000, {"is_online": online}
+    )
+    assert status.is_online is expected
+
+
+def test_absent_heartbeat_is_unknown_not_offline() -> None:
+    """Omitted means "not reported", which entities must not read as offline.
+
+    Every backend's state is translated here, including Gizwits' unreliable
+    `is_online`; only a backend that declares the capability may act on it.
+    """
+    status = status_from_attrs(BestwayDeviceType.HYDROJET_PRO_V02, 1000, {})
+    assert status.is_online is None

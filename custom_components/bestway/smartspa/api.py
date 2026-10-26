@@ -95,6 +95,11 @@ class SmartSpaApi(RawStateApi):
     from RawStateApi) is only ever driven by fetch_data's own polled state.
     """
 
+    # The shadow's `ConnectType` is the device reporting on itself, not the
+    # account-level `onlineStatus` the device list serves, so entities may act
+    # on it when it says the spa is offline.
+    reports_device_heartbeat = True
+
     def __init__(
         self,
         session: ClientSession,
