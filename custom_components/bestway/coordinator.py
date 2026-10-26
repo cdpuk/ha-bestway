@@ -85,10 +85,13 @@ class BestwayUpdateCoordinator(DataUpdateCoordinator[BestwayApiResults]):
         options = self.config_entry.options if self.config_entry else {}
         for device_id, device in self.api.devices.items():
             _LOGGER.info(
-                "Device %s (%s): type=%s, protocol=v%d, backend=%s",
+                "Device %s (%s): type=%s, product_id=%s, product_series=%s, "
+                "protocol=v%d, backend=%s",
                 device_id,
                 device.alias,
                 device.device_type.name,
+                device.product_id or "-",
+                device.product_series or "-",
                 device.protocol_version,
                 device.backend,
             )
