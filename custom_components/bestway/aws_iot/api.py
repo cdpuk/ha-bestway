@@ -59,6 +59,8 @@ class AwsIotApi(RawStateApi):
     commands are AES-encrypted; and the token is refreshed on demand.
     """
 
+    reports_device_heartbeat = False
+
     def __init__(
         self,
         session: ClientSession,

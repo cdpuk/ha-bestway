@@ -53,11 +53,16 @@ def _make_status(attrs: dict[str, Any] | None = None) -> DeviceStatus:
     return DeviceStatus(timestamp=1000, attrs=default_attrs)
 
 
-def _make_coordinator(device: BestwayDevice, status: DeviceStatus):
+def _make_coordinator(
+    device: BestwayDevice,
+    status: DeviceStatus,
+    reports_device_heartbeat: bool = False,
+):
     """Create a mock coordinator with the given device and status."""
     coordinator = MagicMock()
     coordinator.api = MagicMock()
     coordinator.api.devices = {"test_device": device}
+    coordinator.api.reports_device_heartbeat = reports_device_heartbeat
     coordinator.data = BestwayApiResults(devices={"test_device": status})
     coordinator.last_update_success = True
     coordinator.async_request_refresh = AsyncMock()
@@ -123,6 +128,77 @@ class TestEntityAvailability:
 
         entity = BestwayEntity(coordinator, config_entry, "test_device")
         assert entity.available is False
+
+
+class TestEntityAvailabilityWithHeartbeat:
+    """A backend that reports the device's own heartbeat (issue #185).
+
+    SmartSpa's shadow keeps being served for a spa that lost power, so without
+    this every entity would show its last known values indefinitely.
+    """
+
+    @staticmethod
+    def _entity(status: DeviceStatus, device_online: bool = True):
+        from custom_components.bestway.entity import BestwayEntity
+
+        device = _make_device(is_online=device_online)
+        coordinator = _make_coordinator(device, status, reports_device_heartbeat=True)
+        return BestwayEntity(coordinator, MagicMock(), "test_device")
+
+    def test_unavailable_when_heartbeat_reports_offline(self):
+        status = _make_status()
+        status.is_online = False
+        assert self._entity(status).available is False
+
+    def test_available_when_heartbeat_reports_online(self):
+        status = _make_status()
+        status.is_online = True
+        assert self._entity(status).available is True
+
+    def test_available_when_heartbeat_is_absent(self):
+        """Not reported is not the same as offline."""
+        status = _make_status()
+        status.is_online = None
+        assert self._entity(status).available is True
+
+    def test_device_list_flag_does_not_make_a_heartbeat_device_offline(self):
+        """The account-level flag stays unreliable even here."""
+        status = _make_status()
+        status.is_online = True
+        assert self._entity(status, device_online=False).available is True
+
+
+class TestConnectivitySensor:
+    """`Spa Connected` must not repeat the account-level flag (issue #185)."""
+
+    @staticmethod
+    def _sensor(status: DeviceStatus, heartbeat: bool):
+        from custom_components.bestway.binary_sensor import (
+            _SPA_CONNECTIVITY_SENSOR_DESCRIPTION,
+            DeviceConnectivitySensor,
+        )
+
+        coordinator = _make_coordinator(
+            _make_device(is_online=True), status, reports_device_heartbeat=heartbeat
+        )
+        return DeviceConnectivitySensor(
+            coordinator,
+            MagicMock(),
+            "test_device",
+            _SPA_CONNECTIVITY_SENSOR_DESCRIPTION,
+        )
+
+    def test_prefers_the_device_heartbeat(self):
+        """A powered-down spa reports offline although the list says online."""
+        status = _make_status()
+        status.is_online = False
+        assert self._sensor(status, heartbeat=True).is_on is False
+
+    def test_falls_back_to_the_device_list(self):
+        """Without a heartbeat in the state, the device record is all there is."""
+        status = _make_status()
+        status.is_online = False
+        assert self._sensor(status, heartbeat=False).is_on is True
 
 
 # ---------------------------------------------------------------------------

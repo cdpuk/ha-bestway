@@ -160,6 +160,9 @@ class DeviceStatus:
     wifi_version: str | int | None = None
     trd_version: str | int | None = None
     ota_status: str | int | None = None
+    # The device's own connectivity report, where the backend's state carries
+    # one (see BackendApi.reports_device_heartbeat).
+    is_online: bool | None = None
 
 
 @dataclass

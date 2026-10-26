@@ -103,6 +103,8 @@ class BestwayApi(RawStateApi):
     timestamp more recent than the local update.
     """
 
+    reports_device_heartbeat = False
+
     def __init__(self, session: ClientSession, user_token: str, api_root: str) -> None:
         """Initialize the API with a user token."""
         super().__init__()

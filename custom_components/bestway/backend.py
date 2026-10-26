@@ -18,6 +18,18 @@ class BackendApi(Protocol):
     # Populated by refresh_bindings(); entities read it via coordinator.api.devices.
     devices: dict[str, BestwayDevice]
 
+    # True only where the device's *own* connectivity report is part of the
+    # state this backend returns (SmartSpa puts the shadow's `ConnectType` in
+    # DeviceStatus.is_online). There an explicit "offline" means the spa is
+    # reachable by the cloud but not by us - a spa that lost power keeps being
+    # served from the cloud's cached shadow - so entities must show themselves
+    # unavailable rather than keep their last known values.
+    #
+    # False everywhere else, because those flags are not a device heartbeat:
+    # Gizwits' `is_online` reports working devices as offline (#89, #93, #100)
+    # and the AWS IoT device record defaults it to True when absent.
+    reports_device_heartbeat: bool
+
     async def refresh_bindings(self) -> None: ...
     async def fetch_data(self) -> BestwayApiResults: ...
 

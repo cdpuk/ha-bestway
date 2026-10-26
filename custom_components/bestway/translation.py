@@ -161,12 +161,21 @@ def status_from_attrs(
 ) -> DeviceStatus:
     """Translate a backend's merged wire attrs into a typed `DeviceStatus`."""
     if device_type == BestwayDeviceType.AIRJET_SPA:
-        return _from_raw_airjet(timestamp, attrs)
-    if device_type == BestwayDeviceType.POOL_FILTER:
-        return _from_pool_filter(timestamp, attrs)
-    if device_type == BestwayDeviceType.UNKNOWN:
-        return DeviceStatus(timestamp=timestamp, attrs=dict(attrs))
-    return _from_v01_vocab(device_type, timestamp, attrs)
+        status = _from_raw_airjet(timestamp, attrs)
+    elif device_type == BestwayDeviceType.POOL_FILTER:
+        status = _from_pool_filter(timestamp, attrs)
+    elif device_type == BestwayDeviceType.UNKNOWN:
+        status = DeviceStatus(timestamp=timestamp, attrs=dict(attrs))
+    else:
+        status = _from_v01_vocab(device_type, timestamp, attrs)
+
+    # Only a backend whose state carries the device's own connectivity report
+    # fills this in (see BackendApi.reports_device_heartbeat); anything else
+    # leaves it None so entities never gate on an account-level flag.
+    online = attrs.get("is_online")
+    if isinstance(online, bool):
+        status.is_online = online
+    return status
 
 
 def _from_raw_airjet(timestamp: int, attrs: dict[str, Any]) -> DeviceStatus:
