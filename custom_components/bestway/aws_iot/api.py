@@ -177,9 +177,7 @@ class AwsIotApi(RawStateApi):
 
         try:
             async with asyncio.timeout(TIMEOUT):
-                async with session.post(
-                    url, headers=headers, json=payload, ssl=False
-                ) as resp:
+                async with session.post(url, headers=headers, json=payload) as resp:
                     # Checked before the body is read: a rejection is not
                     # always JSON, and letting json() raise first would turn a
                     # definitive rejection into a ContentTypeError, which is a
@@ -250,7 +248,7 @@ class AwsIotApi(RawStateApi):
         url = f"{api_base}/api/enduser/grant_device"
 
         async with asyncio.timeout(TIMEOUT):
-            response = await session.post(url, headers=headers, json=payload, ssl=False)
+            response = await session.post(url, headers=headers, json=payload)
 
             if response.status in (400, 401, 4001, 4002):
                 raise AwsIotException("QR code invalid, expired, or already used")
@@ -299,7 +297,7 @@ class AwsIotApi(RawStateApi):
         _LOGGER.debug("GET %s", path)
 
         async with asyncio.timeout(TIMEOUT):
-            async with self._session.get(url, headers=headers, ssl=False) as response:
+            async with self._session.get(url, headers=headers) as response:
                 # Status first: a rejection is not always a JSON body, and
                 # parsing it first would mask the rejection behind a
                 # ContentTypeError.
@@ -323,9 +321,7 @@ class AwsIotApi(RawStateApi):
         _LOGGER.debug("POST %s", path)
 
         async with asyncio.timeout(TIMEOUT):
-            async with self._session.post(
-                url, headers=headers, json=data, ssl=False
-            ) as response:
+            async with self._session.post(url, headers=headers, json=data) as response:
                 if response.status in (400, 401, 403):
                     raise AwsIotAuthException("Token expired or invalid")
 
@@ -611,7 +607,6 @@ class AwsIotApi(RawStateApi):
                 f"{self._api_base}/api/v2/device/command",
                 headers=headers,
                 json=body,
-                ssl=False,
             ) as response:
                 result = await response.json()
                 _LOGGER.debug(
