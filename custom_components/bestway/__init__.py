@@ -13,7 +13,12 @@ from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .aws_iot.api import API_ENDPOINTS, AwsIotApi, AwsIotAuthException
+from .aws_iot.api import (
+    API_ENDPOINTS,
+    AwsIotApi,
+    AwsIotAuthException,
+    AwsIotConnectionError,
+)
 from .aws_iot.websocket import AwsIotWebSocket
 from .backend import BackendApi
 from .bestway.api import BestwayApi
@@ -51,7 +56,6 @@ from .smartspa.api import (
     SmartSpaAuthException,
     SmartSpaException,
 )
-from .websocket_base import BaseWebSocketClient
 
 _LOGGER = getLogger(__name__)
 _PLATFORMS: list[Platform] = [
@@ -257,17 +261,39 @@ async def _async_setup_aws_iot(
         hass.config_entries.async_update_entry(
             entry, data={**entry.data, CONF_TOKEN: token}
         )
-        api._token = token
+        api.update_token(token)
     except AwsIotAuthException as ex:
         _LOGGER.error("AWS IoT authentication failed: %s", ex)
         raise ConfigEntryAuthFailed from ex
+    except AwsIotConnectionError as ex:
+        # A cloud that is slow or unreachable is a reason to come back later.
+        # Home Assistant retries ConfigEntryNotReady with backoff, whereas any
+        # other exception parks the entry in SETUP_ERROR with every entity
+        # unavailable until someone reloads it by hand.
+        _LOGGER.warning("AWS IoT authentication service unavailable: %s", ex)
+        raise ConfigEntryNotReady from ex
 
     # Initialize coordinator
     coordinator = BestwayUpdateCoordinator(hass, entry, api)
+
+    def token_updated(new_token: str) -> None:
+        """Hand a token refreshed at runtime to every active WebSocket.
+
+        Deliberately does not write the token back to the config entry. That
+        would fire the entry's update listener, reloading the integration
+        from under the coordinator update that just refreshed the token. The
+        stored token is only a startup hint - setup always authenticates
+        afresh - so letting it go stale until the next restart costs nothing.
+        """
+        for websocket in coordinator.websockets:
+            websocket.update_token(new_token)
+
+    api.set_token_update_callback(token_updated)
     await coordinator.async_config_entry_first_refresh()
 
-    # Initialize per-device WebSockets
-    websockets: list[BaseWebSocketClient] = []
+    # Initialize per-device WebSockets. Registered on the coordinator as they
+    # are created rather than in one go at the end, so that a token refreshed
+    # by an early socket still reaches the ones created after it.
     if api.devices:
         for device_id, device in api.devices.items():
             try:
@@ -276,10 +302,7 @@ async def _async_setup_aws_iot(
                     new_token = await AwsIotApi.authenticate(
                         session, visitor_id, location, api_base
                     )
-                    api._token = new_token
-                    hass.config_entries.async_update_entry(
-                        entry, data={**entry.data, CONF_TOKEN: new_token}
-                    )
+                    api.update_token(new_token)
                     return new_token
 
                 ws = AwsIotWebSocket(
@@ -303,7 +326,7 @@ async def _async_setup_aws_iot(
                 entry.async_create_background_task(
                     hass, ws.connect(), name=f"{DOMAIN}-websocket-{device_id}"
                 )
-                websockets.append(ws)
+                coordinator.websockets.append(ws)
 
                 _LOGGER.info(
                     "WebSocket initialized for device %s (region: %s)",
@@ -317,8 +340,6 @@ async def _async_setup_aws_iot(
                 )
     else:
         _LOGGER.warning("No devices found, WebSocket not initialized")
-
-    coordinator.websockets = websockets
 
     _async_remove_orphaned_bubbles_entities(hass, entry, api)
 

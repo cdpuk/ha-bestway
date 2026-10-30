@@ -109,7 +109,6 @@ class DeviceConnectivitySensor(BestwayEntity, BinarySensorEntity):
         """Initialize sensor."""
         super().__init__(coordinator, config_entry, device_id)
         self.entity_description = entity_description
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_unique_id = f"{device_id}_{self.entity_description.key}"
 
     @property
@@ -136,7 +135,6 @@ class DeviceErrorsSensor(BestwayEntity, BinarySensorEntity):
         """Initialize sensor."""
         super().__init__(coordinator, config_entry, device_id)
         self.entity_description = entity_description
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_unique_id = f"{device_id}_{self.entity_description.key}"
 
     @property
@@ -166,7 +164,6 @@ class PoolFilterChangeRequiredSensor(BestwayEntity, BinarySensorEntity):
         """Initialize sensor."""
         super().__init__(coordinator, config_entry, device_id)
         self.entity_description = _POOL_FILTER_CHANGE_SENSOR_DESCRIPTION
-        self._attr_entity_category = EntityCategory.DIAGNOSTIC
         self._attr_unique_id = f"{device_id}_{self.entity_description.key}"
 
     @property
