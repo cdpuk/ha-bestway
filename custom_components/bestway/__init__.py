@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import UTC, datetime, timedelta
 from logging import getLogger
 
-from aiohttp import ClientSession
+from aiohttp import ClientError, ClientSession
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
@@ -261,6 +261,12 @@ async def _async_setup_aws_iot(
     except AwsIotAuthException as ex:
         _LOGGER.error("AWS IoT authentication failed: %s", ex)
         raise ConfigEntryAuthFailed from ex
+    except (TimeoutError, ClientError) as ex:
+        # Transient network failure (commonly right after a HA restart, before
+        # the network is fully up). ConfigEntryNotReady makes HA retry with
+        # backoff instead of failing the setup permanently.
+        _LOGGER.warning("AWS IoT authentication unavailable, will retry: %r", ex)
+        raise ConfigEntryNotReady from ex
 
     # Initialize coordinator
     coordinator = BestwayUpdateCoordinator(hass, entry, api)

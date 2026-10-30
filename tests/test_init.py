@@ -15,12 +15,15 @@ from custom_components.bestway.bestway.model import BestwayUserToken
 from custom_components.bestway.const import (
     CONF_API_ROOT,
     CONF_API_ROOT_EU,
+    CONF_BACKEND,
     CONF_PASSWORD,
     CONF_UID,
     CONF_USER_TOKEN,
     CONF_USER_TOKEN_EXPIRY,
     CONF_USERNAME,
+    CONF_VISITOR_ID,
     DOMAIN,
+    Backend,
 )
 from custom_components.bestway.model import BestwayDevice
 
@@ -283,3 +286,23 @@ async def test_websocket_uses_background_task(hass: HomeAssistant):
         await hass.async_block_till_done()
 
     assert len(captured_coros) == 1
+
+
+async def test_aws_iot_auth_timeout_retries_setup(hass: HomeAssistant):
+    """A timeout while authenticating should leave the entry retrying, not failed."""
+    config_entry = MockConfigEntry(
+        domain=DOMAIN,
+        data={CONF_BACKEND: Backend.AWS_IOT, CONF_VISITOR_ID: "abcdef0123456789"},
+        version=2,
+        entry_id="test",
+    )
+    config_entry.add_to_hass(hass)
+
+    with patch(
+        "custom_components.bestway.AwsIotApi.authenticate",
+        side_effect=TimeoutError,
+    ):
+        await hass.config_entries.async_setup(config_entry.entry_id)
+        await hass.async_block_till_done()
+
+    assert config_entry.state is ConfigEntryState.SETUP_RETRY
