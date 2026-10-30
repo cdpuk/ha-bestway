@@ -104,3 +104,7 @@ Don't write comments that just restate what an IDE derives on demand — lists o
 Don't narrate a refactor in the comment — "no longer needs to", "used to live here", "now lives in", "legacy X becomes Y", "mirrors the pre-refactor branch in...". Describe the code as it is, not as a diff against what it replaced; the git history already has that. Once the change lands, that framing is dead weight for anyone reading the file cold, and it's the first thing to go stale the next time the code moves again.
 
 The same applies to porting a reverse-engineered client from a reference implementation: don't leave "EXACT copy of X", "matches the reference", or a pointer to a script/repo nobody else here has - that framing is meaningless once the port is done and the source is gone. Record what was _learned_ about the remote API instead (a required field, a quirky read-back value, a signature order that looks wrong but isn't) - that's the knowledge worth keeping, not where it came from.
+
+### Tests
+
+Test behaviour a caller depends on, not the fact that an edit happened. Not every change needs a new test; when one doesn't, say so in the PR rather than writing one anyway.
