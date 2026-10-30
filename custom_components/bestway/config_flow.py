@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from collections.abc import Mapping
 from logging import getLogger
 from typing import Any
 
@@ -18,7 +19,12 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import selector
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .aws_iot.api import API_ENDPOINTS, AwsIotApi, AwsIotAuthException
+from .aws_iot.api import (
+    API_ENDPOINTS,
+    AwsIotApi,
+    AwsIotAuthException,
+    AwsIotConnectionError,
+)
 from .bestway.api import (
     BestwayApi,
     BestwayIncorrectPasswordException,
@@ -185,6 +191,44 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
         else:
             return await self.async_step_aws_iot_auth()
 
+    async def async_step_reauth(
+        self, entry_data: Mapping[str, Any]
+    ) -> ConfigFlowResult:
+        """Refresh an expired AWS IoT token without prompting the user.
+
+        V02 authentication derives a token from the stored visitor ID alone,
+        so there is nothing to ask for: a rejected token can be replaced
+        silently. Only the AWS IoT backend gets here - the other two need
+        credentials this flow cannot supply.
+        """
+        entry = self._get_reauth_entry()
+        if entry.data.get(CONF_BACKEND) != Backend.AWS_IOT:
+            return self.async_abort(reason="reauth_unsuccessful")
+
+        visitor_id = entry.data[CONF_VISITOR_ID]
+        location = entry.data.get(CONF_LOCATION, "GB")
+        api_base = entry.data.get(CONF_API_BASE)
+        if not api_base:
+            api_base = API_ENDPOINTS.get(
+                entry.data.get(CONF_REGION, "EU"), API_ENDPOINTS["EU"]
+            )
+
+        try:
+            token = await AwsIotApi.authenticate(
+                async_get_clientsession(self.hass),
+                visitor_id,
+                location,
+                api_base,
+            )
+        except AwsIotConnectionError:
+            return self.async_abort(reason="cannot_connect")
+        except AwsIotAuthException:
+            return self.async_abort(reason="reauth_unsuccessful")
+
+        return self.async_update_reload_and_abort(
+            entry, data_updates={CONF_TOKEN: token}
+        )
+
     async def async_step_gizwits_auth(
         self, user_input: dict[str, Any] | None = None
     ) -> ConfigFlowResult:
@@ -331,6 +375,9 @@ class BestwayConfigFlow(ConfigFlow, domain=DOMAIN):
         except AwsIotAuthException as auth_err:
             _LOGGER.error("AWS IoT authentication failed: %s", auth_err)
             errors["base"] = "auth_failed"
+        except AwsIotConnectionError as connection_err:
+            _LOGGER.error("AWS IoT connection failed: %s", connection_err)
+            errors["base"] = "cannot_connect"
         except Exception:  # pylint: disable=broad-except
             _LOGGER.exception("AWS IoT setup failed")
             errors["base"] = "unknown"

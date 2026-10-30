@@ -14,10 +14,11 @@ import logging
 import random
 import secrets
 import string
+from collections.abc import Callable
 from time import time
 from typing import Any
 
-from aiohttp import ClientSession
+from aiohttp import ClientError, ClientSession
 
 from ..const import Backend
 from ..model import BestwayApiResults, BestwayDevice, BubblesLevel, RawSnapshot
@@ -32,7 +33,9 @@ _LOGGER = logging.getLogger(__name__)
 DEFAULT_API_BASE = "https://smarthub-eu.bestwaycorp.com"  # EU endpoint
 APP_ID = "AhFLL54HnChhrxcl9ZUJL6QNfolTIB"
 APP_SECRET = "4ECvVs13enL5AiYSmscNjvlaisklQDz7vWPCCWXcEFjhWfTmLT"
-TIMEOUT = 10
+# The smarthub endpoint is routinely slower than 10s under load, and a poll
+# that gives up early is indistinguishable from a device going offline.
+TIMEOUT = 20
 
 # Regional API endpoints (from ServiceConfig.java)
 API_ENDPOINTS = {
@@ -48,7 +51,18 @@ class AwsIotException(Exception):
 
 
 class AwsIotAuthException(AwsIotException):
-    """Authentication error."""
+    """The cloud rejected our credentials. Retrying with the same token will
+    not help; a fresh token has to be derived from the visitor ID.
+    """
+
+
+class AwsIotConnectionError(AwsIotException):
+    """The cloud could not be reached or did not answer in time.
+
+    Distinct from AwsIotAuthException so that callers can classify a failure
+    from the exception type alone, rather than inspecting whatever aiohttp or
+    asyncio raised underneath.
+    """
 
 
 class AwsIotApi(RawStateApi):
@@ -76,6 +90,22 @@ class AwsIotApi(RawStateApi):
         self._token = token
         self._location = location
         self._api_base = api_base
+        self._token_update_callback: Callable[[str], None] | None = None
+
+    def update_token(self, token: str) -> None:
+        """Replace the token used by subsequent API requests.
+
+        Notifies the token-update callback so that connections holding their
+        own copy of the token (the per-device WebSockets) can be kept in step
+        without the config entry being rewritten.
+        """
+        self._token = token
+        if self._token_update_callback is not None:
+            self._token_update_callback(token)
+
+    def set_token_update_callback(self, callback: Callable[[str], None] | None) -> None:
+        """Set the callback invoked whenever the token is replaced."""
+        self._token_update_callback = callback
 
     @staticmethod
     def generate_visitor_id() -> str:
@@ -92,8 +122,10 @@ class AwsIotApi(RawStateApi):
         """Authenticate a visitor and return the auth token.
 
         visitor_id may come from a QR binding or an existing account;
-        location is a routing code like "GB" or "US". Raises
-        AwsIotAuthException if authentication fails.
+        location is a routing code like "GB" or "US".
+
+        Raises AwsIotAuthException if the cloud rejected the visitor, and
+        AwsIotConnectionError if it could not be reached.
         """
         # Generate nonce (lowercase letters + digits, not hex)
         nonce = "".join(random.choices(string.ascii_lowercase + string.digits, k=32))
@@ -143,22 +175,40 @@ class AwsIotApi(RawStateApi):
         _LOGGER.debug("Sign in headers: %s", "sign" in headers)
         _LOGGER.debug("All header keys: %s", list(headers.keys()))
 
-        async with asyncio.timeout(TIMEOUT):
-            async with session.post(
-                url, headers=headers, json=payload, ssl=False
-            ) as resp:
-                data = await resp.json()
-                _LOGGER.debug("Auth response: %s", redact(data))
-                _LOGGER.debug("Response status: %s", resp.status)
-                token = data.get("data", {}).get("token")
+        try:
+            async with asyncio.timeout(TIMEOUT):
+                async with session.post(
+                    url, headers=headers, json=payload, ssl=False
+                ) as resp:
+                    # Checked before the body is read: a rejection is not
+                    # always JSON, and letting json() raise first would turn a
+                    # definitive rejection into a ContentTypeError, which is a
+                    # ClientError and would be retried forever.
+                    if resp.status in (401, 403):
+                        raise AwsIotAuthException("Authentication rejected")
 
-                if not token:
-                    _LOGGER.error(
-                        "No token in response. Full response: %s", redact(data)
-                    )
-                    raise AwsIotAuthException("No token in authentication response")
+                    data = await resp.json()
+                    _LOGGER.debug("Auth response: %s", redact(data))
+                    _LOGGER.debug("Response status: %s", resp.status)
+                    token = data.get("data", {}).get("token")
 
-                return str(token)
+                    if not token:
+                        _LOGGER.error(
+                            "No token in response. Full response: %s", redact(data)
+                        )
+                        raise AwsIotAuthException("No token in authentication response")
+
+                    return str(token)
+        except (TimeoutError, ClientError) as err:
+            # Name the cause. `asyncio.timeout` raises a bare TimeoutError
+            # whose str() is empty, and this message becomes the config entry's
+            # failure reason - without the fallback it reads as a dangling
+            # colon and says nothing about whether the login timed out, was
+            # refused, or failed to resolve.
+            raise AwsIotConnectionError(
+                "Unable to reach the authentication service: "
+                f"{str(err) or type(err).__name__}"
+            ) from err
 
     @staticmethod
     async def bind_qr_code(
@@ -240,8 +290,8 @@ class AwsIotApi(RawStateApi):
     async def _do_get(self, path: str) -> dict[str, Any]:
         """GET an authenticated endpoint and return the parsed JSON body.
 
-        Raises AwsIotAuthException on HTTP 401 (token expired or invalid),
-        AwsIotException on any other non-200 response.
+        Raises AwsIotAuthException when the token is rejected (400, 401, 403)
+        and AwsIotException on any other non-200 response.
         """
         url = f"{self._api_base}{path}"
         headers = self._generate_auth_headers()
@@ -250,14 +300,16 @@ class AwsIotApi(RawStateApi):
 
         async with asyncio.timeout(TIMEOUT):
             async with self._session.get(url, headers=headers, ssl=False) as response:
-                data = await response.json()
-
-                if response.status in (400, 401):
+                # Status first: a rejection is not always a JSON body, and
+                # parsing it first would mask the rejection behind a
+                # ContentTypeError.
+                if response.status in (400, 401, 403):
                     raise AwsIotAuthException("Token expired or invalid")
 
                 if response.status != 200:
                     raise AwsIotException(f"API error: {response.status}")
 
+                data = await response.json()
                 return dict(data)
 
     async def _do_post(self, path: str, data: dict[str, Any]) -> dict[str, Any]:
@@ -274,6 +326,12 @@ class AwsIotApi(RawStateApi):
             async with self._session.post(
                 url, headers=headers, json=data, ssl=False
             ) as response:
+                if response.status in (400, 401, 403):
+                    raise AwsIotAuthException("Token expired or invalid")
+
+                if response.status != 200:
+                    raise AwsIotException(f"API error: {response.status}")
+
                 result = await response.json()
 
                 _LOGGER.debug(
@@ -282,12 +340,6 @@ class AwsIotApi(RawStateApi):
                     response.status,
                     redact(result),
                 )
-
-                if response.status in (400, 401):
-                    raise AwsIotAuthException("Token expired or invalid")
-
-                if response.status != 200:
-                    raise AwsIotException(f"API error: {response.status}")
 
                 return dict(result)
 
@@ -402,14 +454,22 @@ class AwsIotApi(RawStateApi):
 
             self.devices[device_id] = device
 
-    async def fetch_data(self) -> BestwayApiResults:
-        """Fetch latest state for all devices.
+    async def _poll_all_devices(self) -> tuple[int, bool]:
+        """Poll every device once.
+
+        Returns how many devices had their state refreshed, and whether any
+        device was rejected for authentication. The token is shared across the
+        whole account, so a single rejection is enough to justify refreshing
+        it - a partial failure still means the token is the suspect.
 
         For each device: POST /api/device/thing_shadow/ with device_id and
         product_id, parse shadow.state.reported/desired, and store the raw
         AWS field names (water_temperature, temperature_setting, etc.) in
         the state cache.
         """
+        refreshed = 0
+        auth_failed = False
+
         for device_id in self.devices:
             try:
                 device = self.devices[device_id]
@@ -448,7 +508,13 @@ class AwsIotApi(RawStateApi):
                 self._raw_state[device_id] = RawSnapshot(
                     timestamp=int(time()), attrs=mapped
                 )
+                refreshed += 1
 
+            except AwsIotAuthException as err:
+                auth_failed = True
+                _LOGGER.warning(
+                    "Authentication failure fetching device %s: %s", device_id, err
+                )
             except Exception as err:
                 _LOGGER.warning(
                     "Failed to fetch state for device %s: %s", device_id, err
@@ -458,6 +524,33 @@ class AwsIotApi(RawStateApi):
                     self._raw_state[device_id] = RawSnapshot(
                         timestamp=int(time()), attrs={}
                     )
+
+        return refreshed, auth_failed
+
+    async def fetch_data(self) -> BestwayApiResults:
+        """Fetch latest state for all devices, refreshing the token once if
+        the cloud rejects it.
+
+        Tokens expire server-side with no advertised expiry, so the only
+        signal is a rejected poll. Re-authenticating in place and polling
+        again recovers within a single cycle.
+
+        Raises AwsIotException when no device could be refreshed at all.
+        Returning the cache instead would keep serving state that is known to
+        be stale, which is how a dead session used to look healthy for hours.
+        """
+        refreshed, auth_failed = await self._poll_all_devices()
+
+        if self.devices and auth_failed:
+            _LOGGER.info("Re-authenticating after an auth failure during polling")
+            token = await self.authenticate(
+                self._session, self._visitor_id, self._location, self._api_base
+            )
+            self.update_token(token)
+            refreshed, _ = await self._poll_all_devices()
+
+        if self.devices and refreshed == 0:
+            raise AwsIotException("Unable to refresh any Bestway device state")
 
         return self._results()
 
