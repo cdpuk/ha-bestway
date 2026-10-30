@@ -13,10 +13,13 @@ from .entity import BestwayEntity, OptimisticValue
 from .features import BubblesStyle, features_for
 from .model import BubblesLevel
 
+# Option values are translation slugs: Home Assistant looks each one up under
+# entity.select.bubbles.state in the translation files, so the UI can show them
+# in the user's language.
 _BUBBLES_OPTIONS = {
-    BubblesLevel.OFF: "OFF",
-    BubblesLevel.MEDIUM: "MEDIUM",
-    BubblesLevel.MAX: "MAX",
+    BubblesLevel.OFF: "off",
+    BubblesLevel.MEDIUM: "medium",
+    BubblesLevel.MAX: "max",
 }
 _BUBBLES_LEVELS = {option: level for level, option in _BUBBLES_OPTIONS.items()}
 
@@ -25,6 +28,7 @@ _BUBBLES_LEVELS = {option: level for level, option in _BUBBLES_OPTIONS.items()}
 # only reads status.bubbles and writes via set_bubbles().
 _BUBBLES_SELECT_DESCRIPTION = SelectEntityDescription(
     key="bubbles",
+    translation_key="bubbles",
     options=list(_BUBBLES_OPTIONS.values()),
     icon=Icon.BUBBLES,
     name="Spa Bubbles",

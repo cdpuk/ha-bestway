@@ -1,0 +1,37 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Bestway",
+        "data": {
+          "backend": "Gerätegeneration"
+        }
+      }
+    }
+  },
+  "entity": {
+    "select": {
+      "bubbles": {
+        "state": {
+          "off": "Aus",
+          "medium": "Mittel",
+          "max": "Maximum"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Bestway-Optionen",
+        "description": "Legt fest, wie die Integration den Whirlpool in Home Assistant abbildet.",
+        "data": {
+          "bubbles_mode": "Bedienung der Luftsprudler (Airjet V02 / Hydrojet V02)"
+        },
+        "data_description": {
+          "bubbles_mode": "Manche Airjet-V02-Whirlpools haben physisch nur eine Ein-/Aus-Sprudelfunktion, obwohl die Cloud einen dreistufigen Wert annimmt. Wählen Sie die Einstellung, die zu Ihrer Hardware passt. Änderungen greifen nach dem Neuladen der Integration."
+        }
+      }
+    }
+  }
+}
